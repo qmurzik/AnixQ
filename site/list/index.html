@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Подборка аниме — AnixQ</title>
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#0b0912">
+<meta name="color-scheme" content="dark">
+<link rel="icon" type="image/png" href="../favicon.png">
+<meta property="og:title" content="Подборка аниме в AnixQ">
+<meta property="og:description" content="Друг поделился подборкой аниме. Откройте её в AnixQ или посмотрите список здесь.">
+<meta property="og:image" content="https://qmurzik.github.io/AnixQ/og.png">
+<style>
+  :root { --bg:#0b0912; --card:rgba(255,255,255,.06); --stroke:rgba(255,255,255,.1); --text:#f6f4fb; --muted:#a8a3b9; --grad:linear-gradient(115deg,#ff4d7a,#8b5cff); }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif; min-height:100vh;
+         background-image:radial-gradient(circle at 15% 0%,rgba(255,77,122,.22),transparent 45%),radial-gradient(circle at 95% 90%,rgba(139,92,255,.25),transparent 50%); }
+  .wrap { max-width:640px; margin:0 auto; padding:24px 16px 48px; }
+  header { display:flex; align-items:center; gap:10px; margin-bottom:22px; }
+  header img { width:32px; height:32px; border-radius:8px; }
+  .emoji { font-size:56px; line-height:1; }
+  h1 { margin:10px 0 4px; font-size:30px; letter-spacing:-.02em; }
+  .muted { color:var(--muted); }
+  ol { list-style:none; padding:0; margin:22px 0; display:grid; gap:8px; counter-reset:n; }
+  li { counter-increment:n; display:flex; align-items:center; gap:12px; padding:12px 14px; border-radius:14px; background:var(--card); border:1px solid var(--stroke); }
+  li::before { content:counter(n); font-weight:800; color:#ff6d93; min-width:22px; }
+  li a { color:var(--text); text-decoration:none; font-weight:600; flex:1; }
+  .btn { display:block; text-align:center; padding:15px 20px; border-radius:14px; font-weight:700; text-decoration:none; color:#fff; background:var(--grad); margin-bottom:10px; }
+  .btn.ghost { background:var(--card); border:1px solid var(--stroke); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header><img src="../favicon.png" alt=""><b>AnixQ</b></header>
+  <div class="emoji" id="emoji">📺</div>
+  <h1 id="name">Подборка</h1>
+  <div class="muted" id="count"></div>
+  <ol id="list"></ol>
+  <a class="btn" id="open" href="#">Открыть в AnixQ</a>
+  <a class="btn ghost" href="../#install">Установить AnixQ</a>
+</div>
+<script>
+(function () {
+  var token = (location.hash || '').slice(1);
+  try {
+    var b64 = token.replace(/-/g, '+').replace(/_/g, '/');
+    while (b64.length % 4) b64 += '=';
+    var bin = atob(b64), bytes = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    var p = JSON.parse(new TextDecoder().decode(bytes));
+    document.getElementById('emoji').textContent = p.e || '📺';
+    document.getElementById('name').textContent = p.n || 'Подборка';
+    document.title = (p.n || 'Подборка') + ' — AnixQ';
+    document.getElementById('count').textContent = (p.i || []).length + ' тайтлов';
+    var list = document.getElementById('list');
+    (p.i || []).forEach(function (it) {
+      var li = document.createElement('li'), a = document.createElement('a');
+      a.textContent = it[1]; a.href = 'https://anilib.me/ru/anime/' + encodeURIComponent(it[0]); a.target = '_blank'; a.rel = 'noopener';
+      li.appendChild(a); list.appendChild(li);
+    });
+    document.getElementById('open').href = 'anixq://list/' + token;
+  } catch (e) {
+    document.getElementById('name').textContent = 'Ссылка на подборку повреждена';
+    document.getElementById('open').hidden = true;
+  }
+})();
+</script>
+</body>
+</html>

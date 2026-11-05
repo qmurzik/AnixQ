@@ -86,6 +86,8 @@ struct LibraryView: View {
                 }
             }
 
+            CollectionsSection()
+
             Section {
                 if library.history.isEmpty {
                     Text("Здесь появятся тайтлы, которые вы начнёте смотреть").foregroundStyle(.secondary)
@@ -140,6 +142,7 @@ struct LibraryView: View {
 enum LibraryRoute: Hashable {
     case stats, downloads, friends
     case folder(BookmarkStatus)
+    case collection(UUID)
 }
 
 extension View {
@@ -149,6 +152,7 @@ extension View {
             case .stats: StatsView()
             case .downloads: DownloadsView()
             case .friends: FriendsView()
+            case .collection(let id): CollectionView(id: id)
             case .folder(let s): LockGate(folder: s) { BookmarkFolderView(status: s) }
             }
         }
@@ -258,6 +262,9 @@ struct SettingsView: View {
     @AppStorage("subs.alwaysOn") private var subsAlwaysOn = false
     @State private var confirmClear = false
     @State private var iconError: String?
+    @State private var countdownTick = 0
+    @State private var calendarOn = CalendarSync.enabled
+    @State private var calendarNote: String?
     @AppStorage(CloudSync.enabledKey) private var cloudOn = true
     @ObservedObject private var updates = UpdateChecker.shared
     @ObservedObject private var cloud = CloudSync.shared
@@ -304,8 +311,16 @@ struct SettingsView: View {
                                 await EpisodeNotifier.reschedule(titles: library.watchingTitles, force: true)
                             }
                         }
+                    Toggle("Отсчёт до серии на экране блокировки", isOn: Binding(
+                        get: { EpisodeCountdown.enabled }, set: { EpisodeCountdown.enabled = $0; countdownTick += 1 }))
+                    Toggle("Добавлять серии в Календарь", isOn: Binding(get: { calendarOn }, set: { on in
+                        calendarOn = on
+                        CalendarSync.enabled = on
+                        if on { Task { let n = await CalendarSync.sync(library: library, force: true); calendarNote = n > 0 ? "Добавлено серий: \(n)" : "Новых серий для календаря пока нет" } }
+                    }))
+                    if let calendarNote { Text(calendarNote).font(.footnote).foregroundStyle(.secondary) }
                 } footer: {
-                    Text("Для тайтлов из «Смотрю» — по расписанию Shikimori, с запасом 2 часа на озвучку.")
+                    Text("Для тайтлов из «Смотрю» — по расписанию Shikimori, с запасом 2 часа на озвучку. Отсчёт появляется за 6 часов до выхода серии.")
                 }
 
                 Section {

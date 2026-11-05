@@ -124,6 +124,12 @@ struct PlayerScreen: View {
         }
         .onChange(of: c.isPlaying) { playing in if playing { scheduleHide() } }
         .modifier(SubtitleTranslation(c: c))
+        .userActivity(HandoffSeek.activityType, isActive: c.isNative && c.duration > 0) { a in
+            a.title = "\(c.title.title) — серия \(c.episode.number)"
+            a.isEligibleForHandoff = true
+            a.userInfo = ["slug": c.title.slugURL, "titleName": c.title.title, "episodeId": c.episode.id,
+                          "episodeNumber": c.episode.number, "teamId": c.team.id, "position": c.currentTime]
+        }
         .sheet(item: Binding(get: { whoFrame.map(IdentifiedImage.init) }, set: { whoFrame = $0?.image })) { item in
             WhoIsThisView(frame: item.image)
         }

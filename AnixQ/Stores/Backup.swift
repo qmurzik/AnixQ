@@ -11,6 +11,8 @@ struct AnixQBackup: Codable {
     var device: String
     var library: LibraryBackup
     var settings: [String: SettingValue]
+    /// Collections and notes (optional so older backups still load).
+    var userData: UserDataStore.Snapshot?
 
     /// UserDefaults values in plain JSON.
     enum SettingValue: Codable {
@@ -64,7 +66,7 @@ enum BackupManager {
             }
         }
         return AnixQBackup(appVersion: UpdateChecker.installedVersion, created: Date(), device: UIDevice.current.model,
-                           library: library.backupPayload(), settings: settings)
+                           library: library.backupPayload(), settings: settings, userData: UserDataStore.shared.snapshot)
     }
 
     static func encode(_ b: AnixQBackup) throws -> Data {
@@ -84,6 +86,7 @@ enum BackupManager {
 
     static func restore(_ b: AnixQBackup, library: LibraryStore) {
         library.restore(b.library)
+        if let u = b.userData { UserDataStore.shared.restore(u) }
         for (k, v) in b.settings { UserDefaults.standard.set(v.value, forKey: k) }
         Theme.configureAppearance()
         DebugLog.log("backup: restored \(b.library.history.count) history, \(b.library.bookmarks.count) bookmarks, \(b.settings.count) settings")

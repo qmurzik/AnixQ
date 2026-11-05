@@ -54,6 +54,8 @@ struct AnixQApp: App {
                     await library.syncBookmarks()
                 }
                 await library.applyWidgetActions()
+                await EpisodeCountdown.refresh(library: library)
+                await CalendarSync.sync(library: library)
                 CloudSync.shared.start(library: library)
                 await UpdateChecker.shared.check()
                 if ShikiSession.isLoggedIn { await library.importShikimori() }
@@ -80,6 +82,7 @@ struct RootView: View {
     @ObservedObject private var lock = AppLock.shared
     @ObservedObject private var room = WatchRoom.shared
     @State private var sharedLaunch: WatchTogether?
+    @State private var sharedList: UserCollection?
     /// Existing users (anything in the library) skip the introduction.
     @State private var onboarded = UserDefaults.standard.bool(forKey: "onboarding.done")
         || UserDefaults.standard.string(forKey: "screenshotSlug") != nil
@@ -101,6 +104,9 @@ struct RootView: View {
                     guard url.scheme == "anixq" else { return }
                     if url.host == "title", let slug = url.pathComponents.dropFirst().first {
                         deepLink = DeepLink(slug: slug)
+                    } else if url.host == "list", let token = url.pathComponents.dropFirst().first,
+                              let list = UserDataStore.decode(token) {
+                        sharedList = list
                     } else if url.host == "room", let id = url.pathComponents.dropFirst().first {
                         // Watch room invite (anixq://room/<id>, opened from the site link).
                         room.join(id)
@@ -168,8 +174,17 @@ struct RootView: View {
                         UserDefaults.standard.set(true, forKey: "onboarding.done")
                     }
                 }
+                .sheet(item: $sharedList) { list in SharedCollectionView(collection: list).environmentObject(library) }
                 .fullScreenCover(item: $sharedLaunch) { a in
                     SharePlayLauncher(activity: a).environmentObject(library)
+                }
+                // Handoff: the episode another device of the user is playing, at the same moment.
+                .onContinueUserActivity(HandoffSeek.activityType) { activity in
+                    let i = activity.userInfo ?? [:]
+                    guard let slug = i["slug"] as? String, let eid = i["episodeId"] as? Int, let tid = i["teamId"] as? Int else { return }
+                    if let pos = i["position"] as? Double { HandoffSeek.set(episodeId: eid, position: pos) }
+                    sharedLaunch = WatchTogether(slug: slug, titleName: i["titleName"] as? String ?? "", episodeId: eid,
+                                                 episodeNumber: i["episodeNumber"] as? String ?? "", teamId: tid)
                 }
                 .onContinueUserActivity(CSSearchableItemActionType) { activity in
                     if let id = activity.userInfo?[CSSearchableItemActivityIdentifier] as? String,

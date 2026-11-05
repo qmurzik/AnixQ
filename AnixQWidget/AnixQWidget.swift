@@ -457,6 +457,7 @@ struct AnixQWidgets: WidgetBundle {
         ContinueWidget()
         TodayWidget()
         DownloadLiveActivity()
+        EpisodeCountdownActivity()
         if #available(iOSApplicationExtension 18.0, *) {
             ContinueControl()
         }
@@ -533,5 +534,62 @@ struct ContinueControl: ControlWidget {
         }
         .displayName("AnixQ: продолжить")
         .description("Открывает последний тайтл, который вы смотрели.")
+    }
+}
+
+// MARK: - Episode countdown Live Activity
+
+struct EpisodeCountdownActivity: Widget {
+    var body: some WidgetConfiguration {
+        ActivityConfiguration(for: EpisodeCountdownAttributes.self) { context in
+            let s = context.state
+            HStack(spacing: 14) {
+                ZStack {
+                    Circle().fill(accent.opacity(0.2))
+                    Image(systemName: "bell.badge.fill").foregroundStyle(accent).font(.title3)
+                }
+                .frame(width: 44, height: 44)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(context.attributes.title).font(.subheadline.weight(.semibold)).lineLimit(1)
+                    Text("Серия \(s.episode)").font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 4)
+                if s.airAt > Date() {
+                    VStack(alignment: .trailing, spacing: 0) {
+                        Text("через").font(.caption2).foregroundStyle(.secondary)
+                        Text(timerInterval: Date()...s.airAt, countsDown: true)
+                            .font(.title2.monospacedDigit().weight(.bold)).multilineTextAlignment(.trailing)
+                            .frame(maxWidth: 110, alignment: .trailing)
+                    }
+                } else {
+                    Text("Вышла!").font(.headline).foregroundStyle(accent)
+                }
+            }
+            .padding()
+            .activityBackgroundTint(Color.black.opacity(0.85))
+            .activitySystemActionForegroundColor(.white)
+            .widgetURL(URL(string: "anixq://shiki/\(context.attributes.shikiId)?n=\(context.attributes.title.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")"))
+        } dynamicIsland: { context in
+            let s = context.state
+            return DynamicIsland {
+                DynamicIslandExpandedRegion(.leading) {
+                    Image(systemName: "bell.badge.fill").foregroundStyle(accent).font(.title2)
+                }
+                DynamicIslandExpandedRegion(.trailing) {
+                    Text(timerInterval: Date()...max(Date(), s.airAt), countsDown: true)
+                        .font(.headline.monospacedDigit()).frame(maxWidth: 90)
+                }
+                DynamicIslandExpandedRegion(.bottom) {
+                    Text("\(context.attributes.title) — серия \(s.episode)").font(.subheadline.weight(.semibold)).lineLimit(1)
+                }
+            } compactLeading: {
+                Image(systemName: "bell.badge.fill").foregroundStyle(accent)
+            } compactTrailing: {
+                Text(timerInterval: Date()...max(Date(), s.airAt), countsDown: true)
+                    .font(.caption2.monospacedDigit()).frame(maxWidth: 52)
+            } minimal: {
+                Image(systemName: "bell.badge.fill").foregroundStyle(accent)
+            }
+        }
     }
 }

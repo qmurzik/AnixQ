@@ -242,7 +242,7 @@ final class PlayerController: ObservableObject {
                 rebuildQualities()
                 let preferred = initialQuality()
                 // Local position first, then the one saved on the AnimeLib account.
-                var resume = library?.resumePosition(episodeId: ep.id)
+                var resume = HandoffSeek.take(episodeId: ep.id) ?? library?.resumePosition(episodeId: ep.id)
                 if resume == nil, let server = p.serverTimecode, server > 15 { resume = server }
                 if let preferred { play(preferred, at: resume) }
                 DebugLog.log(String(format: "player: resolved in %.2fs", Date().timeIntervalSince(startedAt)))

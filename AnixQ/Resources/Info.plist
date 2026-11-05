@@ -46,6 +46,10 @@
 		<key>NSAllowsArbitraryLoadsInWebContent</key>
 		<true/>
 	</dict>
+	<key>NSCalendarsUsageDescription</key>
+	<string>Чтобы добавлять выход новых серий в ваш календарь.</string>
+	<key>NSCalendarsWriteOnlyAccessUsageDescription</key>
+	<string>Чтобы добавлять выход новых серий в ваш календарь.</string>
 	<key>NSFaceIDUsageDescription</key>
 	<string>Чтобы защищать AnixQ и скрытые папки закладок с помощью Face ID.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
@@ -54,6 +58,10 @@
 	<true/>
 	<key>NSSupportsLiveActivities</key>
 	<true/>
+	<key>NSUserActivityTypes</key>
+	<array>
+		<string>ru.qmods.anixq.watching</string>
+	</array>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

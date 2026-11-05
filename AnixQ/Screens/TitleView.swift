@@ -170,6 +170,8 @@ struct TitleView: View {
     @State private var showFullFranchise = false
     @State private var scrolledPastHeader = false
     @State private var comments: CommentTarget?
+    @State private var noteEpisode: LibEpisode?
+    @State private var noteDraft = ""
 
     init(title: Title) {
         _model = StateObject(wrappedValue: TitleModel.shared(for: title))
@@ -186,6 +188,7 @@ struct TitleView: View {
                         about(summary).frame(maxWidth: Layout.maxTextWidth, alignment: .leading)
                     }
                     episodesSection
+                    NotesSection(title: t)
                     infoSection
                 }
                 franchiseSection
@@ -221,6 +224,19 @@ struct TitleView: View {
         }
         .refreshable { await model.load(lastTeamId: library.lastEntry(titleId: t.id)?.teamId, force: true) }
         .sheet(item: $comments) { c in CommentsView(postId: c.postId, type: c.type, title: c.title) }
+        .alert("Заметка к серии \(noteEpisode?.number ?? "")", isPresented: Binding(get: { noteEpisode != nil }, set: { if !$0 { noteEpisode = nil } })) {
+            TextField("Что запомнилось", text: $noteDraft)
+            Button("Сохранить") {
+                if let ep = noteEpisode {
+                    var n = UserDataStore.shared.note(t.id)
+                    let text = noteDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+                    n.episodes[ep.number] = text.isEmpty ? nil : text
+                    UserDataStore.shared.setNote(n, for: t.id)
+                }
+                noteEpisode = nil
+            }
+            Button("Отмена", role: .cancel) { noteEpisode = nil }
+        }
         .fullScreenCover(item: $play) { req in
             PlayerScreen(title: t, background: model.detail?.backgroundURL, episodes: model.episodes,
                          teams: model.teams, startIndex: req.episodeIndex, team: req.team)
@@ -413,6 +429,10 @@ struct TitleView: View {
                                     Button {
                                         comments = CommentTarget(postId: ep.id, type: "episodes", title: "Серия \(ep.number) · комментарии")
                                     } label: { Label("Комментарии", systemImage: "bubble.left") }
+                                    Button {
+                                        noteDraft = UserDataStore.shared.note(t.id).episodes[ep.number] ?? ""
+                                        noteEpisode = ep
+                                    } label: { Label("Заметка к серии", systemImage: "note.text") }
                                     if let team = model.selectedTeam, team.native {
                                         Button {
                                             downloads.download(title: t, episode: ep, team: team.team)

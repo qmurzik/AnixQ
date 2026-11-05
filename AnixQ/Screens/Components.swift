@@ -21,6 +21,7 @@ extension View {
             .navigationDestination(for: PersonRoute.self) { PersonView(route: $0) }
             .navigationDestination(for: SeasonRoute.self) { _ in SeasonView() }
             .navigationDestination(for: SmartRoute.self) { _ in SmartLibraryView() }
+            .navigationDestination(for: SlugRoute.self) { DebugTitleLoader(slug: $0.slug) }
     }
 }
 
@@ -41,6 +42,16 @@ struct TitleQuickActions: ViewModifier {
                     Label(current == s ? "Убрать из «\(s.title)»" : s.title,
                           systemImage: current == s ? "checkmark" : s.icon)
                 }
+            }
+            let collections = UserDataStore.shared.collections
+            if !collections.isEmpty {
+                Menu {
+                    ForEach(collections) { c in
+                        Button { UserDataStore.shared.toggle(title, in: c) } label: {
+                            Label("\(c.emoji) \(c.name)", systemImage: UserDataStore.shared.contains(title, in: c) ? "checkmark" : "plus")
+                        }
+                    }
+                } label: { Label("В подборку", systemImage: "rectangle.stack.badge.plus") }
             }
             if let url = URL(string: "https://anilib.me/ru/anime/\(title.slugURL)") {
                 ShareLink(item: url) { Label("Поделиться", systemImage: "square.and.arrow.up") }

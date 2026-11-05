@@ -89,7 +89,6 @@ final class SharePlayManager: NSObject, ObservableObject {
         incoming = nil
         tasks.forEach { $0.cancel() }
         tasks = []
-        controller?.player.playbackCoordinator.coordinateWithSession(nil)
     }
 
     // MARK: Player
@@ -109,7 +108,6 @@ final class SharePlayManager: NSObject, ObservableObject {
 
     func detach(_ c: PlayerController) {
         guard controller === c else { return }
-        c.player.playbackCoordinator.coordinateWithSession(nil)
         controller = nil
     }
 

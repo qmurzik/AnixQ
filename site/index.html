@@ -263,6 +263,36 @@
   footer { position: relative; z-index: 1; padding: 36px 0 48px; color: var(--muted); font-size: 14px; }
   footer .wrap { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
 
+
+  /* styles tile */
+  .t-styles { grid-column: span 6; flex-direction: row; align-items: center; gap: 30px; }
+  .t-styles > div:first-child { flex: 1; }
+  .t-sm { grid-column: span 2; }
+  .styles { display: grid; grid-template-columns: repeat(4, 96px); gap: 12px; flex: none; }
+  .sw { height: 132px; border-radius: 18px; padding: 10px; display: flex; flex-direction: column; gap: 6px; position: relative; overflow: hidden; border: 1px solid var(--stroke); }
+  .sw i { display: block; height: 26px; border-radius: 6px; }
+  .sw i:first-child { height: 40px; background: linear-gradient(135deg, var(--pink), var(--violet)); }
+  .sw b { margin-top: auto; font-size: 11px; position: relative; }
+  .sw-classic { background: #000; } .sw-classic i + i { background: #1c1c1e; }
+  .sw-glass { background: radial-gradient(circle at 20% 80%, rgba(255,77,122,.7), transparent 55%), radial-gradient(circle at 90% 20%, rgba(91,92,255,.8), transparent 55%), #0b0b16; }
+  .sw-glass i { border-radius: 12px !important; } .sw-glass i + i { background: rgba(255,255,255,.16); border: 1px solid rgba(255,255,255,.4); backdrop-filter: blur(6px); }
+  .sw-material { background: #1a1418; } .sw-material i { border-radius: 14px !important; } .sw-material i + i { background: #ff4d7a; }
+  .sw-oled { background: #000; } .sw-oled i { border-radius: 3px !important; } .sw-oled i + i { background: #000; border: 1px solid rgba(255,255,255,.25); }
+
+  /* gallery */
+  .gallery { display: flex; gap: 18px; overflow-x: auto; scroll-snap-type: x mandatory; padding: 4px max(20px, calc((100vw - 1080px) / 2)) 20px; scrollbar-width: none; }
+  .gallery::-webkit-scrollbar { display: none; }
+  .shot { flex: none; margin: 0; width: 250px; scroll-snap-align: center; border-radius: 34px; padding: 8px; background: linear-gradient(145deg, #3a3646, #15131c); box-shadow: 0 30px 60px -30px rgba(139,92,255,.5); }
+  .shot img { width: 100%; height: auto; border-radius: 27px; }
+
+  /* guides */
+  .guides { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
+  .guide { display: block; padding: 22px; border-radius: 20px; background: var(--card); border: 1px solid var(--stroke); text-decoration: none; transition: border-color .2s, transform .2s; }
+  .guide:hover { border-color: rgba(139,92,255,.5); transform: translateY(-2px); }
+  .guide b { display: block; font-size: 18px; margin-bottom: 6px; }
+  .guide b::after { content: " →"; color: var(--pink); }
+  .guide span { color: var(--muted); font-size: 15px; }
+
   .dock { display: none; }
 
   .rv { opacity: 0; transform: translateY(24px); transition: opacity .7s ease, transform .7s cubic-bezier(.2,.7,.2,1); }
@@ -275,7 +305,11 @@
     .bento { grid-template-columns: 1fr 1fr; }
     .t-player, .t-wid { grid-column: span 2; }
     .t-scan, .t-off, .t-sync, .t-cal { grid-column: span 1; }
-    .t-wid { flex-direction: column; align-items: stretch; }
+    .t-wid, .t-styles { flex-direction: column; align-items: stretch; }
+    .t-styles { grid-column: span 2; }
+    .t-sm { grid-column: span 1; }
+    .styles { justify-content: center; }
+    .guides { grid-template-columns: 1fr; }
     .wids { justify-content: center; }
     .install, .faq { grid-template-columns: 1fr; }
     .faq { gap: 0; }
@@ -302,6 +336,13 @@
     .t-off, .t-sync, .t-cal { flex-direction: row; align-items: flex-start; gap: 14px; }
     .t-off .ico, .t-sync .ico, .t-cal .ico { margin: 0; flex: none; }
     .t-off .body, .t-sync .body, .t-cal .body { margin-top: 0; }
+    .t-sm { grid-column: span 2; flex-direction: row; align-items: flex-start; gap: 14px; }
+    .t-sm .ico { margin: 0; flex: none; }
+    .t-sm .body { margin-top: 0; }
+    .styles { grid-template-columns: repeat(4, 1fr); gap: 8px; }
+    .sw { height: 112px; padding: 7px; border-radius: 14px; }
+    .sw b { font-size: 9.5px; }
+    .shot { width: 210px; }
     .w { width: calc(50% - 7px); max-width: 160px; }
     .pv { aspect-ratio: 16/9; }
     .pv .skip { font-size: 11px; padding: 6px 10px; bottom: 30px; }
@@ -335,6 +376,7 @@
       <a href="#features">Возможности</a>
       <a href="#install">Установка</a>
       <a href="#faq">Вопросы</a>
+      <a href="changelog/">Что нового</a>
       <a class="pill" href="#install">Скачать</a>
     </nav>
   </div>
@@ -440,9 +482,37 @@
             </div>
           </div>
         </article>
+
+        <article class="tile t-styles rv">
+          <div>
+            <h3>Ваш стиль интерфейса</h3>
+            <p>Классика в духе Apple TV, Liquid Glass с настоящим стеклом iOS 26, Material You с оттенками от цвета акцента или чистый чёрный OLED.</p>
+          </div>
+          <div class="styles" aria-hidden="true">
+            <div class="sw sw-classic"><i></i><i></i><b>Классика</b></div>
+            <div class="sw sw-glass"><i></i><i></i><b>Liquid Glass</b></div>
+            <div class="sw sw-material"><i></i><i></i><b>Material You</b></div>
+            <div class="sw sw-oled"><i></i><i></i><b>OLED</b></div>
+          </div>
+        </article>
+
+        <article class="tile t-sm rv">
+          <div class="ico" style="background:rgba(91,224,143,.16)">👥</div>
+          <div class="body"><h3>Смотреть вместе</h3><p>SharePlay по FaceTime: пауза, перемотка и смена серии — у всех сразу.</p></div>
+        </article>
+        <article class="tile t-sm rv">
+          <div class="ico" style="background:rgba(63,215,255,.15)">☁︎</div>
+          <div class="body"><h3>iCloud</h3><p>История, позиции и настройки переезжают между iPhone и iPad.</p></div>
+        </article>
+        <article class="tile t-sm rv">
+          <div class="ico" style="background:rgba(255,77,122,.16)">♥︎</div>
+          <div class="body"><h3>Любимые озвучки</h3><p>Расставьте озвучки по приоритету — нужная выберется сама.</p></div>
+        </article>
       </div>
     </div>
   </section>
+
+  <!--GALLERY-->
 
   <section id="install">
     <div class="wrap">
@@ -492,6 +562,18 @@
     </div>
   </section>
 
+  <section id="guides" style="padding-top:0">
+    <div class="wrap">
+      <div class="rv">
+        <div class="eyebrow">Гайды</div>
+        <h2>Как пользоваться</h2>
+      </div>
+      <div class="guides">
+        <!--GUIDES-->
+      </div>
+    </div>
+  </section>
+
   <section style="padding-top:0">
     <div class="wrap">
       <div class="final rv">
@@ -506,7 +588,7 @@
 
 <footer>
   <div class="wrap">
-    <span>© AnixQ · <a href="https://github.com/qmurzik/AnixQ">GitHub</a></span>
+    <span>© AnixQ · <a href="changelog/">Что нового</a> · <a href="https://github.com/qmurzik/AnixQ">GitHub</a></span>
     <span>AnixQ не хранит и не распространяет видео — он показывает содержимое сторонних сервисов.</span>
   </div>
 </footer>

@@ -3,7 +3,11 @@ name: Site
 on:
   push:
     branches: [ "main" ]
-    paths: [ "site/**", ".github/workflows/pages.yml" ]
+    paths: [ "site/**", "scripts/build_site.py", ".github/workflows/pages.yml" ]
+  # Refresh the changelog after every app release.
+  workflow_run:
+    workflows: [ "Build IPA" ]
+    types: [ completed ]
   workflow_dispatch:
 
 permissions:
@@ -18,10 +22,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Publish site/ to gh-pages
+        with:
+          ref: main
+      - name: Build site
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 scripts/build_site.py _site
+      - name: Publish to gh-pages
         run: |
-          sed -i "s|<lastmod>.*</lastmod>|<lastmod>$(date -u +%F)</lastmod>|" site/sitemap.xml
-          cd site
+          cd _site
           git init -q -b gh-pages
           git config user.name "github-actions"
           git config user.email "github-actions@users.noreply.github.com"

@@ -56,7 +56,7 @@ final class UpdateChecker: ObservableObject {
     @Published private(set) var isChecking = false
     @Published private(set) var lastChecked: Date?
 
-    static var installedVersion: String {
+    nonisolated static var installedVersion: String {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0"
     }
 

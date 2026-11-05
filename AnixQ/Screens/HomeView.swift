@@ -80,7 +80,15 @@ final class HomeModel: ObservableObject {
 
     /// "Для вас": titles similar to what the user watched recently, minus what they already know.
     func loadForYou(seeds: [Title], known: Set<Int>) async {
-        guard !seeds.isEmpty else { forYou = []; return }
+        guard !seeds.isEmpty else {
+            // New user: genres picked during onboarding.
+            let genres = UserDefaults.standard.array(forKey: "onboarding.genres") as? [Int] ?? []
+            guard !genres.isEmpty else { forYou = []; return }
+            var q = CatalogQuery(sort: .rating)
+            q.genres = Set(genres.prefix(3))
+            forYou = Array(((try? await LibAPI.catalog(q, page: 1).items) ?? []).prefix(24))
+            return
+        }
         var seen = known
         var out: [Title] = []
         let tasks = seeds.prefix(5).map { seed in Task { await LibAPI.similar(seed.slugURL) } }

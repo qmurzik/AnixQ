@@ -103,6 +103,9 @@ jobs:
     needs: build
     if: ${{ !cancelled() && github.event_name == 'push' }}
     runs-on: ubuntu-latest
+    env:
+      TG_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TG_CHAT: ${{ secrets.TELEGRAM_CHAT_ID }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -165,3 +168,21 @@ jobs:
           git commit -q -m "AnixQ $VERSION" || exit 0
           git push -q origin gbox-source
 
+      - name: Announce in Telegram
+        # Optional: add repository secrets TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID (e.g. @anixq_channel).
+        if: ${{ env.TG_TOKEN != '' && env.TG_CHAT != '' }}
+        run: |
+          python3 - <<'PY'
+          import html, json, os, urllib.request
+          notes = html.escape(open("notes.txt", encoding="utf-8").read().strip()[:3000])
+          version = os.environ["VERSION"]
+          text = (f"<b>AnixQ {version}</b>\n\n{notes}\n\n"
+                  "Обновить: GBox → источник AnixQ → «Обновить»\n"
+                  f"<a href=\"https://github.com/${{ github.repository }}/releases/tag/v{version}\">IPA</a> · "
+                  "<a href=\"https://qmurzik.github.io/AnixQ/\">Сайт</a>")
+          body = json.dumps({"chat_id": os.environ["TG_CHAT"], "text": text, "parse_mode": "HTML",
+                             "disable_web_page_preview": True}).encode()
+          req = urllib.request.Request(f"https://api.telegram.org/bot{os.environ['TG_TOKEN']}/sendMessage", data=body,
+                                       headers={"Content-Type": "application/json"})
+          print(urllib.request.urlopen(req, timeout=30).status)
+          PY

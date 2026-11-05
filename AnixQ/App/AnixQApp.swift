@@ -80,6 +80,9 @@ struct RootView: View {
     @ObservedObject private var lock = AppLock.shared
     @ObservedObject private var room = WatchRoom.shared
     @State private var sharedLaunch: WatchTogether?
+    /// Existing users (anything in the library) skip the introduction.
+    @State private var onboarded = UserDefaults.standard.bool(forKey: "onboarding.done")
+        || UserDefaults.standard.string(forKey: "screenshotSlug") != nil
 
     /// Actions requested by Siri / Shortcuts while the app was closed.
     private func handlePendingAction() {
@@ -156,6 +159,15 @@ struct RootView: View {
                 .alert("Комната", isPresented: Binding(get: { room.message != nil }, set: { if !$0 { room.message = nil } })) {
                     Button("OK", role: .cancel) {}
                 } message: { Text(room.message ?? "") }
+                .fullScreenCover(isPresented: Binding(get: { !onboarded }, set: { onboarded = !$0 })) {
+                    OnboardingView(done: $onboarded).environmentObject(library)
+                }
+                .onAppear {
+                    if !onboarded, !library.history.isEmpty || !library.bookmarks.isEmpty {
+                        onboarded = true
+                        UserDefaults.standard.set(true, forKey: "onboarding.done")
+                    }
+                }
                 .fullScreenCover(item: $sharedLaunch) { a in
                     SharePlayLauncher(activity: a).environmentObject(library)
                 }

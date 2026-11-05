@@ -54,6 +54,19 @@ struct StatsView: View {
         let yearly = compute(year: year)
         List {
             Section {
+                NavigationLink { YearInReviewView() } label: {
+                    Label("Итоги года — картинка для сторис", systemImage: "sparkles.rectangle.stack")
+                }
+                NavigationLink { AchievementsView() } label: {
+                    let list = Achievements.all(library)
+                    LabeledContent {
+                        Text("\(list.filter(\.unlocked).count) из \(list.count)")
+                    } label: {
+                        Label("Достижения", systemImage: "rosette")
+                    }
+                }
+            }
+            Section {
                 HStack(spacing: 0) {
                     tile(hours(all.seconds), "часов")
                     tile("\(all.episodes)", "серий")

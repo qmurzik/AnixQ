@@ -1,0 +1,68 @@
+name: AnixQ
+options:
+  bundleIdPrefix: ru.qmods
+  deploymentTarget:
+    iOS: "16.1"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "1.0.0"
+    CURRENT_PROJECT_VERSION: "1"
+    DEVELOPMENT_TEAM: ""
+    CODE_SIGN_STYLE: Manual
+targets:
+  AnixQ:
+    type: application
+    platform: iOS
+    sources:
+      - path: AnixQ
+      - path: Shared
+    dependencies:
+      - target: AnixQWidget
+      - target: AnixQShare
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: ru.qmods.anixq
+        PRODUCT_NAME: AnixQ
+        TARGETED_DEVICE_FAMILY: "1,2"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES: "AppIcon-Dark AppIcon-Ocean AppIcon-Mint AppIcon-Sunset"
+        ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS: YES
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: AnixQ/Resources/Info.plist
+        CODE_SIGN_ENTITLEMENTS: AnixQ/AnixQ.entitlements
+
+  AnixQWidget:
+    type: app-extension
+    platform: iOS
+    deploymentTarget: "16.1"
+    sources:
+      - path: AnixQWidget
+      - path: Shared
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: ru.qmods.anixq.widget
+        PRODUCT_NAME: AnixQWidget
+        TARGETED_DEVICE_FAMILY: "1,2"
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: AnixQWidget/Info.plist
+        CODE_SIGN_ENTITLEMENTS: AnixQWidget/AnixQWidget.entitlements
+        SKIP_INSTALL: YES
+
+  AnixQShare:
+    type: app-extension
+    platform: iOS
+    deploymentTarget: "16.1"
+    sources:
+      - path: AnixQShare
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: ru.qmods.anixq.share
+        PRODUCT_NAME: AnixQShare
+        TARGETED_DEVICE_FAMILY: "1,2"
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: AnixQShare/Info.plist
+        CODE_SIGN_ENTITLEMENTS: AnixQShare/AnixQShare.entitlements
+        SKIP_INSTALL: YES

@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://qmurzik.github.io/AnixQ/sitemap.xml

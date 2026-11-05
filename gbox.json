@@ -1,0 +1,27 @@
+{
+  "version": "1.0",
+  "sourceName": "AnixQ",
+  "sourceAuthor": "qmurzik",
+  "sourceExportEnable": true,
+  "sourceLinkTitle": "Сайт",
+  "sourceLinkUrl": "https://qmurzik.github.io/AnixQ/",
+  "sourceImage": "https://raw.githubusercontent.com/qmurzik/AnixQ/gbox-source/icon.png",
+  "sourceUpdateTime": "2026-11-05T12:14:20+0000",
+  "sourceDescription": "AnixQ — аниме с AnimeLib: каталог, плеер без рекламы, синхронизация с Shikimori.",
+  "appCategories": [
+    "Приложения"
+  ],
+  "appRepositories": [
+    {
+      "appType": "SELF_SIGN",
+      "appCateIndex": 0,
+      "appUpdateTime": "2026-11-05T12:14:20+0000",
+      "appName": "AnixQ",
+      "appVersion": "1.0.1",
+      "appImage": "https://raw.githubusercontent.com/qmurzik/AnixQ/gbox-source/icon.png",
+      "appPackage": "https://github.com/qmurzik/AnixQ/releases/download/v1.0.1/AnixQ.ipa",
+      "appSize": 2106797,
+      "appDescription": "AnixQ: приложение для просмотра аниме на iOS + сайт"
+    }
+  ]
+}

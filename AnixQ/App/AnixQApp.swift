@@ -25,7 +25,7 @@ struct AnixQApp: App {
                 // Style colours are read statically, so rebuild the UI when the style changes.
                 .id(styleRaw == AppStyle.material.rawValue || styleRaw == AppStyle.glass.rawValue
                     ? styleRaw + accentRaw : styleRaw)
-                .tint(accent.color)
+                .tint(AppStyle(rawValue: styleRaw) == .material ? AppStyle.tones.primary : accent.color)
                 .environmentObject(library)
                 .environmentObject(downloads)
                 .preferredColorScheme(.dark)

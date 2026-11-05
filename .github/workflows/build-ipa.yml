@@ -54,6 +54,28 @@ jobs:
             build | tee build.log | grep -E "error:|BUILD" || true
           grep -q "BUILD SUCCEEDED" build.log
 
+      - name: Add loose alternate icons
+        # Some re-signers and iOS versions only find alternate icons as loose PNGs listed in CFBundleIconFiles.
+        run: |
+          APP=build/Release-iphoneos/AnixQ.app
+          PL="$APP/Info.plist"
+          for NAME in AppIcon-Dark AppIcon-Ocean AppIcon-Mint AppIcon-Sunset; do
+            SRC="AnixQ/Resources/Assets.xcassets/$NAME.appiconset/icon-1024.png"
+            sips -z 120 120 "$SRC" --out "$APP/${NAME}60x60@2x.png" >/dev/null
+            sips -z 180 180 "$SRC" --out "$APP/${NAME}60x60@3x.png" >/dev/null
+            sips -z 152 152 "$SRC" --out "$APP/${NAME}76x76@2x~ipad.png" >/dev/null
+            sips -z 167 167 "$SRC" --out "$APP/${NAME}83.5x83.5@2x~ipad.png" >/dev/null
+            for KEY in CFBundleIcons "CFBundleIcons~ipad"; do
+              /usr/libexec/PlistBuddy -c "Delete :$KEY:CFBundleAlternateIcons:$NAME:CFBundleIconFiles" "$PL" 2>/dev/null || true
+              /usr/libexec/PlistBuddy -c "Add :$KEY:CFBundleAlternateIcons:$NAME:CFBundleIconFiles array" "$PL"
+              /usr/libexec/PlistBuddy -c "Add :$KEY:CFBundleAlternateIcons:$NAME:CFBundleIconFiles:0 string ${NAME}60x60" "$PL"
+              /usr/libexec/PlistBuddy -c "Add :$KEY:CFBundleAlternateIcons:$NAME:UIPrerenderedIcon bool false" "$PL" 2>/dev/null || true
+            done
+            /usr/libexec/PlistBuddy -c "Add :CFBundleIcons~ipad:CFBundleAlternateIcons:$NAME:CFBundleIconFiles:1 string ${NAME}76x76" "$PL"
+            /usr/libexec/PlistBuddy -c "Add :CFBundleIcons~ipad:CFBundleAlternateIcons:$NAME:CFBundleIconFiles:2 string ${NAME}83.5x83.5" "$PL"
+          done
+          plutil -p "$PL" | grep -A4 AppIcon-Dark | head -12
+
       - name: Package IPA
         run: |
           mkdir -p Payload

@@ -228,6 +228,7 @@ struct SettingsView: View {
     @AppStorage(AppStyle.storageKey) private var styleRaw = AppStyle.classic.rawValue
     @AppStorage("subs.alwaysOn") private var subsAlwaysOn = false
     @State private var confirmClear = false
+    @State private var iconError: String?
     @AppStorage(CloudSync.enabledKey) private var cloudOn = true
     @ObservedObject private var updates = UpdateChecker.shared
     @ObservedObject private var cloud = CloudSync.shared
@@ -365,10 +366,20 @@ struct SettingsView: View {
                         HStack(spacing: 14) {
                             ForEach(AppIconChoice.allCases) { icon in
                                 Button {
-                                    UIApplication.shared.setAlternateIconName(icon.alternateName) { err in
-                                        if let err { DebugLog.log("icon: \(err.localizedDescription)") }
+                                    guard UIApplication.shared.supportsAlternateIcons else {
+                                        iconError = "Подпись приложения не поддерживает смену иконки."
+                                        return
                                     }
-                                    appIcon = icon.rawValue
+                                    UIApplication.shared.setAlternateIconName(icon.alternateName) { err in
+                                        DispatchQueue.main.async {
+                                            if let err {
+                                                DebugLog.log("icon: \(err)")
+                                                iconError = "iOS не сменил иконку: \(err.localizedDescription)"
+                                            } else {
+                                                appIcon = icon.rawValue
+                                            }
+                                        }
+                                    }
                                 } label: {
                                     VStack(spacing: 6) {
                                         Image(icon.preview).resizable()
@@ -454,6 +465,12 @@ struct SettingsView: View {
             }
             .sheet(isPresented: $showShikiLogin) {
                 ShikiLoginView { Task { await library.importShikimori(force: true) } }
+            }
+            .onAppear { appIcon = UIApplication.shared.alternateIconName ?? AppIconChoice.standard.rawValue }
+            .alert("Иконка", isPresented: Binding(get: { iconError != nil }, set: { if !$0 { iconError = nil } })) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(iconError ?? "")
             }
             .confirmationDialog("Очистить историю и прогресс?", isPresented: $confirmClear, titleVisibility: .visible) {
                 Button("Очистить", role: .destructive) { library.clearHistory() }

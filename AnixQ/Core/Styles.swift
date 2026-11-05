@@ -36,33 +36,49 @@ enum AppStyle: String, CaseIterable, Identifiable {
         let stroke: Color
     }
 
+    /// Material 3 dark tonal roles derived from the accent hue (pastel primary, quiet tinted surfaces).
+    struct Tones {
+        let primary, onPrimary, secondaryContainer, onSecondaryContainer: Color
+        let surface, surfaceContainer, surfaceContainerHigh, outline: Color
+    }
+
+    static var tones: Tones {
+        var h: CGFloat = 0, sat: CGFloat = 0, b: CGFloat = 0
+        UIColor(AccentChoice.current.color).getHue(&h, saturation: &sat, brightness: &b, alpha: nil)
+        func t(_ s: CGFloat, _ v: CGFloat) -> Color { Color(hue: Double(h), saturation: Double(s), brightness: Double(v)) }
+        return Tones(primary: t(0.34, 0.97), onPrimary: t(0.80, 0.24),
+                     secondaryContainer: t(0.28, 0.27), onSecondaryContainer: t(0.10, 0.94),
+                     surface: t(0.10, 0.065), surfaceContainer: t(0.10, 0.115), surfaceContainerHigh: t(0.10, 0.155),
+                     outline: t(0.10, 0.30))
+    }
+
     var palette: Palette {
-        let accent = UIColor(AccentChoice.current.color)
         switch self {
         case .classic:
             return Palette(background: Color(.systemBackground), card: Color(.secondarySystemBackground),
                            cardHighlight: Color(.tertiarySystemBackground), stroke: Color.primary.opacity(0.08))
         case .glass:
-            return Palette(background: Color(red: 0.035, green: 0.035, blue: 0.07),
-                           card: Color.white.opacity(0.07), cardHighlight: Color.white.opacity(0.12),
-                           stroke: Color.white.opacity(0.16))
+            return Palette(background: Color(red: 0.03, green: 0.03, blue: 0.045),
+                           card: Color.white.opacity(0.055), cardHighlight: Color.white.opacity(0.09),
+                           stroke: Color.white.opacity(0.09))
         case .material:
-            // Material 3 dark tonal surfaces tinted by the accent ("dynamic colour").
-            return Palette(background: Self.mix(UIColor(white: 0.07, alpha: 1), accent, 0.05),
-                           card: Self.mix(UIColor(white: 0.12, alpha: 1), accent, 0.11),
-                           cardHighlight: Self.mix(UIColor(white: 0.17, alpha: 1), accent, 0.17),
+            let t = Self.tones
+            return Palette(background: t.surface, card: t.surfaceContainer, cardHighlight: t.surfaceContainerHigh,
                            stroke: .clear)
         case .oled:
-            return Palette(background: .black, card: Color(white: 0.07), cardHighlight: Color(white: 0.11),
-                           stroke: Color.white.opacity(0.12))
+            return Palette(background: .black, card: Color(white: 0.06), cardHighlight: Color(white: 0.1),
+                           stroke: Color.white.opacity(0.11))
         }
     }
+
+    /// App-wide tint: Material uses the pastel primary tone instead of the raw accent.
+    var tint: Color { self == .material ? Self.tones.primary : AccentChoice.current.color }
 
     var radius: CGFloat {
         switch self {
         case .classic: return 10
-        case .glass: return 16
-        case .material: return 18
+        case .glass: return 14
+        case .material: return 14
         case .oled: return 8
         }
     }
@@ -70,8 +86,8 @@ enum AppStyle: String, CaseIterable, Identifiable {
     var cardRadius: CGFloat {
         switch self {
         case .classic: return 14
-        case .glass: return 22
-        case .material: return 24
+        case .glass: return 20
+        case .material: return 20
         case .oled: return 10
         }
     }
@@ -79,7 +95,7 @@ enum AppStyle: String, CaseIterable, Identifiable {
     var sectionFont: Font {
         switch self {
         case .classic, .glass: return .title2.bold()
-        case .material: return .system(.title2, design: .rounded).weight(.semibold)
+        case .material: return .system(size: 22, weight: .medium, design: .rounded)
         case .oled: return .title3.weight(.heavy)
         }
     }
@@ -88,7 +104,7 @@ enum AppStyle: String, CaseIterable, Identifiable {
         switch self {
         case .classic, .oled: return .black
         case .glass: return .white
-        case .material: return Self.onAccent
+        case .material: return Self.tones.onPrimary
         }
     }
 
@@ -122,19 +138,30 @@ extension View {
             case .control, .chip: background(.ultraThinMaterial, in: shape)
             }
         case .glass:
-            glass(shape, interactive: level == .control)
+            switch level {
+            // Content stays calm; glass is reserved for the control layer, as in iOS 26.
+            case .card:
+                background(Theme.card, in: shape)
+                    .overlay(shape.stroke(Color.white.opacity(0.07), lineWidth: 0.5))
+            case .control: glass(shape, interactive: true)
+            case .chip: glass(shape)
+            }
         case .material:
-            background(level == .card ? Theme.card : Theme.cardHighlight, in: shape)
+            let t = AppStyle.tones
+            switch level {
+            case .card: background(t.surfaceContainer, in: shape)
+            case .control, .chip: background(t.secondaryContainer, in: shape).foregroundStyle(t.onSecondaryContainer)
+            }
         case .oled:
             switch level {
-            case .card: background(Theme.card, in: shape).overlay(shape.stroke(Theme.stroke, lineWidth: 0.8))
-            case .control: background(Color.black.opacity(0.55), in: shape).overlay(shape.stroke(Theme.stroke, lineWidth: 1))
+            case .card: background(Theme.card, in: shape).overlay(shape.stroke(Theme.stroke, lineWidth: 0.6))
+            case .control: background(Color.black.opacity(0.6), in: shape).overlay(shape.stroke(Color.white.opacity(0.22), lineWidth: 0.8))
             case .chip: background(Color.black.opacity(0.75), in: shape)
             }
         }
     }
 
-    /// Liquid Glass: the real system material on iOS 26, a hand-made imitation before that.
+    /// Liquid Glass: the real system material on iOS 26, a restrained imitation before that.
     @ViewBuilder
     func glass<S: Shape>(_ shape: S, tint: Color? = nil, interactive: Bool = false) -> some View {
         #if compiler(>=6.2)
@@ -156,7 +183,7 @@ extension View {
     /// Lists and forms: let the style background show through.
     @ViewBuilder
     func styledList() -> some View {
-        if AppStyle.current == .classic {
+        if AppStyle.current == .classic || AppStyle.current == .glass {
             self
         } else {
             scrollContentBackground(.hidden).styledBackground()
@@ -172,16 +199,20 @@ private struct GlassFallback<S: Shape>: ViewModifier {
         content
             .background {
                 ZStack {
-                    shape.fill(.ultraThinMaterial)
-                    if let tint { shape.fill(tint.opacity(0.6)) }
-                    shape.fill(LinearGradient(colors: [.white.opacity(0.14), .white.opacity(0.02)],
-                                              startPoint: .top, endPoint: .bottom))
+                    if let tint {
+                        shape.fill(tint)
+                    } else {
+                        shape.fill(.ultraThinMaterial)
+                        shape.fill(Color.white.opacity(0.04))
+                    }
+                    // Soft specular highlight along the top edge.
+                    shape.fill(LinearGradient(colors: [.white.opacity(tint == nil ? 0.10 : 0.18), .clear],
+                                              startPoint: .top, endPoint: .center))
                 }
-                .shadow(color: .black.opacity(0.28), radius: 14, y: 8)
             }
             .overlay {
-                shape.stroke(LinearGradient(colors: [.white.opacity(0.45), .white.opacity(0.06), .white.opacity(0.18)],
-                                            startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 0.9)
+                shape.stroke(LinearGradient(colors: [.white.opacity(0.28), .white.opacity(0.04), .white.opacity(0.10)],
+                                            startPoint: .top, endPoint: .bottom), lineWidth: 0.6)
             }
     }
 }
@@ -192,16 +223,11 @@ struct StyledBackground: View {
         ZStack {
             style.palette.background
             if style == .glass {
-                // Soft coloured light behind the glass so it has something to refract.
-                GeometryReader { geo in
-                    let w = geo.size.width
-                    Circle().fill(Theme.accent.opacity(0.32)).frame(width: w * 1.1)
-                        .blur(radius: 90).offset(x: -w * 0.45, y: geo.size.height * 0.28)
-                    Circle().fill(Color.indigo.opacity(0.35)).frame(width: w)
-                        .blur(radius: 100).offset(x: w * 0.4, y: geo.size.height * 0.62)
-                    Circle().fill(Color.cyan.opacity(0.14)).frame(width: w * 0.8)
-                        .blur(radius: 90).offset(x: w * 0.1, y: geo.size.height * 0.95)
-                }
+                // Very soft ambient light so the glass layer has something to refract.
+                RadialGradient(colors: [Theme.accent.opacity(0.16), .clear], center: UnitPoint(x: 0, y: 0.55),
+                               startRadius: 0, endRadius: 520)
+                RadialGradient(colors: [Color.indigo.opacity(0.16), .clear], center: UnitPoint(x: 1, y: 0.95),
+                               startRadius: 0, endRadius: 560)
             }
         }
     }
@@ -220,8 +246,8 @@ struct StylePreview: View {
             ZStack(alignment: .bottom) {
                 p.background
                 if style == .glass {
-                    Circle().fill(Theme.accent.opacity(0.5)).frame(width: 90).blur(radius: 26).offset(x: -30, y: -10)
-                    Circle().fill(Color.indigo.opacity(0.6)).frame(width: 80).blur(radius: 26).offset(x: 34, y: -60)
+                    RadialGradient(colors: [Theme.accent.opacity(0.35), .clear], center: .leading, startRadius: 0, endRadius: 90)
+                    RadialGradient(colors: [Color.indigo.opacity(0.4), .clear], center: .bottomTrailing, startRadius: 0, endRadius: 100)
                 }
                 VStack(alignment: .leading, spacing: 6) {
                     RoundedRectangle(cornerRadius: style.radius * 0.5)
@@ -242,7 +268,7 @@ struct StylePreview: View {
                 // Tab bar
                 HStack {
                     ForEach(0..<4) { i in
-                        Circle().fill(i == 0 ? Theme.accent : Color.white.opacity(0.35)).frame(width: 7, height: 7)
+                        Circle().fill(i == 0 ? style.tint : Color.white.opacity(0.35)).frame(width: 7, height: 7)
                             .frame(maxWidth: .infinity)
                     }
                 }
@@ -267,7 +293,7 @@ struct StylePreview: View {
         let shape = RoundedRectangle(cornerRadius: style == .material || style == .glass ? 9 : 4)
         switch style {
         case .classic, .oled: shape.fill(.white).frame(height: 18)
-        case .material: shape.fill(Theme.accent).frame(height: 18)
+        case .material: shape.fill(AppStyle.tones.primary).frame(height: 18)
         case .glass: shape.fill(.white.opacity(0.18)).overlay(shape.stroke(.white.opacity(0.4), lineWidth: 0.7)).frame(height: 18)
         }
     }
@@ -276,7 +302,7 @@ struct StylePreview: View {
         switch style {
         case .classic: Color(white: 0.1)
         case .glass: Color.white.opacity(0.14)
-        case .material: style.palette.cardHighlight
+        case .material: AppStyle.tones.surfaceContainer
         case .oled: Color.black
         }
     }

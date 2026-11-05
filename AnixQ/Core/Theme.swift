@@ -4,7 +4,7 @@ import UIKit
 /// Native iOS look: system materials and semantic colours, one accent, SF typography.
 enum Theme {
     /// User-selectable accent (Settings → Оформление).
-    static var accent: Color { AccentChoice.current.color }
+    static var accent: Color { AppStyle.current.tint }
     static var style: AppStyle { AppStyle.current }
     static var background: Color { style.palette.background }
     static var groupedBackground: Color { style.palette.background }
@@ -34,15 +34,22 @@ enum Theme {
         case .glass:
             tab.configureWithTransparentBackground()
             tab.backgroundEffect = UIBlurEffect(style: .systemUltraThinMaterialDark)
-            tab.backgroundColor = UIColor.white.withAlphaComponent(0.04)
+            tab.shadowColor = UIColor.white.withAlphaComponent(0.06)
             nav.configureWithTransparentBackground()
             nav.backgroundEffect = UIBlurEffect(style: .systemUltraThinMaterialDark)
         case .material:
+            let t = AppStyle.tones
             tab.configureWithOpaqueBackground()
-            tab.backgroundColor = UIColor(style.palette.cardHighlight)
+            tab.backgroundColor = UIColor(t.surfaceContainer)
             tab.shadowColor = .clear
+            for item in [tab.stackedLayoutAppearance, tab.inlineLayoutAppearance, tab.compactInlineLayoutAppearance] {
+                item.selected.iconColor = UIColor(t.primary)
+                item.selected.titleTextAttributes = [.foregroundColor: UIColor(t.primary)]
+                item.normal.iconColor = UIColor(white: 0.62, alpha: 1)
+                item.normal.titleTextAttributes = [.foregroundColor: UIColor(white: 0.62, alpha: 1)]
+            }
             nav.configureWithOpaqueBackground()
-            nav.backgroundColor = UIColor(style.palette.background)
+            nav.backgroundColor = UIColor(t.surface)
             nav.shadowColor = .clear
         case .oled:
             tab.configureWithOpaqueBackground()
@@ -158,7 +165,7 @@ struct PrimaryButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         let style = Theme.style
         return configuration.label
-            .font(style == .material ? .headline.weight(.semibold) : .headline)
+            .font(style == .material ? .system(.headline, design: .rounded) : .headline)
             .foregroundStyle(style.primaryButtonText)
             .frame(maxWidth: .infinity, minHeight: 50)
             .modifier(PrimaryButtonBackground(style: style))
@@ -175,9 +182,9 @@ private struct PrimaryButtonBackground: ViewModifier {
         case .classic, .oled:
             content.background(.white, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         case .material:
-            content.background(Theme.accent, in: Capsule())
+            content.background(AppStyle.tones.primary, in: Capsule())
         case .glass:
-            content.glass(Capsule(), tint: Theme.accent.opacity(0.55), interactive: true)
+            content.glass(Capsule(), tint: AccentChoice.current.color.opacity(0.9), interactive: true)
         }
     }
 }

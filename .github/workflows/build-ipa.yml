@@ -83,6 +83,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/download-artifact@v4
         with:
           pattern: AnixQ-ipa-*
@@ -103,7 +105,13 @@ jobs:
           echo "IPA_SIZE=$(stat -c%s AnixQ.ipa)" >> "$GITHUB_ENV"
           echo "VERSION=1.0.$(( ${{ github.run_number }} + 37 ))" >> "$GITHUB_ENV"
       - name: Release notes
-        run: git log -1 --pretty=%B > notes.txt
+        run: |
+          # Every app change since the previous release (site-only commits are skipped).
+          PREV=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || true)
+          RANGE=${PREV:+$PREV..}HEAD
+          git log --no-merges --pretty='• %s' $RANGE -- . ':!site' ':!scripts/build_site.py' ':!.github/workflows/pages.yml' | head -40 > notes.txt
+          [ -s notes.txt ] || git log -1 --pretty=%B > notes.txt
+          cat notes.txt
       - name: Create release
         uses: softprops/action-gh-release@v2
         with:

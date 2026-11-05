@@ -6,7 +6,7 @@
   "sourceLinkTitle": "Сайт",
   "sourceLinkUrl": "https://qmurzik.github.io/AnixQ/",
   "sourceImage": "https://raw.githubusercontent.com/qmurzik/AnixQ/gbox-source/icon.png",
-  "sourceUpdateTime": "2026-11-05T15:11:41+0000",
+  "sourceUpdateTime": "2026-11-05T15:27:22+0000",
   "sourceDescription": "AnixQ — аниме с AnimeLib: каталог, плеер без рекламы, синхронизация с Shikimori.",
   "appCategories": [
     "Приложения"
@@ -15,13 +15,13 @@
     {
       "appType": "SELF_SIGN",
       "appCateIndex": 0,
-      "appUpdateTime": "2026-11-05T15:11:41+0000",
+      "appUpdateTime": "2026-11-05T15:27:22+0000",
       "appName": "AnixQ",
-      "appVersion": "1.0.45",
+      "appVersion": "1.0.46",
       "appImage": "https://raw.githubusercontent.com/qmurzik/AnixQ/gbox-source/icon.png",
-      "appPackage": "https://github.com/qmurzik/AnixQ/releases/download/v1.0.45/AnixQ.ipa",
-      "appSize": 2675955,
-      "appDescription": "• Иконки: запасной способ для подписанных сборок, сообщение об ошибке; переработаны Liquid Glass и Material You"
+      "appPackage": "https://github.com/qmurzik/AnixQ/releases/download/v1.0.46/AnixQ.ipa",
+      "appSize": 2686326,
+      "appDescription": "• Уведомление о новой версии и переход в GBox для обновления; понятная ошибка смены иконки; мягче фон Liquid Glass; кнопка «Добавить в GBox» на сайте"
     }
   ]
 }

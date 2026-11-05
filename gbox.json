@@ -6,7 +6,7 @@
   "sourceLinkTitle": "Сайт",
   "sourceLinkUrl": "https://qmurzik.github.io/AnixQ/",
   "sourceImage": "https://raw.githubusercontent.com/qmurzik/AnixQ/gbox-source/icon.png",
-  "sourceUpdateTime": "2026-11-05T16:28:09+0000",
+  "sourceUpdateTime": "2026-11-05T18:12:05+0000",
   "sourceDescription": "AnixQ — аниме с AnimeLib: каталог, плеер без рекламы, синхронизация с Shikimori.",
   "appCategories": [
     "Приложения"
@@ -15,13 +15,13 @@
     {
       "appType": "SELF_SIGN",
       "appCateIndex": 0,
-      "appUpdateTime": "2026-11-05T16:28:09+0000",
+      "appUpdateTime": "2026-11-05T18:12:05+0000",
       "appName": "AnixQ",
-      "appVersion": "1.0.47",
+      "appVersion": "1.0.48",
       "appImage": "https://raw.githubusercontent.com/qmurzik/AnixQ/gbox-source/icon.png",
-      "appPackage": "https://github.com/qmurzik/AnixQ/releases/download/v1.0.47/AnixQ.ipa",
-      "appSize": 2973610,
-      "appDescription": "• Пропуск эндинга, стоп-кадр, стили субтитров, светлая тема, друзья и лента Shikimori, комментарии AnimeLib, экспорт/импорт MAL, сезон, интерактивный виджет, кнопка в Пункте управления, Face ID"
+      "appPackage": "https://github.com/qmurzik/AnixQ/releases/download/v1.0.48/AnixQ.ipa",
+      "appSize": 3079114,
+      "appDescription": "• Менеджер загрузок: очередь с приоритетами, пауза, лимит места, удаление просмотренных, несколько озвучек; плеер: авто-качество, задержка звука и субтитров, внешние SRT/ASS, настройки для каждого тайтла, восстановление после сбоев сети"
     }
   ]
 }

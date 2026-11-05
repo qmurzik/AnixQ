@@ -6,6 +6,7 @@ struct GenreRoute: Hashable { let genre: Genre }
 struct CatalogRoute: Hashable { let title: String; let query: CatalogQuery }
 struct ShikiRoute: Hashable { let shikiId: Int; let names: [String] }
 struct SeasonRoute: Hashable {}
+struct SmartRoute: Hashable {}
 
 extension View {
     /// Push destinations shared by every tab.
@@ -19,6 +20,7 @@ extension View {
             .navigationDestination(for: ShikiRoute.self) { ResolveShikiView(route: $0) }
             .navigationDestination(for: PersonRoute.self) { PersonView(route: $0) }
             .navigationDestination(for: SeasonRoute.self) { _ in SeasonView() }
+            .navigationDestination(for: SmartRoute.self) { _ in SmartLibraryView() }
     }
 }
 

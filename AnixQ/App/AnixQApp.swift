@@ -77,6 +77,7 @@ struct RootView: View {
     @ObservedObject private var network = NetworkMonitor.shared
     @ObservedObject private var sharePlay = SharePlayManager.shared
     @ObservedObject private var lock = AppLock.shared
+    @ObservedObject private var room = WatchRoom.shared
     @State private var sharedLaunch: WatchTogether?
 
     /// Actions requested by Siri / Shortcuts while the app was closed.
@@ -96,6 +97,9 @@ struct RootView: View {
                     guard url.scheme == "anixq" else { return }
                     if url.host == "title", let slug = url.pathComponents.dropFirst().first {
                         deepLink = DeepLink(slug: slug)
+                    } else if url.host == "room", let id = url.pathComponents.dropFirst().first {
+                        // Watch room invite (anixq://room/<id>, opened from the site link).
+                        room.join(id)
                     } else if url.host == "continue" {
                         // Control Center button.
                         if let last = library.history.first { deepLink = DeepLink(slug: last.title.slugURL) }
@@ -142,6 +146,14 @@ struct RootView: View {
                     sharePlay.incoming = nil
                     sharedLaunch = a
                 }
+                .onReceive(room.$incoming) { a in
+                    guard let a, sharedLaunch?.slug != a.slug else { return }
+                    room.incoming = nil
+                    sharedLaunch = a
+                }
+                .alert("Комната", isPresented: Binding(get: { room.message != nil }, set: { if !$0 { room.message = nil } })) {
+                    Button("OK", role: .cancel) {}
+                } message: { Text(room.message ?? "") }
                 .overlay {
                     if lock.locked { LockScreen().transition(.opacity) }
                     else if lock.obscured { Rectangle().fill(.ultraThickMaterial).ignoresSafeArea() }

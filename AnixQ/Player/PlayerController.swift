@@ -151,6 +151,7 @@ final class PlayerController: ObservableObject {
         try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
         try? AVAudioSession.sharedInstance().setActive(true)
         SharePlayManager.shared.attach(self)
+        WatchRoom.shared.attach(self)
         Task { await load() }
     }
 
@@ -454,15 +455,19 @@ final class PlayerController: ObservableObject {
         if player.timeControlStatus == .paused {
             if duration > 0, currentTime >= duration - 0.5 { seek(to: 0) }
             player.playImmediately(atRate: rate)
+            isPlaying = true
         } else {
             player.pause()
+            isPlaying = false
         }
+        WatchRoom.shared.localAction(self)
     }
 
     func seek(to s: Double) {
         let target = max(0, duration > 0 ? min(duration - 0.5, s) : s)
         currentTime = target
         player.seek(to: CMTime(seconds: target, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero)
+        WatchRoom.shared.localAction(self)
     }
 
     func seek(by delta: Double) { seek(to: currentTime + delta) }
@@ -490,6 +495,7 @@ final class PlayerController: ObservableObject {
         Task {
             await load()
             if resume > 5, t.native { seek(to: resume) }
+            WatchRoom.shared.localAction(self)
         }
     }
 
@@ -501,7 +507,10 @@ final class PlayerController: ObservableObject {
         }
         index = i
         SharePlayManager.shared.localChanged(self)
-        Task { await load() }
+        Task {
+            await load()
+            WatchRoom.shared.localAction(self)
+        }
     }
 
     /// Another SharePlay participant moved to a different episode or dub.
@@ -536,6 +545,7 @@ final class PlayerController: ObservableObject {
 
     func stop() {
         SharePlayManager.shared.detach(self)
+        WatchRoom.shared.detach(self)
         if let failObserver { NotificationCenter.default.removeObserver(failObserver) }
         saveProgress(force: true)
         countdownTask?.cancel()

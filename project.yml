@@ -57,6 +57,7 @@ targets:
     deploymentTarget: "16.1"
     sources:
       - path: AnixQShare
+      - path: Shared/VideoFrames.swift
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: ru.qmods.anixq.share

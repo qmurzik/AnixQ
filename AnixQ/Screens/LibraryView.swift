@@ -41,6 +41,9 @@ struct LibraryView: View {
             }
 
             Section {
+                NavigationLink(value: SmartRoute()) {
+                    Label("Для меня", systemImage: "sparkles")
+                }
                 NavigationLink(value: LibraryRoute.stats) {
                     Label("Статистика", systemImage: "chart.bar.xaxis")
                 }

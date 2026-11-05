@@ -38,6 +38,7 @@ struct ShareMatch: Identifiable {
     let title: String
     let original: String
     let characters: [String]
+    var frames: Int? = nil
     var id: Int { shikiId }
 }
 
@@ -50,8 +51,16 @@ final class ShareModel: ObservableObject {
     var close: () -> Void = {}
     var open: (URL) -> Void = { _ in }
 
+    @Published var frames = 0
+    @Published var framesDone = 0
+
     func run(items: [NSExtensionItem]) async {
-        guard let provider = items.flatMap({ $0.attachments ?? [] })
+        let attachments = items.flatMap { $0.attachments ?? [] }
+        if let movie = attachments.first(where: { $0.hasItemConformingToTypeIdentifier(UTType.movie.identifier) }) {
+            await runVideo(movie)
+            return
+        }
+        guard let provider = attachments
             .first(where: { $0.hasItemConformingToTypeIdentifier(UTType.image.identifier) }) else {
             state = "Не нашли картинку"
             done = true
@@ -74,6 +83,48 @@ final class ShareModel: ObservableObject {
         }
         matches = out
         state = out.isEmpty ? "Не удалось узнать. Нужен кадр, где видно лицо персонажа." : ""
+        done = true
+    }
+
+    /// Video from TikTok / Shorts / Photos: several frames, each recognised, works voted by frames.
+    private func runVideo(_ provider: NSItemProvider) async {
+        state = "Достаём кадры из видео…"
+        let url: URL? = await withCheckedContinuation { cont in
+            provider.loadFileRepresentation(forTypeIdentifier: UTType.movie.identifier) { file, _ in
+                guard let file else { cont.resume(returning: nil); return }
+                let dest = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + "." + file.pathExtension)
+                try? FileManager.default.copyItem(at: file, to: dest)
+                cont.resume(returning: dest)
+            }
+        }
+        guard let url else { state = "Не удалось открыть видео"; done = true; return }
+        let shots = await VideoFrames.extract(url, count: 5, maxSide: 800)
+        try? FileManager.default.removeItem(at: url)
+        guard !shots.isEmpty else { state = "Не удалось достать кадры"; done = true; return }
+        image = shots[shots.count / 2]
+        frames = shots.count
+        var votes: [String: (frames: Int, score: Int, chars: [String])] = [:]
+        for (i, shot) in shots.enumerated() {
+            state = "Кадр \(i + 1) из \(shots.count)…"
+            for (rank, (work, chars)) in (await recognise(shot)).prefix(3).enumerated() {
+                var v = votes[work] ?? (0, 0, [])
+                v.frames += 1
+                v.score += rank == 0 ? 3 : 1
+                for c in chars where !v.chars.contains(c) { v.chars.append(c) }
+                votes[work] = v
+            }
+            framesDone = i + 1
+        }
+        let ranked = votes.sorted { $0.value.frames != $1.value.frames ? $0.value.frames > $1.value.frames : $0.value.score > $1.value.score }
+        var out: [ShareMatch] = []
+        for (work, v) in ranked.prefix(3) {
+            if let hit = await shikiSearch(work) {
+                out.append(ShareMatch(shikiId: hit.0, title: hit.1, original: work,
+                                      characters: v.chars, frames: v.frames))
+            }
+        }
+        matches = out
+        state = out.isEmpty ? "Не удалось узнать. Попробуйте видео, где крупно видны персонажи." : ""
         done = true
     }
 
@@ -158,6 +209,10 @@ struct ShareView: View {
                         if !m.characters.isEmpty {
                             Label(m.characters.prefix(2).joined(separator: ", "), systemImage: "person.fill")
                                 .font(.caption).foregroundStyle(.secondary)
+                        }
+                        if let f = m.frames, model.frames > 0 {
+                            Label("Совпало в \(f) из \(model.frames) кадров", systemImage: "film.stack")
+                                .font(.caption.weight(.semibold)).foregroundStyle(f * 2 >= model.frames ? .green : .orange)
                         }
                         HStack(spacing: 10) {
                             Button {

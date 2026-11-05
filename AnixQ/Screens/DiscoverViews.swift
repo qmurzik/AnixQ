@@ -95,15 +95,31 @@ struct TraceSearchView: View {
     @State private var characterMatches: [CharacterMatch] = []
     @State private var recognising = false
     @State private var didSearch = false
+    @State private var videoFrames: [UIImage] = []
+    @State private var framesDone = 0
 
     var body: some View {
         NavigationStack(path: $path) {
             List {
                 Section {
-                    PhotosPicker(selection: $pick, matching: .images) {
-                        Label(image == nil ? "Выбрать кадр" : "Другой кадр", systemImage: "photo.on.rectangle")
+                    PhotosPicker(selection: $pick, matching: .any(of: [.images, .videos])) {
+                        Label(image == nil && videoFrames.isEmpty ? "Выбрать кадр или видео" : "Другой кадр или видео",
+                              systemImage: "photo.on.rectangle")
                     }
-                    if let image {
+                    if !videoFrames.isEmpty {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 6) {
+                                ForEach(Array(videoFrames.enumerated()), id: \.offset) { i, f in
+                                    Image(uiImage: f).resizable().scaledToFill()
+                                        .frame(width: 70, height: 110).clipped()
+                                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                                        .overlay(RoundedRectangle(cornerRadius: 8)
+                                            .stroke(i < framesDone ? Theme.accent : Color.clear, lineWidth: 2))
+                                }
+                            }
+                        }
+                        .listRowInsets(EdgeInsets(top: 8, leading: 8, bottom: 8, trailing: 8))
+                    } else if let image {
                         CropEditor(image: image, crop: $crop)
                             .frame(height: 280)
                             .listRowInsets(EdgeInsets(top: 8, leading: 8, bottom: 8, trailing: 8))
@@ -120,12 +136,18 @@ struct TraceSearchView: View {
                         .listRowInsets(EdgeInsets(top: 4, leading: 12, bottom: 8, trailing: 12))
                     }
                 } footer: {
-                    Text(image == nil
-                         ? "Кадр из аниме — найдём тайтл, серию и момент."
+                    Text(!videoFrames.isEmpty
+                         ? "Из видео взято \(videoFrames.count) кадров — каждый распознаётся отдельно, побеждает аниме, которое совпало на большинстве."
+                         : image == nil
+                         ? "Скриншот или видео из TikTok, Shorts, галереи — найдём тайтл, серию и момент."
                          : "Оставьте в рамке только само видео: без кнопок плеера, статус-бара и субтитров. Область видео подбирается автоматически.")
                 }
                 if searching || recognising {
-                    HStack { Spacer(); ProgressView("Узнаём персонажей…"); Spacer() }
+                    HStack {
+                        Spacer()
+                        ProgressView(videoFrames.isEmpty ? "Узнаём персонажей…" : "Кадр \(min(framesDone + 1, videoFrames.count)) из \(videoFrames.count)…")
+                        Spacer()
+                    }
                 }
                 if let error { Text(error).foregroundStyle(.orange) }
                 if !characterMatches.isEmpty {
@@ -139,6 +161,11 @@ struct TraceSearchView: View {
                                         if !m.characters.isEmpty {
                                             Label(m.characters.prefix(2).joined(separator: ", "), systemImage: "person.fill")
                                                 .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                                        }
+                                        if !videoFrames.isEmpty {
+                                            Label("Совпало в \(m.frames) из \(videoFrames.count) кадров", systemImage: "film.stack")
+                                                .font(.caption.weight(.semibold))
+                                                .foregroundStyle(m.frames * 2 >= videoFrames.count ? Color.green : Color.orange)
                                         }
                                         // Exact episode/moment when trace.moe confidently found the same title.
                                         if let scene = scene(for: t) {
@@ -233,7 +260,18 @@ struct TraceSearchView: View {
     private func time(_ s: Double) -> String { String(format: "%d:%02d", Int(s) / 60, Int(s) % 60) }
 
     private func load(_ item: PhotosPickerItem?) async {
-        guard let item, let data = try? await item.loadTransferable(type: Data.self),
+        guard let item else { return }
+        videoFrames = []
+        framesDone = 0
+        if item.supportedContentTypes.contains(where: { $0.conforms(to: .movie) }) {
+            guard let movie = try? await item.loadTransferable(type: PickedMovie.self) else {
+                error = "Не удалось открыть видео"
+                return
+            }
+            await searchVideo(movie.url)
+            return
+        }
+        guard let data = try? await item.loadTransferable(type: Data.self),
               let img = UIImage(data: data) else {
             error = "Не удалось открыть изображение"
             return
@@ -276,6 +314,35 @@ struct TraceSearchView: View {
                             crop.minX, crop.minY, crop.width, crop.height))
         // Scene search only adds the episode/moment; its errors are not shown to the user.
         results = (try? await TraceMoe.search(jpeg)) ?? []
+        didSearch = true
+    }
+
+    /// Video: several frames, recognised one by one, voted together.
+    private func searchVideo(_ url: URL) async {
+        error = nil
+        results = []
+        characterMatches = []
+        image = nil
+        recognising = true
+        didSearch = false
+        let frames = await VideoFrames.extract(url, count: 6)
+        try? FileManager.default.removeItem(at: url)
+        guard !frames.isEmpty else {
+            recognising = false
+            error = "Не удалось достать кадры из видео"
+            return
+        }
+        videoFrames = frames.map { CropEditor.cropped($0, to: CropEditor.detectVideo(in: $0)) }
+        var found = await AnimeTraceAPI.search(frames: videoFrames) { n in
+            Task { @MainActor in framesDone = n }
+        }
+        for i in found.indices { found[i].title = await AnimeTraceAPI.resolve(found[i]) }
+        characterMatches = found.filter { $0.title != nil } + found.filter { $0.title == nil }.prefix(1)
+        recognising = false
+        // Scene search on the middle frame adds the episode and moment.
+        if let mid = videoFrames[safe: videoFrames.count / 2], let jpeg = mid.jpegData(compressionQuality: 0.85) {
+            results = (try? await TraceMoe.search(jpeg)) ?? []
+        }
         didSearch = true
     }
 
@@ -449,5 +516,20 @@ struct PlanButton: View {
         }
         .buttonStyle(.borderless)
         .accessibilityLabel(current == nil ? "Хочу посмотреть" : current!.title)
+    }
+}
+
+/// A video picked in Photos, copied to a temporary file.
+struct PickedMovie: Transferable {
+    let url: URL
+
+    static var transferRepresentation: some TransferRepresentation {
+        FileRepresentation(contentType: .movie) { movie in
+            SentTransferredFile(movie.url)
+        } importing: { received in
+            let dest = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + "." + received.file.pathExtension)
+            try FileManager.default.copyItem(at: received.file, to: dest)
+            return PickedMovie(url: dest)
+        }
     }
 }

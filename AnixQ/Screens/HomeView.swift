@@ -188,6 +188,25 @@ struct HomeView: View {
                     }
                 }
 
+                if !library.history.isEmpty || !library.bookmarks.isEmpty {
+                    NavigationLink(value: SmartRoute()) {
+                        HStack(spacing: 12) {
+                            Image(systemName: "sparkles").font(.title3).foregroundStyle(Theme.accent)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Что посмотреть сегодня").font(.headline).foregroundStyle(.primary)
+                                Text("Новые серии, советы по вашим оценкам, продолжения франшиз")
+                                    .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                            }
+                            Spacer(minLength: 0)
+                            Image(systemName: "chevron.right").foregroundStyle(.tertiary)
+                        }
+                        .padding(14)
+                        .cardStyle()
+                    }
+                    .buttonStyle(PressableStyle())
+                    .padding(.horizontal)
+                }
+
                 if !model.loaded {
                     ShelfSkeleton()
                     ShelfSkeleton()

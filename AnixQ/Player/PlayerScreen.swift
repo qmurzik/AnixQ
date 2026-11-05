@@ -348,6 +348,7 @@ struct PlayerScreen: View {
                     .lineLimit(1)
             }
             Spacer()
+            if c.isNative { RoomMenu(c: c) }
             if c.isNative && (sharePlay.isEligible || sharePlay.isActive) {
                 iconButton("shareplay", size: 17) {
                     if sharePlay.isActive { confirmLeaveSharePlay = true } else { Task { await sharePlay.start(with: c) } }

@@ -167,6 +167,7 @@ struct TitleView: View {
     @State private var showAllEpisodes = false
     @State private var showFullFranchise = false
     @State private var scrolledPastHeader = false
+    @State private var comments: CommentTarget?
 
     init(title: Title) {
         _model = StateObject(wrappedValue: TitleModel.shared(for: title))
@@ -217,6 +218,7 @@ struct TitleView: View {
             if let g = model.detail?.genres.map(\.name) { library.recordGenres(titleId: t.id, names: g) }
         }
         .refreshable { await model.load(lastTeamId: library.lastEntry(titleId: t.id)?.teamId, force: true) }
+        .sheet(item: $comments) { c in CommentsView(postId: c.postId, type: c.type, title: c.title) }
         .fullScreenCover(item: $play) { req in
             PlayerScreen(title: t, background: model.detail?.backgroundURL, episodes: model.episodes,
                          teams: model.teams, startIndex: req.episodeIndex, team: req.team)
@@ -348,6 +350,10 @@ struct TitleView: View {
         VStack(alignment: .leading, spacing: 12) {
             SectionTitle(title: "Серии") {
                 HStack(spacing: 14) {
+                    Button { comments = CommentTarget(postId: t.id, type: "anime", title: "Обсуждение") } label: {
+                        Image(systemName: "bubble.left.and.bubble.right")
+                    }
+                    .accessibilityLabel("Обсуждение")
                     if let team = model.selectedTeam, team.native, !model.episodes.isEmpty {
                         Menu {
                             Button {
@@ -402,6 +408,9 @@ struct TitleView: View {
                                 }
                                 .contextMenu {
                                     watchedToggle(ep)
+                                    Button {
+                                        comments = CommentTarget(postId: ep.id, type: "episodes", title: "Серия \(ep.number) · комментарии")
+                                    } label: { Label("Комментарии", systemImage: "bubble.left") }
                                     if let team = model.selectedTeam, team.native {
                                         Button {
                                             downloads.download(title: t, episode: ep, team: team.team)
@@ -784,4 +793,11 @@ struct FranchiseRow: View {
 private struct HeaderOffsetKey: PreferenceKey {
     static var defaultValue: CGFloat = 0
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
+}
+
+struct CommentTarget: Identifiable {
+    let postId: Int
+    let type: String
+    let title: String
+    var id: String { "\(type)-\(postId)" }
 }

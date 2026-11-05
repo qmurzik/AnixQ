@@ -274,7 +274,14 @@ final class LibraryStore: ObservableObject {
             DebugLog.log("shiki: import failed \(error)")
             return
         }
-        DebugLog.log("shiki: importing \(rates.count) titles")
+        await importRates(rates, source: "Shikimori")
+    }
+
+    /// Adds a list of (MAL / Shikimori id, status, watched count) to the library. Shared by the
+    /// Shikimori import and the MyAnimeList XML import (both use the same anime ids).
+    func importRates(_ rates: [ShikiAPI.RemoteRate], source: String) async {
+        guard shikiImport == nil else { return }
+        DebugLog.log("\(source): importing \(rates.count) titles")
         shikiImport = (0, rates.count)
         var added = 0, matched = 0, missing = 0
         // Active lists first so "Смотрю" fills up quickly.
@@ -301,7 +308,7 @@ final class LibraryStore: ObservableObject {
         }
         save()
         shikiImport = nil
-        shikiImportSummary = "Shikimori: \(rates.count) тайтлов, найдено на AnimeLib \(matched), добавлено в закладки \(added)"
+        shikiImportSummary = "\(source): \(rates.count) тайтлов, найдено на AnimeLib \(matched), добавлено в закладки \(added)"
             + (missing > 0 ? ", не найдено \(missing)" : "")
         DebugLog.log(shikiImportSummary ?? "")
     }
@@ -393,5 +400,29 @@ extension LibraryStore {
         }
         if changed { save() }
         return changed
+    }
+}
+
+// MARK: - Interactive widget
+
+extension LibraryStore {
+    /// "✓ Просмотрено" pressed in the widget: mark the episode, sync it, and move "Продолжить" on.
+    func applyWidgetActions() async {
+        let actions = WidgetShared.takeActions()
+        guard !actions.isEmpty else { return }
+        for a in actions {
+            guard let entry = history.first(where: { $0.title.slugURL == a.slug }),
+                  let episodes = try? await LibAPI.episodes(slug: a.slug),
+                  let ep = episodes.first(where: { $0.number == a.episode }) else { continue }
+            markWatched(title: entry.title, episode: ep, totalEpisodes: episodes.count)
+            await LibAPI.markViewed(episodeId: ep.id, playerId: nil)
+            if let i = history.firstIndex(where: { $0.title.id == entry.title.id }), history[i].episodeId == ep.id {
+                // Finished: the "Продолжить" card offers the next episode.
+                history[i].position = max(history[i].duration, 1)
+                if history[i].duration <= 0 { history[i].duration = 1 }
+            }
+            DebugLog.log("widget: marked \(entry.title.title) ep \(a.episode)")
+        }
+        save()
     }
 }

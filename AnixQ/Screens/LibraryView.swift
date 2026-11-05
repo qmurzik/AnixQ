@@ -5,6 +5,7 @@ struct LibraryView: View {
     @EnvironmentObject private var downloads: DownloadManager
     @State private var showSettings = false
     @State private var showLibLogin = false
+    @ObservedObject private var lock = AppLock.shared
 
     var body: some View {
         List {
@@ -43,6 +44,9 @@ struct LibraryView: View {
                 NavigationLink(value: LibraryRoute.stats) {
                     Label("Статистика", systemImage: "chart.bar.xaxis")
                 }
+                NavigationLink(value: LibraryRoute.friends) {
+                    Label("Друзья на Shikimori", systemImage: "person.2")
+                }
                 NavigationLink(value: LibraryRoute.downloads) {
                     HStack {
                         Label("Загрузки", systemImage: "arrow.down.circle")
@@ -59,7 +63,11 @@ struct LibraryView: View {
                         HStack {
                             Label(s.title, systemImage: s.icon)
                             Spacer()
-                            Text("\(library.titles(in: s).count)").foregroundStyle(.secondary)
+                            if lock.isLocked(s) {
+                                Image(systemName: "lock.fill").foregroundStyle(.secondary)
+                            } else {
+                                Text("\(library.titles(in: s).count)").foregroundStyle(.secondary)
+                            }
                         }
                     }
                 }
@@ -117,7 +125,7 @@ struct LibraryView: View {
 /// Value-based routes for the Library tab. Mixing destination-based NavigationLinks with the
 /// value-based title links made SwiftUI push titles onto the wrong level (folder stayed on top).
 enum LibraryRoute: Hashable {
-    case stats, downloads
+    case stats, downloads, friends
     case folder(BookmarkStatus)
 }
 
@@ -127,7 +135,8 @@ extension View {
             switch route {
             case .stats: StatsView()
             case .downloads: DownloadsView()
-            case .folder(let s): BookmarkFolderView(status: s)
+            case .friends: FriendsView()
+            case .folder(let s): LockGate(folder: s) { BookmarkFolderView(status: s) }
             }
         }
     }
@@ -155,6 +164,11 @@ struct BookmarkFolderView: View {
 // MARK: - Settings
 
 struct PlayerPrefs {
+    static var autoSkipEnding: Bool {
+        get { UserDefaults.standard.object(forKey: "player.autoSkipEnding") as? Bool ?? false }
+        set { UserDefaults.standard.set(newValue, forKey: "player.autoSkipEnding") }
+    }
+
     static var autoSkipOpening: Bool {
         get { UserDefaults.standard.object(forKey: "player.autoSkip") as? Bool ?? false }
         set { UserDefaults.standard.set(newValue, forKey: "player.autoSkip") }
@@ -211,6 +225,7 @@ struct SettingsView: View {
     @State private var showShikiLogin = false
     @State private var notify = EpisodeNotifier.isEnabled
     @State private var autoSkip = PlayerPrefs.autoSkipOpening
+    @State private var autoSkipEnd = PlayerPrefs.autoSkipEnding
     @State private var autoNext = PlayerPrefs.autoNext
     @State private var opLength = PlayerPrefs.openingLength
     @State private var quality = PlayerPrefs.preferredHeight
@@ -226,6 +241,7 @@ struct SettingsView: View {
     @AppStorage("accent") private var accentRaw = AccentChoice.rose.rawValue
     @AppStorage("appIcon") private var appIcon = AppIconChoice.standard.rawValue
     @AppStorage(AppStyle.storageKey) private var styleRaw = AppStyle.classic.rawValue
+    @AppStorage("appearance") private var appearance = "dark"
     @AppStorage("subs.alwaysOn") private var subsAlwaysOn = false
     @State private var confirmClear = false
     @State private var iconError: String?
@@ -319,6 +335,8 @@ struct SettingsView: View {
                         .onChange(of: autoNext) { PlayerPrefs.autoNext = $0 }
                     Toggle("Пропускать опенинг автоматически", isOn: $autoSkip)
                         .onChange(of: autoSkip) { PlayerPrefs.autoSkipOpening = $0 }
+                    Toggle("Пропускать эндинг и превью", isOn: $autoSkipEnd)
+                        .onChange(of: autoSkipEnd) { PlayerPrefs.autoSkipEnding = $0 }
                     Stepper("Длина опенинга: \(Int(opLength)) с", value: $opLength, in: 30...150, step: 5)
                         .onChange(of: opLength) { PlayerPrefs.openingLength = $0 }
                     Picker("Качество загрузок", selection: $downloadQuality) {
@@ -355,10 +373,16 @@ struct SettingsView: View {
                         }
                         .padding(.vertical, 6)
                     }
+                    Picker("Тема", selection: $appearance) {
+                        Text("Тёмная").tag("dark")
+                        Text("Светлая").tag("light")
+                        Text("Как в системе").tag("system")
+                    }
+                    .disabled(styleRaw == AppStyle.oled.rawValue)
                 } header: {
                     Text("Стиль интерфейса")
                 } footer: {
-                    Text("Liquid Glass на iOS 26 использует системное стекло, на более старых — его имитацию. Material You берёт оттенки из цвета акцента.")
+                    Text("Liquid Glass на iOS 26 использует системное стекло, на более старых — его имитацию. Material You берёт оттенки из цвета акцента. OLED всегда тёмный.")
                 }
 
                 Section("Оформление") {
@@ -415,6 +439,14 @@ struct SettingsView: View {
                 }
 
                 Section {
+                    NavigationLink { LockSettingsView() } label: {
+                        Label("Блокировка и закрытые папки", systemImage: "faceid")
+                    }
+                } header: {
+                    Text("Защита")
+                }
+
+                Section {
                     Toggle("Синхронизация через iCloud", isOn: $cloudOn)
                         .onChange(of: cloudOn) { on in if on { cloud.start(library: library) } }
                     if cloudOn {
@@ -455,6 +487,9 @@ struct SettingsView: View {
                 }
 
                 Section("Данные") {
+                    NavigationLink { ListTransferView() } label: {
+                        Label("Экспорт и импорт списка (MAL)", systemImage: "arrow.up.arrow.down.square")
+                    }
                     NavigationLink("Диагностика плеера") { DiagnosticsView() }
                     Button("Очистить историю просмотра", role: .destructive) { confirmClear = true }
                 }
@@ -538,5 +573,20 @@ struct DiagnosticsView: View {
         }
         .onAppear { text = DebugLog.read() }
         .refreshable { text = DebugLog.read() }
+    }
+}
+
+/// Shows a folder only after Face ID when it is in the closed list.
+struct LockGate<Content: View>: View {
+    let folder: BookmarkStatus
+    @ViewBuilder var content: () -> Content
+    @ObservedObject private var lock = AppLock.shared
+
+    var body: some View {
+        if lock.isLocked(folder) {
+            LockedFolderView(folder: folder).navigationTitle(folder.title)
+        } else {
+            content()
+        }
     }
 }

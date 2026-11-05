@@ -9,6 +9,15 @@ struct AnixQApp: App {
     @StateObject private var downloads = DownloadManager.shared
     @AppStorage("accent") private var accentRaw = AccentChoice.rose.rawValue
     @AppStorage(AppStyle.storageKey) private var styleRaw = AppStyle.classic.rawValue
+    @AppStorage("appearance") private var appearance = "dark"
+    private var colorScheme: ColorScheme? {
+        if AppStyle(rawValue: styleRaw) == .oled { return .dark }
+        switch appearance {
+        case "light": return .light
+        case "system": return nil
+        default: return .dark
+        }
+    }
     private var accent: AccentChoice { AccentChoice(rawValue: accentRaw) ?? .rose }
     @Environment(\.scenePhase) private var scenePhase
 
@@ -28,10 +37,11 @@ struct AnixQApp: App {
                 .tint(AppStyle(rawValue: styleRaw) == .material ? AppStyle.tones.primary : accent.color)
                 .environmentObject(library)
                 .environmentObject(downloads)
-                .preferredColorScheme(.dark)
+                .preferredColorScheme(colorScheme)
                 .task { AdBlocker.shared.warmUp() }
         }
         .onChange(of: scenePhase) { phase in
+            AppLock.shared.sceneChanged(phase)
             if phase == .background { WatchingUpdater.scheduleBackgroundRefresh() }
             guard phase == .active else { return }
             Task {
@@ -39,6 +49,7 @@ struct AnixQApp: App {
                     if LibSession.userId == nil { await LibAPI.loadProfile() }
                     await library.syncBookmarks()
                 }
+                await library.applyWidgetActions()
                 CloudSync.shared.start(library: library)
                 await UpdateChecker.shared.check()
                 if ShikiSession.isLoggedIn { await library.importShikimori() }
@@ -62,6 +73,7 @@ struct RootView: View {
     @EnvironmentObject private var library: LibraryStore
     @ObservedObject private var network = NetworkMonitor.shared
     @ObservedObject private var sharePlay = SharePlayManager.shared
+    @ObservedObject private var lock = AppLock.shared
     @State private var sharedLaunch: WatchTogether?
 
     /// Actions requested by Siri / Shortcuts while the app was closed.
@@ -81,6 +93,9 @@ struct RootView: View {
                     guard url.scheme == "anixq" else { return }
                     if url.host == "title", let slug = url.pathComponents.dropFirst().first {
                         deepLink = DeepLink(slug: slug)
+                    } else if url.host == "continue" {
+                        // Control Center button.
+                        if let last = library.history.first { deepLink = DeepLink(slug: last.title.slugURL) }
                     } else if url.host == "schedule" {
                         tab = .schedule
                     } else if url.host == "shiki" || url.host == "plan",
@@ -123,6 +138,10 @@ struct RootView: View {
                     guard let a else { return }
                     sharePlay.incoming = nil
                     sharedLaunch = a
+                }
+                .overlay {
+                    if lock.locked { LockScreen().transition(.opacity) }
+                    else if lock.obscured { Rectangle().fill(.ultraThickMaterial).ignoresSafeArea() }
                 }
                 .fullScreenCover(item: $sharedLaunch) { a in
                     SharePlayLauncher(activity: a).environmentObject(library)

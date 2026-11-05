@@ -54,6 +54,9 @@ struct BrowseView: View {
     private var chips: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
+                NavigationLink(value: SeasonRoute()) {
+                    chip("Сезон", icon: "leaf", on: false)
+                }
                 Menu {
                     Picker("Сортировка", selection: $query.sort) {
                         ForEach(CatalogSort.allCases) { Text($0.title).tag($0) }

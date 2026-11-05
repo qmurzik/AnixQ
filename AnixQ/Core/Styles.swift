@@ -46,10 +46,18 @@ enum AppStyle: String, CaseIterable, Identifiable {
         var h: CGFloat = 0, sat: CGFloat = 0, b: CGFloat = 0
         UIColor(AccentChoice.current.color).getHue(&h, saturation: &sat, brightness: &b, alpha: nil)
         func t(_ s: CGFloat, _ v: CGFloat) -> Color { Color(hue: Double(h), saturation: Double(s), brightness: Double(v)) }
-        return Tones(primary: t(0.34, 0.97), onPrimary: t(0.80, 0.24),
-                     secondaryContainer: t(0.28, 0.27), onSecondaryContainer: t(0.10, 0.94),
-                     surface: t(0.10, 0.065), surfaceContainer: t(0.10, 0.115), surfaceContainerHigh: t(0.10, 0.155),
-                     outline: t(0.10, 0.30))
+        // Dark roles first, light roles second (Material 3 tonal palette approximated in HSB).
+        return Tones(primary: dyn(t(0.34, 0.97), t(0.72, 0.52)), onPrimary: dyn(t(0.80, 0.24), .white),
+                     secondaryContainer: dyn(t(0.28, 0.27), t(0.16, 0.91)),
+                     onSecondaryContainer: dyn(t(0.10, 0.94), t(0.70, 0.22)),
+                     surface: dyn(t(0.10, 0.065), t(0.03, 0.99)), surfaceContainer: dyn(t(0.10, 0.115), t(0.06, 0.955)),
+                     surfaceContainerHigh: dyn(t(0.10, 0.155), t(0.08, 0.925)), outline: dyn(t(0.10, 0.30), t(0.10, 0.75)))
+    }
+
+    /// A colour that follows light / dark mode.
+    static func dyn(_ dark: Color, _ light: Color) -> Color {
+        let d = UIColor(dark), l = UIColor(light)
+        return Color(UIColor { $0.userInterfaceStyle == .dark ? d : l })
     }
 
     var palette: Palette {
@@ -58,9 +66,10 @@ enum AppStyle: String, CaseIterable, Identifiable {
             return Palette(background: Color(.systemBackground), card: Color(.secondarySystemBackground),
                            cardHighlight: Color(.tertiarySystemBackground), stroke: Color.primary.opacity(0.08))
         case .glass:
-            return Palette(background: Color(red: 0.03, green: 0.03, blue: 0.045),
-                           card: Color.white.opacity(0.055), cardHighlight: Color.white.opacity(0.09),
-                           stroke: Color.white.opacity(0.09))
+            return Palette(background: Self.dyn(Color(red: 0.03, green: 0.03, blue: 0.045), Color(red: 0.94, green: 0.94, blue: 0.96)),
+                           card: Self.dyn(Color.white.opacity(0.055), Color.white.opacity(0.72)),
+                           cardHighlight: Self.dyn(Color.white.opacity(0.09), Color.white.opacity(0.9)),
+                           stroke: Self.dyn(Color.white.opacity(0.09), Color.black.opacity(0.06)))
         case .material:
             let t = Self.tones
             return Palette(background: t.surface, card: t.surfaceContainer, cardHighlight: t.surfaceContainerHigh,
@@ -102,7 +111,8 @@ enum AppStyle: String, CaseIterable, Identifiable {
 
     var primaryButtonText: Color {
         switch self {
-        case .classic, .oled: return .black
+        case .classic: return Self.dyn(.black, .white)
+        case .oled: return .black
         case .glass: return .white
         case .material: return Self.tones.onPrimary
         }
@@ -142,7 +152,7 @@ extension View {
             // Content stays calm; glass is reserved for the control layer, as in iOS 26.
             case .card:
                 background(Theme.card, in: shape)
-                    .overlay(shape.stroke(Color.white.opacity(0.07), lineWidth: 0.5))
+                    .overlay(shape.stroke(Theme.stroke, lineWidth: 0.5))
             case .control: glass(shape, interactive: true)
             case .chip: glass(shape)
             }

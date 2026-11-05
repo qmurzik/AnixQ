@@ -1,3 +1,4 @@
+import AppIntents
 import WidgetKit
 import SwiftUI
 import ActivityKit
@@ -149,6 +150,7 @@ struct ContinueWidgetView: View {
                 Image(systemName: "play.fill").font(.system(size: 9, weight: .bold))
                     .padding(6).background(accent, in: Circle()).foregroundStyle(.white)
                 Spacer()
+                WatchedButton(item: item)
             }
             Spacer()
             Text(item.title).font(.system(size: 14, weight: .bold)).lineLimit(2).foregroundStyle(.white)
@@ -167,7 +169,10 @@ struct ContinueWidgetView: View {
                 Text(first.title).font(.system(size: 15, weight: .bold)).lineLimit(2).foregroundStyle(.white)
                 Text("Серия \(first.episode) · \(first.team)").font(.system(size: 11)).lineLimit(1)
                     .foregroundStyle(.white.opacity(0.65))
-                ProgressBar(value: first.progress)
+                HStack(spacing: 8) {
+                    ProgressBar(value: first.progress)
+                    WatchedButton(item: first, label: true)
+                }
                 Spacer(minLength: 2)
                 ForEach(Array(entry.items.dropFirst().enumerated()), id: \.offset) { i, item in
                     Link(destination: WidgetShared.titleURL(item.slug) ?? URL(string: "anixq://")!) {
@@ -452,5 +457,81 @@ struct AnixQWidgets: WidgetBundle {
         ContinueWidget()
         TodayWidget()
         DownloadLiveActivity()
+        if #available(iOSApplicationExtension 18.0, *) {
+            ContinueControl()
+        }
+    }
+}
+
+// MARK: - Interactive widget (iOS 17+)
+
+@available(iOSApplicationExtension 17.0, *)
+struct MarkEpisodeWatchedIntent: AppIntent {
+    static var title: LocalizedStringResource = "Отметить серию просмотренной"
+    static var isDiscoverable = false
+
+    @Parameter(title: "Тайтл") var slug: String
+    @Parameter(title: "Серия") var episode: String
+
+    init() {}
+    init(slug: String, episode: String) {
+        self.slug = slug
+        self.episode = episode
+    }
+
+    func perform() async throws -> some IntentResult {
+        WidgetShared.appendAction(.init(slug: slug, episode: episode, date: Date()))
+        WidgetShared.advance(slug: slug, after: episode)
+        return .result()
+    }
+}
+
+/// Small round "✓" button; plain decoration on iOS 16.
+struct WatchedButton: View {
+    let item: WidgetShared.ContinueItem
+    var label: Bool = false
+
+    var body: some View {
+        if #available(iOSApplicationExtension 17.0, *) {
+            Button(intent: MarkEpisodeWatchedIntent(slug: item.slug, episode: item.episode)) {
+                content
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private var content: some View {
+        HStack(spacing: 4) {
+            Image(systemName: "checkmark").font(.system(size: 10, weight: .heavy))
+            if label { Text("Просмотрено").font(.system(size: 10, weight: .semibold)) }
+        }
+        .padding(.horizontal, label ? 9 : 7).padding(.vertical, 6)
+        .background(.white.opacity(0.2), in: Capsule())
+        .foregroundStyle(.white)
+    }
+}
+
+// MARK: - Control Center (iOS 18+)
+
+@available(iOSApplicationExtension 18.0, *)
+struct OpenContinueIntent: AppIntent {
+    static var title: LocalizedStringResource = "Продолжить просмотр"
+    static var description = IntentDescription("Открывает AnixQ на последнем тайтле.")
+
+    func perform() async throws -> some IntentResult & OpensIntent {
+        .result(opensIntent: OpenURLIntent(URL(string: "anixq://continue")!))
+    }
+}
+
+@available(iOSApplicationExtension 18.0, *)
+struct ContinueControl: ControlWidget {
+    var body: some ControlWidgetConfiguration {
+        StaticControlConfiguration(kind: "ru.qmods.anixq.continue") {
+            ControlWidgetButton(action: OpenContinueIntent()) {
+                Label("Продолжить", systemImage: "play.rectangle.on.rectangle.fill")
+            }
+        }
+        .displayName("AnixQ: продолжить")
+        .description("Открывает последний тайтл, который вы смотрели.")
     }
 }

@@ -44,6 +44,10 @@
 		<key>NSAllowsArbitraryLoadsInWebContent</key>
 		<true/>
 	</dict>
+	<key>NSFaceIDUsageDescription</key>
+	<string>Чтобы защищать AnixQ и скрытые папки закладок с помощью Face ID.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Чтобы сохранять кадры из серий в «Фото».</string>
 	<key>NSSupportsGroupActivities</key>
 	<true/>
 	<key>NSSupportsLiveActivities</key>

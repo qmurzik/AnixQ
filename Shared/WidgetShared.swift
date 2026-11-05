@@ -39,6 +39,42 @@ enum WidgetShared {
 
     static func titleURL(_ slug: String) -> URL? { URL(string: "anixq://title/\(slug)") }
 
+    // MARK: Actions from interactive widgets (iOS 17+), applied by the app on next launch.
+
+    struct WidgetAction: Codable, Hashable {
+        let slug: String
+        let episode: String
+        let date: Date
+    }
+
+    private static var actionsURL: URL? {
+        FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: group)?
+            .appendingPathComponent("widget-actions.json")
+    }
+
+    static func appendAction(_ a: WidgetAction) {
+        guard let url = actionsURL else { return }
+        var list = (try? Data(contentsOf: url)).flatMap { try? JSONDecoder().decode([WidgetAction].self, from: $0) } ?? []
+        list.append(a)
+        if let data = try? JSONEncoder().encode(list) { try? data.write(to: url, options: .atomic) }
+    }
+
+    static func takeActions() -> [WidgetAction] {
+        guard let url = actionsURL, let data = try? Data(contentsOf: url),
+              let list = try? JSONDecoder().decode([WidgetAction].self, from: data) else { return [] }
+        try? FileManager.default.removeItem(at: url)
+        return list
+    }
+
+    /// The widget shows the next episode right away, before the app has synced anything.
+    static func advance(slug: String, after episode: String) {
+        guard var p = read(), let i = p.continueItems.firstIndex(where: { $0.slug == slug }) else { return }
+        let it = p.continueItems[i]
+        let next = Int(episode).map { String($0 + 1) } ?? it.episode
+        p.continueItems[i] = ContinueItem(title: it.title, slug: it.slug, episode: next, team: it.team, progress: 0, cover: it.cover)
+        write(p)
+    }
+
     /// Heartbeat written by the widget extension so the app can show whether widgets run.
     struct WidgetStatus: Codable {
         var date: Date

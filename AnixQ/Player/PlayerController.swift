@@ -1,5 +1,6 @@
 import SwiftUI
 import AVFoundation
+import CoreImage
 import MediaPlayer
 
 /// Playback state for one title: current episode, team (dub), stream, progress and sync.
@@ -54,6 +55,8 @@ final class PlayerController: ObservableObject {
     private var startedAt = Date()
     private var lastSaved = Date.distantPast
     private var autoSkipped = false
+    private var endingSkipped = false
+    private var videoOutput: AVPlayerItemVideoOutput?
     private var markedWatched = false
     private var countdownTask: Task<Void, Never>?
 
@@ -127,6 +130,7 @@ final class PlayerController: ObservableObject {
         currentTime = 0
         duration = 0
         autoSkipped = false
+        endingSkipped = false
         markedWatched = false
         isResolving = true
         startedAt = Date()
@@ -211,6 +215,11 @@ final class PlayerController: ObservableObject {
             let e = item.error?.localizedDescription
             Task { @MainActor in self?.itemStatus(st, duration: d, error: e) }
         }
+        let output = AVPlayerItemVideoOutput(pixelBufferAttributes: [
+            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA
+        ])
+        item.add(output)
+        videoOutput = output
         SharePlayManager.shared.itemWillChange(self)
         player.replaceCurrentItem(with: item)
         if let time, time > 1 {
@@ -342,6 +351,16 @@ final class PlayerController: ObservableObject {
         }
     }
 
+    /// Current video frame as an image (AnimeLib player only; Kodik runs in a web view).
+    func snapshot() -> UIImage? {
+        guard isNative, let output = videoOutput, let item = player.currentItem else { return nil }
+        let time = item.currentTime()
+        guard let buffer = output.copyPixelBuffer(forItemTime: time, itemTimeForDisplay: nil) else { return nil }
+        let ci = CIImage(cvPixelBuffer: buffer)
+        guard let cg = CIContext().createCGImage(ci, from: ci.extent) else { return nil }
+        return UIImage(cgImage: cg)
+    }
+
     func next() { go(to: index + 1) }
     func previous() { go(to: index - 1) }
 
@@ -389,6 +408,20 @@ final class PlayerController: ObservableObject {
             } else if s > 2, s < 15, duration > 300 {
                 skipOpening()
             }
+        }
+        // Marathon mode: straight to the next episode once the ending (and preview) starts.
+        if PlayerPrefs.autoSkipEnding, isNative, hasNext, !endingSkipped, !sleepAfterEpisode, !isScrubbing,
+           let ed = ending, s >= ed.from + 1, s < ed.to {
+            endingSkipped = true
+            if !markedWatched {
+                markedWatched = true
+                library?.markWatched(title: title, episode: episode, totalEpisodes: episodes.count)
+                let (eid, pid) = (episode.id, playerId)
+                Task { await LibAPI.markViewed(episodeId: eid, playerId: pid) }
+            }
+            DebugLog.log("player: ending skipped -> next")
+            next()
+            return
         }
         if duration > 0, s / duration > 0.9, !markedWatched {
             markedWatched = true

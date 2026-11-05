@@ -33,10 +33,10 @@ enum Theme {
             nav.configureWithDefaultBackground()
         case .glass:
             tab.configureWithTransparentBackground()
-            tab.backgroundEffect = UIBlurEffect(style: .systemUltraThinMaterialDark)
-            tab.shadowColor = UIColor.white.withAlphaComponent(0.06)
+            tab.backgroundEffect = UIBlurEffect(style: .systemUltraThinMaterial)
+            tab.shadowColor = UIColor.separator.withAlphaComponent(0.3)
             nav.configureWithTransparentBackground()
-            nav.backgroundEffect = UIBlurEffect(style: .systemUltraThinMaterialDark)
+            nav.backgroundEffect = UIBlurEffect(style: .systemUltraThinMaterial)
         case .material:
             let t = AppStyle.tones
             tab.configureWithOpaqueBackground()
@@ -45,8 +45,8 @@ enum Theme {
             for item in [tab.stackedLayoutAppearance, tab.inlineLayoutAppearance, tab.compactInlineLayoutAppearance] {
                 item.selected.iconColor = UIColor(t.primary)
                 item.selected.titleTextAttributes = [.foregroundColor: UIColor(t.primary)]
-                item.normal.iconColor = UIColor(white: 0.62, alpha: 1)
-                item.normal.titleTextAttributes = [.foregroundColor: UIColor(white: 0.62, alpha: 1)]
+                item.normal.iconColor = .secondaryLabel
+                item.normal.titleTextAttributes = [.foregroundColor: UIColor.secondaryLabel]
             }
             nav.configureWithOpaqueBackground()
             nav.backgroundColor = UIColor(t.surface)
@@ -179,7 +179,9 @@ private struct PrimaryButtonBackground: ViewModifier {
     let style: AppStyle
     func body(content: Content) -> some View {
         switch style {
-        case .classic, .oled:
+        case .classic:
+            content.background(AppStyle.dyn(.white, .black), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        case .oled:
             content.background(.white, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         case .material:
             content.background(AppStyle.tones.primary, in: Capsule())

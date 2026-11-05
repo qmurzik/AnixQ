@@ -33,6 +33,13 @@ struct PlayerScreen: View {
     @State private var confirmLeaveSharePlay = false
     @AppStorage("subs.size") private var subtitleSize: Double = 20
     @AppStorage("subs.background") private var subtitleBackground = true
+    @AppStorage("subs.color") private var subtitleColor = "white"
+    @AppStorage("subs.outline") private var subtitleOutline = true
+    @AppStorage("subs.lift") private var subtitleLift: Double = 0
+    @AppStorage("subs.font") private var subtitleFont = "system"
+    @AppStorage("subs.bold") private var subtitleBold = true
+    @State private var frameShot: UIImage?
+    @State private var frameSaved = false
 
     enum DragMode { case brightness, volume, seek, ignored }
 
@@ -59,6 +66,7 @@ struct PlayerScreen: View {
                     webChrome
                 }
                 if let panel { panelView(panel, size: geo.size) }
+                if let shot = frameShot { framePreview(shot) }
                 VolumeSliderHost().frame(width: 1, height: 1).opacity(0.01)
             }
         }
@@ -96,6 +104,44 @@ struct PlayerScreen: View {
         }
     }
 
+    // MARK: Frame capture
+
+    static let subtitleColors: [String: Color] = [
+        "white": .white, "yellow": Color(red: 1, green: 0.9, blue: 0.3), "cyan": Color(red: 0.5, green: 0.9, blue: 1),
+        "green": Color(red: 0.6, green: 1, blue: 0.6), "pink": Color(red: 1, green: 0.7, blue: 0.85)
+    ]
+
+    private func framePreview(_ shot: UIImage) -> some View {
+        ZStack {
+            Color.black.opacity(0.55).ignoresSafeArea().onTapGesture { frameShot = nil }
+            VStack(spacing: 14) {
+                Image(uiImage: shot).resizable().scaledToFit()
+                    .frame(maxWidth: 520, maxHeight: 260)
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(.white.opacity(0.25)))
+                HStack(spacing: 12) {
+                    Button {
+                        UIImageWriteToSavedPhotosAlbum(shot, nil, nil, nil)
+                        frameSaved = true
+                    } label: {
+                        Label(frameSaved ? "Сохранено" : "В Фото", systemImage: frameSaved ? "checkmark" : "square.and.arrow.down")
+                    }
+                    .disabled(frameSaved)
+                    ShareLink(item: Image(uiImage: shot),
+                              preview: SharePreview("\(c.title.title) — серия \(c.episode.number)", image: Image(uiImage: shot))) {
+                        Label("Поделиться", systemImage: "square.and.arrow.up")
+                    }
+                    Button { frameShot = nil } label: { Label("Закрыть", systemImage: "xmark") }
+                }
+                .buttonStyle(.bordered)
+                .tint(.white)
+                .font(.subheadline.weight(.semibold))
+            }
+            .padding()
+        }
+        .transition(.opacity)
+    }
+
     // MARK: Video
 
     @ViewBuilder
@@ -120,16 +166,16 @@ struct PlayerScreen: View {
                 VStack {
                     Spacer()
                     Text(text)
-                        .font(.system(size: subtitleSize, weight: .semibold))
+                        .font(.system(size: subtitleSize, weight: subtitleBold ? .semibold : .regular,
+                                      design: subtitleFont == "rounded" ? .rounded : subtitleFont == "serif" ? .serif : .default))
                         .multilineTextAlignment(.center)
-                        .foregroundStyle(.white)
-                        .shadow(color: .black, radius: 2)
-                        .shadow(color: .black, radius: 4)
+                        .foregroundStyle(Self.subtitleColors[subtitleColor] ?? .white)
+                        .modifier(SubtitleOutline(on: subtitleOutline))
                         .padding(.horizontal, 10)
                         .padding(.vertical, 4)
                         .background(Color.black.opacity(subtitleBackground ? 0.45 : 0), in: RoundedRectangle(cornerRadius: 6))
                         .padding(.horizontal, 40)
-                        .padding(.bottom, showControls ? 110 : 28)
+                        .padding(.bottom, (showControls ? 110 : 28) + subtitleLift)
                 }
                 .allowsHitTesting(false)
                 .animation(.easeInOut(duration: 0.2), value: showControls)
@@ -281,6 +327,12 @@ struct PlayerScreen: View {
                     if sharePlay.isActive { confirmLeaveSharePlay = true } else { Task { await sharePlay.start(with: c) } }
                 }
                 .foregroundStyle(sharePlay.isActive ? Color.green : Color.white)
+            }
+            if c.isNative {
+                iconButton("camera", size: 17) {
+                    frameSaved = false
+                    frameShot = c.snapshot()
+                }
             }
             RoutePicker().frame(width: 30, height: 30)
             if let pip, AVPictureInPictureController.isPictureInPictureSupported() {
@@ -568,7 +620,24 @@ struct PlayerScreen: View {
             }
             VStack(alignment: .leading, spacing: 10) {
                 Text("Размер: \(Int(subtitleSize))").font(.caption).foregroundStyle(.white.opacity(0.7))
-                Slider(value: $subtitleSize, in: 14...34, step: 1).tint(.white)
+                Slider(value: $subtitleSize, in: 14...40, step: 1).tint(.white)
+                Text("Выше от низа: \(Int(subtitleLift))").font(.caption).foregroundStyle(.white.opacity(0.7))
+                Slider(value: $subtitleLift, in: 0...160, step: 4).tint(.white)
+                HStack(spacing: 10) {
+                    ForEach(["white", "yellow", "cyan", "green", "pink"], id: \.self) { key in
+                        Circle().fill(Self.subtitleColors[key] ?? .white).frame(width: 26, height: 26)
+                            .overlay(Circle().stroke(.white, lineWidth: subtitleColor == key ? 2.5 : 0).padding(-3))
+                            .onTapGesture { subtitleColor = key }
+                    }
+                }
+                Picker("Шрифт", selection: $subtitleFont) {
+                    Text("Обычный").tag("system")
+                    Text("Скруглённый").tag("rounded")
+                    Text("С засечками").tag("serif")
+                }
+                .pickerStyle(.segmented)
+                Toggle("Жирный", isOn: $subtitleBold).font(.subheadline)
+                Toggle("Обводка", isOn: $subtitleOutline).font(.subheadline)
                 Toggle("Подложка", isOn: $subtitleBackground).font(.subheadline)
             }
             .padding()
@@ -890,5 +959,21 @@ final class PiPKeeper: NSObject, AVPictureInPictureControllerDelegate {
     func pictureInPictureController(_ pip: AVPictureInPictureController,
                                     restoreUserInterfaceForPictureInPictureStopWithCompletionHandler completion: @escaping (Bool) -> Void) {
         completion(true)
+    }
+}
+
+/// Thin dark outline around subtitle glyphs (four hard shadows), or a soft shadow when off.
+struct SubtitleOutline: ViewModifier {
+    let on: Bool
+    func body(content: Content) -> some View {
+        if on {
+            content
+                .shadow(color: .black, radius: 0, x: 1, y: 1)
+                .shadow(color: .black, radius: 0, x: -1, y: -1)
+                .shadow(color: .black, radius: 0, x: 1, y: -1)
+                .shadow(color: .black, radius: 0, x: -1, y: 1)
+        } else {
+            content.shadow(color: .black.opacity(0.8), radius: 3)
+        }
     }
 }

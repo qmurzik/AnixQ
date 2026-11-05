@@ -31,6 +31,7 @@ struct PlayerScreen: View {
     @State private var webLoading = true
     @State private var webReload = 0
     @ObservedObject private var sharePlay = SharePlayManager.shared
+    @ObservedObject private var room = WatchRoom.shared
     @State private var confirmLeaveSharePlay = false
     @AppStorage("subs.size") private var subtitleSize: Double = 20
     @AppStorage("subs.background") private var subtitleBackground = true
@@ -41,6 +42,9 @@ struct PlayerScreen: View {
     @AppStorage("subs.bold") private var subtitleBold = true
     @State private var frameShot: UIImage?
     @State private var importingSubtitle = false
+    @State private var whoFrame: UIImage?
+    @AppStorage("player.danmaku") private var danmaku = true
+    @AppStorage("player.enhance") private var enhance = false
     @State private var frameSaved = false
 
     enum DragMode { case brightness, volume, seek, ignored }
@@ -68,6 +72,7 @@ struct PlayerScreen: View {
                     webChrome
                 }
                 if let panel { panelView(panel, size: geo.size) }
+                if room.isActive && !locked { RoomOverlay() }
                 if let shot = frameShot { framePreview(shot) }
                 VolumeSliderHost().frame(width: 1, height: 1).opacity(0.01)
                 playerShortcuts
@@ -118,6 +123,10 @@ struct PlayerScreen: View {
             OrientationController.set(.portrait)
         }
         .onChange(of: c.isPlaying) { playing in if playing { scheduleHide() } }
+        .modifier(SubtitleTranslation(c: c))
+        .sheet(item: Binding(get: { whoFrame.map(IdentifiedImage.init) }, set: { whoFrame = $0?.image })) { item in
+            WhoIsThisView(frame: item.image)
+        }
         .fileImporter(isPresented: $importingSubtitle,
                       allowedContentTypes: [UTType(filenameExtension: "srt") ?? .plainText, UTType(filenameExtension: "ass") ?? .plainText,
                                             UTType(filenameExtension: "ssa") ?? .plainText, UTType(filenameExtension: "vtt") ?? .plainText,
@@ -216,9 +225,16 @@ struct PlayerScreen: View {
     @ViewBuilder
     private func video(size: CGSize) -> some View {
         ZStack {
-            PlayerSurface(player: c.player, fill: c.fillScreen, pip: $pip)
-                .opacity(c.isNative ? 1 : 0)
-                .ignoresSafeArea()
+            if c.audioOnly {
+                ListenModeView(c: c, background: background)
+            } else {
+                PlayerSurface(player: c.player, fill: c.fillScreen, pip: $pip)
+                    .opacity(c.isNative ? 1 : 0)
+                    .ignoresSafeArea()
+                if danmaku && c.isNative && !c.timedComments.isEmpty {
+                    DanmakuLayer(comments: c.timedComments, time: c.currentTime)
+                }
+            }
             if !c.isNative, let url = c.kodikURL {
                 KodikWebView(url: url, isLoading: $webLoading)
                     .id("\(url.absoluteString)#\(webReload)")
@@ -399,6 +415,21 @@ struct PlayerScreen: View {
                 .foregroundStyle(sharePlay.isActive ? Color.green : Color.white)
             }
             if c.isNative {
+                Menu {
+                    Button { c.setAudioOnly(!c.audioOnly) } label: {
+                        Label(c.audioOnly ? "Вернуть видео" : "Только звук (слушать)", systemImage: c.audioOnly ? "play.rectangle" : "headphones")
+                    }
+                    Button { whoFrame = c.snapshot() } label: { Label("Кто это? (персонаж в кадре)", systemImage: "person.crop.rectangle") }
+                    Toggle(isOn: $danmaku) {
+                        Label("Комментарии на видео" + (c.timedComments.isEmpty ? "" : " (\(c.timedComments.count))"), systemImage: "text.bubble")
+                    }
+                    Toggle(isOn: Binding(get: { enhance }, set: { enhance = $0; c.setEnhance($0) })) {
+                        Label("Улучшение чёткости", systemImage: "wand.and.stars")
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle").font(.system(size: 17, weight: .semibold))
+                        .frame(width: 43, height: 43).foregroundStyle(.white)
+                }
                 iconButton("camera", size: 17) {
                     frameSaved = false
                     frameShot = c.snapshot()
@@ -432,7 +463,8 @@ struct PlayerScreen: View {
             }
             Scrubber(value: Binding(get: { c.isScrubbing ? scrubValue : c.currentTime },
                                     set: { scrubValue = $0 }),
-                     duration: c.duration, buffered: bufferedTime) { editing in
+                     duration: c.duration, buffered: bufferedTime,
+                     marks: danmaku ? c.timedComments.map(\.time) : []) { editing in
                 if editing {
                     scrubValue = c.currentTime
                     c.isScrubbing = true
@@ -680,6 +712,13 @@ struct PlayerScreen: View {
             .foregroundStyle(.white)
             delayControl("Задержка субтитров", value: c.subtitleDelay) { c.setSubtitleDelay($0) }
                 .padding(.horizontal).padding(.bottom, 6)
+            if c.canTranslate {
+                Button { c.translateRequest += 1; panel = nil } label: {
+                    Label("Перевести на русский (на устройстве)", systemImage: "translate").frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .padding(.horizontal).padding(.bottom, 8)
+                .foregroundStyle(.white)
+            }
             panelRow(selected: c.subtitle == nil) {
                 c.select(subtitle: nil)
                 panel = nil
@@ -826,6 +865,7 @@ struct Scrubber: View {
     @Binding var value: Double
     let duration: Double
     let buffered: Double
+    var marks: [Double] = []
     let onEditing: (Bool) -> Void
     @State private var dragging = false
 
@@ -838,6 +878,10 @@ struct Scrubber: View {
                 Capsule().fill(.white.opacity(0.25))
                 Capsule().fill(.white.opacity(0.35)).frame(width: CGFloat(min(1, buffered / total)) * w)
                 Capsule().fill(.white).frame(width: x)
+                ForEach(Array(marks.enumerated()), id: \.offset) { _, m in
+                    Circle().fill(Color.yellow.opacity(0.9)).frame(width: 4, height: 4)
+                        .offset(x: CGFloat(min(1, m / total)) * w - 2)
+                }
                 Circle().fill(.white)
                     .frame(width: dragging ? 18 : 12, height: dragging ? 18 : 12)
                     .offset(x: x - (dragging ? 9 : 6))
@@ -1070,6 +1114,33 @@ struct SubtitleOutline: ViewModifier {
                 .shadow(color: .black, radius: 0, x: -1, y: 1)
         } else {
             content.shadow(color: .black.opacity(0.8), radius: 3)
+        }
+    }
+}
+
+struct IdentifiedImage: Identifiable {
+    let image: UIImage
+    let id = UUID()
+}
+
+/// "Слушать": cover art and big controls instead of the picture.
+struct ListenModeView: View {
+    @ObservedObject var c: PlayerController
+    let background: URL?
+
+    var body: some View {
+        ZStack {
+            RemoteImage(url: background ?? c.title.coverURL).blur(radius: 40).opacity(0.5).ignoresSafeArea()
+            Color.black.opacity(0.45).ignoresSafeArea()
+            VStack(spacing: 16) {
+                PosterImage(url: c.title.coverURL, radius: 14).frame(width: 150)
+                    .shadow(radius: 20)
+                Text(c.title.title).font(.title3.bold()).multilineTextAlignment(.center).lineLimit(2)
+                Label("Режим «Слушать» — можно выключить экран", systemImage: "headphones")
+                    .font(.footnote).foregroundStyle(.white.opacity(0.7))
+            }
+            .foregroundStyle(.white)
+            .padding()
         }
     }
 }

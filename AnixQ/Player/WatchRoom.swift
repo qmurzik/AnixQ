@@ -188,6 +188,43 @@ struct RoomMessage: Codable {
     var kodik: String?
     var team: String?
     var web: Bool?
+    /// chat / react / poll / vote
+    var text: String?
+    var emoji: String?
+    var pollId: String?
+    var question: String?
+    var options: [String]?
+    var option: Int?
+}
+
+struct RoomChatLine: Identifiable, Hashable {
+    let id = UUID()
+    let name: String
+    let text: String
+    let mine: Bool
+    let date = Date()
+}
+
+struct RoomReaction: Identifiable, Hashable {
+    let id = UUID()
+    let emoji: String
+    let x: CGFloat
+}
+
+struct RoomPoll: Identifiable {
+    let id: String
+    let question: String
+    let options: [String]
+    let creator: String
+    var votes: [String: Int] = [:]
+    var closed = false
+    let started = Date()
+
+    func count(_ i: Int) -> Int { votes.values.filter { $0 == i }.count }
+    var winner: Int? {
+        guard !votes.isEmpty else { return nil }
+        return options.indices.max { count($0) < count($1) }
+    }
 }
 
 /// "Комната по ссылке": everyone with the link watches the same episode; play, pause, seek and
@@ -202,6 +239,10 @@ final class WatchRoom: ObservableObject {
     @Published var message: String?
     /// A room state for an episode no player shows yet: RootView opens it.
     @Published var incoming: WatchTogether?
+    @Published private(set) var chat: [RoomChatLine] = []
+    @Published private(set) var reactions: [RoomReaction] = []
+    @Published private(set) var poll: RoomPoll?
+    @Published var unread = 0
 
     private let client = MQTTClient()
     private let me = UUID().uuidString
@@ -289,6 +330,9 @@ final class WatchRoom: ObservableObject {
         roomId = nil
         connected = false
         participants = [:]
+        chat = []
+        poll = nil
+        unread = 0
         DebugLog.log("room: left")
     }
 
@@ -332,6 +376,80 @@ final class WatchRoom: ObservableObject {
         }
     }
 
+    // MARK: Chat, reactions, polls
+
+    func sendChat(_ text: String) {
+        let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !t.isEmpty else { return }
+        send(type: "chat") { $0.text = String(t.prefix(300)) }
+        addChat(RoomChatLine(name: Self.displayName, text: t, mine: true))
+    }
+
+    func react(_ emoji: String) {
+        send(type: "react") { $0.emoji = emoji }
+        flyReaction(emoji)
+    }
+
+    static let nextEpisodePoll = ("Смотрим следующую серию?", ["Да, дальше", "Ещё 5 минут", "Хватит на сегодня"])
+
+    func startPoll(question: String, options: [String]) {
+        let id = UUID().uuidString.prefix(8).lowercased()
+        poll = RoomPoll(id: String(id), question: question, options: options, creator: me)
+        send(type: "poll") { $0.pollId = String(id); $0.question = question; $0.options = options }
+        // Close after 30 s even if someone did not vote.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 30) { [weak self] in self?.closePoll(String(id)) }
+    }
+
+    func vote(_ option: Int) {
+        guard var p = poll, !p.closed else { return }
+        p.votes[me] = option
+        poll = p
+        send(type: "vote") { $0.pollId = p.id; $0.option = option }
+        checkPoll()
+    }
+
+    func dismissPoll() { poll = nil }
+
+    private func checkPoll() {
+        guard let p = poll, !p.closed, p.creator == me else { return }
+        // Everyone who is around has voted.
+        if p.votes.count >= others + 1 { closePoll(p.id) }
+    }
+
+    private func closePoll(_ id: String) {
+        guard var p = poll, p.id == id, !p.closed else { return }
+        p.closed = true
+        poll = p
+        guard p.creator == me else { return }
+        send(type: "poll") { $0.pollId = p.id; $0.question = p.question; $0.options = p.options; $0.option = p.winner ?? -1 }
+        // The creator's player acts on "next episode".
+        if p.question == Self.nextEpisodePoll.0, p.winner == 0, let c = controller, c.hasNext {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { c.next() }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 8) { [weak self] in
+            if self?.poll?.id == id { self?.poll = nil }
+        }
+    }
+
+    private func addChat(_ line: RoomChatLine) {
+        chat.append(line)
+        if chat.count > 60 { chat.removeFirst(chat.count - 60) }
+    }
+
+    private func flyReaction(_ emoji: String) {
+        let r = RoomReaction(emoji: emoji, x: CGFloat.random(in: 0.55...0.92))
+        reactions.append(r)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in self?.reactions.removeAll { $0.id == r.id } }
+    }
+
+    private func send(type: String, _ extra: (inout RoomMessage) -> Void) {
+        guard let topic, connected else { return }
+        var m = RoomMessage(type: type, from: me, name: Self.displayName, sentAt: Date().timeIntervalSince1970)
+        extra(&m)
+        guard let data = try? JSONEncoder().encode(m) else { return }
+        client.publish(topic, data)
+    }
+
     private func send(type: String) {
         guard let topic, connected else { return }
         var m = RoomMessage(type: type, from: me, name: Self.displayName, sentAt: Date().timeIntervalSince1970)
@@ -360,6 +478,35 @@ final class WatchRoom: ObservableObject {
             return
         }
         participants[m.from] = (m.name, Date())
+        switch m.type {
+        case "chat":
+            if let t = m.text { addChat(RoomChatLine(name: m.name, text: t, mine: false)); unread += 1 }
+            return
+        case "react":
+            if let e = m.emoji { flyReaction(String(e.prefix(4))) }
+            return
+        case "poll":
+            guard let id = m.pollId, let q = m.question, let opts = m.options else { return }
+            if let result = m.option, var p = poll, p.id == id {
+                // Final result from the creator.
+                p.closed = true
+                poll = p
+                _ = result
+                DispatchQueue.main.asyncAfter(deadline: .now() + 8) { [weak self] in if self?.poll?.id == id { self?.poll = nil } }
+            } else if poll?.id != id {
+                poll = RoomPoll(id: id, question: q, options: opts, creator: m.from)
+            }
+            return
+        case "vote":
+            if var p = poll, p.id == m.pollId, let o = m.option {
+                p.votes[m.from] = o
+                poll = p
+                checkPoll()
+            }
+            return
+        default:
+            break
+        }
         if m.type == "join" {
             // Someone new: tell them what we are watching.
             if controller != nil && !needsSync { send(type: "state") }
@@ -399,6 +546,9 @@ struct RoomMenu: View {
             if room.isActive, let id = room.roomId {
                 Section(room.connected ? "В комнате ещё: \(room.others)" : "Подключаемся…") {
                     ShareLink(item: WatchRoom.link(id)) { Label("Пригласить по ссылке", systemImage: "link") }
+                    Button {
+                        room.startPoll(question: WatchRoom.nextEpisodePoll.0, options: WatchRoom.nextEpisodePoll.1)
+                    } label: { Label("Голосование: следующая серия?", systemImage: "checklist") }
                     Button(role: .destructive) { room.leave() } label: {
                         Label("Выйти из комнаты", systemImage: "rectangle.portrait.and.arrow.right")
                     }
@@ -444,5 +594,131 @@ struct RoomInviteSheet: View {
         .padding(24)
         .presentationDetents([.medium])
         .preferredColorScheme(.dark)
+    }
+}
+
+// MARK: - Room overlay in the player
+
+struct RoomOverlay: View {
+    @ObservedObject private var room = WatchRoom.shared
+    @State private var open = false
+    @State private var text = ""
+    @FocusState private var focused: Bool
+    static let emojis = ["😂", "😱", "😭", "🔥", "❤️", "👏", "🤯", "💀"]
+
+    var body: some View {
+        GeometryReader { geo in
+            ZStack {
+                // Flying reactions.
+                ForEach(room.reactions) { r in
+                    FloatingEmoji(emoji: r.emoji)
+                        .position(x: geo.size.width * r.x, y: geo.size.height - 90)
+                }
+                // Recent chat lines, bottom-left.
+                VStack(alignment: .leading, spacing: 4) {
+                    Spacer()
+                    ForEach(room.chat.suffix(open ? 6 : 3)) { line in
+                        if open || Date().timeIntervalSince(line.date) < 12 {
+                            (Text(line.name + ": ").bold() + Text(line.text))
+                                .font(.footnote).foregroundStyle(.white)
+                                .padding(.horizontal, 10).padding(.vertical, 5)
+                                .background(.black.opacity(0.5), in: RoundedRectangle(cornerRadius: 10))
+                                .transition(.opacity)
+                        }
+                    }
+                    if open { inputBar }
+                }
+                .frame(maxWidth: min(geo.size.width * 0.55, 420), maxHeight: .infinity, alignment: .bottomLeading)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.leading, 16).padding(.bottom, open ? 12 : 100)
+
+                if let p = room.poll { pollCard(p).frame(maxHeight: .infinity, alignment: .top).padding(.top, 70) }
+
+                // Chat button.
+                if !open {
+                    Button { open = true; room.unread = 0 } label: {
+                        Image(systemName: room.unread > 0 ? "bubble.left.fill" : "bubble.left")
+                            .font(.system(size: 18, weight: .semibold)).foregroundStyle(.white)
+                            .frame(width: 44, height: 44).background(.black.opacity(0.4), in: Circle())
+                            .overlay(alignment: .topTrailing) {
+                                if room.unread > 0 {
+                                    Text("\(room.unread)").font(.caption2.bold()).padding(4).background(.red, in: Circle()).foregroundStyle(.white)
+                                }
+                            }
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                    .padding(.trailing, 16).padding(.bottom, 100)
+                }
+            }
+        }
+        .animation(.easeInOut(duration: 0.25), value: room.chat.count)
+        .animation(.spring(response: 0.35), value: open)
+    }
+
+    private var inputBar: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                ForEach(Self.emojis, id: \.self) { e in
+                    Button { room.react(e) } label: { Text(e).font(.title3) }
+                }
+            }
+            HStack(spacing: 6) {
+                TextField("Сообщение", text: $text)
+                    .textFieldStyle(.plain).focused($focused)
+                    .padding(.horizontal, 10).padding(.vertical, 7)
+                    .background(.white.opacity(0.15), in: Capsule())
+                    .foregroundStyle(.white)
+                    .submitLabel(.send)
+                    .onSubmit { room.sendChat(text); text = "" }
+                Button { room.sendChat(text); text = "" } label: { Image(systemName: "paperplane.fill") }
+                    .disabled(text.trimmingCharacters(in: .whitespaces).isEmpty)
+                Button { open = false; focused = false } label: { Image(systemName: "xmark.circle.fill") }
+            }
+            .foregroundStyle(.white)
+        }
+        .padding(10)
+        .background(.black.opacity(0.55), in: RoundedRectangle(cornerRadius: 14))
+    }
+
+    private func pollCard(_ p: RoomPoll) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Label(p.question, systemImage: "checklist").font(.subheadline.bold())
+                Spacer()
+                Button { room.dismissPoll() } label: { Image(systemName: "xmark").font(.caption) }
+            }
+            ForEach(Array(p.options.enumerated()), id: \.offset) { i, o in
+                Button { room.vote(i) } label: {
+                    HStack {
+                        Text(o).font(.subheadline)
+                        Spacer()
+                        Text("\(p.count(i))").font(.subheadline.monospacedDigit().bold())
+                    }
+                    .padding(.horizontal, 12).padding(.vertical, 8)
+                    .background((p.closed && p.winner == i ? Color.green : Color.white).opacity(p.closed && p.winner == i ? 0.5 : 0.15),
+                                in: RoundedRectangle(cornerRadius: 10))
+                }
+                .disabled(p.closed)
+            }
+            if p.closed, let w = p.winner { Text("Решено: \(p.options[w])").font(.caption.bold()) }
+        }
+        .foregroundStyle(.white)
+        .padding(14)
+        .frame(maxWidth: 340)
+        .background(.ultraThinMaterial.opacity(0.9), in: RoundedRectangle(cornerRadius: 16))
+        .environment(\.colorScheme, .dark)
+    }
+}
+
+private struct FloatingEmoji: View {
+    let emoji: String
+    @State private var up = false
+
+    var body: some View {
+        Text(emoji).font(.system(size: 40))
+            .offset(y: up ? -220 : 0)
+            .opacity(up ? 0 : 1)
+            .scaleEffect(up ? 1.3 : 0.8)
+            .onAppear { withAnimation(.easeOut(duration: 2.8)) { up = true } }
     }
 }

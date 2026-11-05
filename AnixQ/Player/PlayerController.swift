@@ -45,6 +45,13 @@ final class PlayerController: ObservableObject {
     @Published private(set) var recovering = false
     /// Short message shown over the video (e.g. automatic dub switch).
     @Published var notice: String?
+    /// AnimeLib comments with timecodes for this episode.
+    @Published private(set) var timedComments: [TimedComment] = []
+    /// Bumped to ask the view to translate the current subtitles (iOS 18).
+    @Published var translateRequest = 0
+    /// "Слушать": no picture, lowest quality, keeps playing with the screen off.
+    @Published private(set) var audioOnly = false
+    private var qualityBeforeAudio: StreamQuality?
     var subtitleDelay: Double { titleSettings.subtitleDelay }
     var audioDelay: Double { titleSettings.audioDelay }
     @Published var fillScreen = false
@@ -191,6 +198,15 @@ final class PlayerController: ObservableObject {
         isResolving = true
         startedAt = Date()
         let ep = episode
+        timedComments = []
+        if DanmakuPrefs.enabled {
+            Task { [weak self] in
+                let list = await LibAPI.timecodedComments(episodeId: ep.id)
+                guard let self, self.episode.id == ep.id else { return }
+                self.timedComments = list
+                if !list.isEmpty { DebugLog.log("player: \(list.count) timeline comments") }
+            }
+        }
         DebugLog.log("player: load ep \(ep.number) team \(team.team.name) native=\(team.native)")
         // Downloaded episode: play the file, no network needed.
         if let file = DownloadManager.shared.localFile(episodeId: ep.id, teamId: team.id)
@@ -377,6 +393,7 @@ final class PlayerController: ObservableObject {
     }
 
     private func attach(_ item: AVPlayerItem, at time: Double?) {
+        if VideoEnhancer.enabled && !audioOnly { Task { await VideoEnhancer.apply(to: item) } }
         item.preferredForwardBufferDuration = 0
         if let endObserver { NotificationCenter.default.removeObserver(endObserver) }
         endObserver = NotificationCenter.default.addObserver(forName: .AVPlayerItemDidPlayToEndTime, object: item,
@@ -452,6 +469,35 @@ final class PlayerController: ObservableObject {
         guard let players = try? await LibAPI.players(episodeId: episodeId),
               let p = players.first(where: { $0.team.id == team.id }) else { return }
         setSubtitleTracks(p.subtitles)
+    }
+
+    // MARK: Translation / listen mode / enhance
+
+    func cueTexts() -> [String] { cues.map(\.text) }
+
+    func applyTranslation(_ texts: [String]) {
+        guard texts.count == cues.count else { return }
+        cues = zip(cues, texts).map { SubtitleCue(start: $0.start, end: $0.end, text: $1) }
+        subtitleText = nil
+    }
+
+    var canTranslate: Bool { !cues.isEmpty && TranslationSupport.available }
+
+    func setAudioOnly(_ on: Bool) {
+        guard on != audioOnly, isNative else { return }
+        audioOnly = on
+        if on {
+            qualityBeforeAudio = quality
+            if let lowest = qualities.last, lowest != quality { play(lowest, at: currentTime) }
+        } else if let q = qualityBeforeAudio, q != quality {
+            play(q, at: currentTime)
+        }
+        updateNowPlaying()
+    }
+
+    func setEnhance(_ on: Bool) {
+        VideoEnhancer.enabled = on
+        if let q = quality { play(q, at: currentTime) }
     }
 
     /// A subtitle file picked by the user (SRT / ASS / VTT), for the current episode.

@@ -18,6 +18,17 @@ struct DownloadsView: View {
                            subtitle: "Скачивайте серии на странице тайтла — кнопка ↓ у серий. Работает с плеером AnimeLib.")
                     .listRowBackground(Color.clear)
             }
+            if !downloads.items.isEmpty {
+                Section {
+                    storageSummary
+                    if downloads.activeCount > 0 {
+                        Button { downloads.pauseAll() } label: { Label("Приостановить все", systemImage: "pause.circle") }
+                    }
+                    if downloads.pausedCount > 0 {
+                        Button { downloads.resumeAll() } label: { Label("Продолжить все", systemImage: "play.circle") }
+                    }
+                }
+            }
             ForEach(downloads.titles, id: \.title.id) { group in
                 Section {
                     ForEach(group.items) { item in
@@ -37,8 +48,7 @@ struct DownloadsView: View {
         .navigationTitle("Загрузки")
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
-                Text(ByteCountFormatter.string(fromByteCount: downloads.totalBytes, countStyle: .file))
-                    .font(.footnote).foregroundStyle(.secondary)
+                NavigationLink { DownloadSettingsView() } label: { Image(systemName: "slider.horizontal.3") }
             }
         }
         .fullScreenCover(item: $playing) { p in
@@ -48,6 +58,27 @@ struct DownloadsView: View {
                          teams: [TeamOption(team: team, native: true, kodik: false)],
                          startIndex: max(0, done.firstIndex { $0.id == p.items[p.index].id } ?? 0),
                          team: TeamOption(team: team, native: true, kodik: false))
+        }
+    }
+
+    private var storageSummary: some View {
+        let used = downloads.totalBytes
+        let limit = DownloadManager.limitGB
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text("Занято").font(.subheadline)
+                Spacer()
+                Text(ByteCountFormatter.string(fromByteCount: used, countStyle: .file)
+                     + (limit > 0 ? " из \(Int(limit)) ГБ" : "")).font(.subheadline.monospacedDigit()).foregroundStyle(.secondary)
+            }
+            if limit > 0 {
+                ProgressView(value: min(1, Double(used) / (limit * 1_000_000_000))).tint(Theme.accent)
+            }
+            if let free = (try? URL(fileURLWithPath: NSHomeDirectory())
+                .resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey]))?.volumeAvailableCapacityForImportantUsage {
+                Text("Свободно на устройстве: \(ByteCountFormatter.string(fromByteCount: free, countStyle: .file))")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
         }
     }
 
@@ -68,7 +99,9 @@ struct DownloadsView: View {
                         case .downloading:
                             ProgressView(value: item.progress).tint(Theme.accent)
                         case .queued:
-                            Text("В очереди…")
+                            Text(item.error ?? ((item.priority ?? 0) > 0 ? "В очереди · первой" : "В очереди…"))
+                        case .paused:
+                            Text("Пауза · \(Int(item.progress * 100))%")
                         case .failed:
                             Text(item.error ?? "Ошибка").foregroundStyle(.red)
                         }
@@ -82,9 +115,22 @@ struct DownloadsView: View {
                 case .failed:
                     Button { downloads.retry(item) } label: { Image(systemName: "arrow.clockwise.circle").font(.title2) }
                         .buttonStyle(.borderless)
-                default:
-                    Text("\(Int(item.progress * 100))%").font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                case .downloading:
+                    Button { downloads.pause(item) } label: { Image(systemName: "pause.circle").font(.title2) }
+                        .buttonStyle(.borderless)
+                case .paused:
+                    Button { downloads.resume(item) } label: { Image(systemName: "play.circle").font(.title2) }
+                        .buttonStyle(.borderless)
+                case .queued:
+                    Button { downloads.pause(item) } label: { Image(systemName: "pause.circle").font(.title2).foregroundStyle(.secondary) }
+                        .buttonStyle(.borderless)
                 }
+            }
+        }
+        .swipeActions(edge: .leading) {
+            if item.state == .queued || item.state == .paused {
+                Button { downloads.prioritize(item) } label: { Label("Первой", systemImage: "arrow.up.to.line") }
+                    .tint(.blue)
             }
         }
         .swipeActions {
@@ -110,6 +156,10 @@ struct DownloadButton: View {
             Button {
                 if item == nil || item?.state == .failed {
                     downloads.download(title: title, episode: episode, team: team.team)
+                } else if let item, item.state == .paused {
+                    downloads.resume(item)
+                } else if let item, item.state == .downloading || item.state == .queued {
+                    downloads.pause(item)
                 }
             } label: {
                 switch item?.state {
@@ -123,6 +173,7 @@ struct DownloadButton: View {
                     }
                     .frame(width: 18, height: 18)
                 case .queued: ProgressView().scaleEffect(0.7)
+                case .paused: Image(systemName: "pause.circle").foregroundStyle(.secondary)
                 case .failed: Image(systemName: "exclamationmark.arrow.circlepath").foregroundStyle(.red)
                 case nil: Image(systemName: "arrow.down.circle")
                 }
@@ -130,5 +181,59 @@ struct DownloadButton: View {
             .buttonStyle(.borderless)
             .font(.title3)
         }
+    }
+}
+
+struct DownloadSettingsView: View {
+    @State private var concurrent = DownloadManager.maxConcurrent
+    @State private var wifiOnly = DownloadManager.wifiOnly
+    @State private var limit = DownloadManager.limitGB
+    @State private var deleteWatched = DownloadManager.deleteWatched
+    @State private var autoDL = WatchingUpdater.autoDownload
+    @State private var autoDLCount = WatchingUpdater.autoDownloadCount
+    @State private var quality = PlayerPrefs.downloadHeight
+
+    var body: some View {
+        Form {
+            Section {
+                Stepper("Одновременно: \(concurrent)", value: $concurrent, in: 1...4)
+                    .onChange(of: concurrent) { DownloadManager.maxConcurrent = $0; DownloadManager.shared.pump() }
+                Toggle("Только по Wi-Fi", isOn: $wifiOnly).onChange(of: wifiOnly) { DownloadManager.wifiOnly = $0 }
+                Picker("Качество", selection: $quality) {
+                    ForEach([1080, 720, 480, 360], id: \.self) { Text("\($0)p").tag($0) }
+                }
+                .onChange(of: quality) { PlayerPrefs.downloadHeight = $0 }
+            } header: {
+                Text("Очередь")
+            } footer: {
+                Text("Смахните загрузку вправо, чтобы поставить её первой. «Только по Wi-Fi» действует для новых загрузок.")
+            }
+            Section {
+                Picker("Лимит места", selection: $limit) {
+                    Text("Без лимита").tag(0.0)
+                    ForEach([2.0, 5.0, 10.0, 20.0, 50.0], id: \.self) { Text("\(Int($0)) ГБ").tag($0) }
+                }
+                .onChange(of: limit) { DownloadManager.limitGB = $0 }
+                Toggle("Удалять просмотренные серии", isOn: $deleteWatched)
+                    .onChange(of: deleteWatched) { DownloadManager.deleteWatched = $0 }
+            } header: {
+                Text("Место")
+            } footer: {
+                Text("Просмотренные серии удаляются, когда вы сворачиваете приложение, и в первую очередь — когда не хватает места под лимит.")
+            }
+            Section {
+                Toggle("Скачивать следующие серии по Wi-Fi", isOn: $autoDL).onChange(of: autoDL) { WatchingUpdater.autoDownload = $0 }
+                if autoDL {
+                    Stepper("Серий наперёд: \(autoDLCount)", value: $autoDLCount, in: 1...5)
+                        .onChange(of: autoDLCount) { WatchingUpdater.autoDownloadCount = $0 }
+                }
+            } header: {
+                Text("Автозагрузка")
+            } footer: {
+                Text("Для тайтлов из «Смотрю» — с той же озвучкой, что вы смотрели последней.")
+            }
+        }
+        .styledList()
+        .navigationTitle("Настройки загрузок")
     }
 }

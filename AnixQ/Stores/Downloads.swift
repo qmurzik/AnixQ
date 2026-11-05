@@ -5,7 +5,7 @@ import UIKit
 import ActivityKit
 
 struct DownloadItem: Codable, Identifiable, Hashable {
-    enum State: String, Codable { case queued, downloading, done, failed }
+    enum State: String, Codable { case queued, downloading, paused, done, failed }
 
     var title: Title
     var episode: LibEpisode
@@ -17,6 +17,8 @@ struct DownloadItem: Codable, Identifiable, Hashable {
     var fileName: String?
     var error: String?
     var date: Date
+    /// Higher goes first in the queue (optional so older saved lists still decode).
+    var priority: Int?
 
     var id: String { DownloadItem.key(episodeId: episode.id, teamId: team.id) }
     static func key(episodeId: Int, teamId: Int) -> String { "\(episodeId)-\(teamId)" }
@@ -64,12 +66,12 @@ final class DownloadManager: NSObject, ObservableObject {
                 for t in list {
                     if let key = t.taskDescription, let dt = t as? URLSessionDownloadTask { self.tasks[key] = dt }
                 }
-                for (key, item) in self.items where (item.state == .downloading || item.state == .queued)
-                    && self.tasks[key] == nil {
-                    self.items[key]?.state = .failed
-                    self.items[key]?.error = "Прервано"
+                // Transfers lost with the app process go back to the queue (resuming where possible).
+                for (key, item) in self.items where item.state == .downloading && self.tasks[key] == nil {
+                    self.items[key]?.state = .queued
                 }
                 self.persist()
+                self.pump()
             }
         }
     }
@@ -140,20 +142,82 @@ final class DownloadManager: NSObject, ObservableObject {
 
     var totalBytes: Int64 { items.values.filter { $0.state == .done }.reduce(0) { $0 + $1.bytes } }
 
-    // MARK: Actions
+    // MARK: Settings
 
-    func download(title: Title, episode: LibEpisode, team: LibTeam) {
-        let key = DownloadItem.key(episodeId: episode.id, teamId: team.id)
-        if let existing = items[key], existing.state == .done || existing.state == .downloading { return }
-        Haptics.tap()
-        items[key] = DownloadItem(title: title, episode: episode, team: team, quality: "", state: .queued,
-                                  progress: 0, bytes: 0, fileName: nil, error: nil, date: Date())
-        persist()
-        Task { await start(key) }
+    static var maxConcurrent: Int {
+        get { UserDefaults.standard.object(forKey: "dl.concurrent") as? Int ?? 2 }
+        set { UserDefaults.standard.set(newValue, forKey: "dl.concurrent") }
+    }
+    static var wifiOnly: Bool {
+        get { UserDefaults.standard.bool(forKey: "dl.wifiOnly") }
+        set { UserDefaults.standard.set(newValue, forKey: "dl.wifiOnly") }
+    }
+    /// Storage limit in GB, 0 = none.
+    static var limitGB: Double {
+        get { UserDefaults.standard.double(forKey: "dl.limitGB") }
+        set { UserDefaults.standard.set(newValue, forKey: "dl.limitGB") }
+    }
+    static var deleteWatched: Bool {
+        get { UserDefaults.standard.bool(forKey: "dl.deleteWatched") }
+        set { UserDefaults.standard.set(newValue, forKey: "dl.deleteWatched") }
     }
 
+    var activeCount: Int { items.values.filter { $0.state == .downloading || $0.state == .queued }.count }
+    var pausedCount: Int { items.values.filter { $0.state == .paused }.count }
+
+    // MARK: Actions
+
+    func download(title: Title, episode: LibEpisode, team: LibTeam, priority: Int = 0) {
+        let key = DownloadItem.key(episodeId: episode.id, teamId: team.id)
+        if let existing = items[key], existing.state != .failed { return }
+        Haptics.tap()
+        items[key] = DownloadItem(title: title, episode: episode, team: team, quality: "", state: .queued,
+                                  progress: 0, bytes: 0, fileName: nil, error: nil, date: Date(), priority: priority)
+        persist()
+        pump()
+    }
+
+    private var starting: Set<String> = []
+
+    /// Starts queued items, highest priority first, up to the concurrency limit.
+    func pump() {
+        var slots = Self.maxConcurrent - items.values.filter { $0.state == .downloading }.count - starting.count
+        guard slots > 0 else { return }
+        let queue = items.values.filter { $0.state == .queued && !starting.contains($0.id) }
+            .sorted { ($0.priority ?? 0) != ($1.priority ?? 0) ? ($0.priority ?? 0) > ($1.priority ?? 0) : $0.date < $1.date }
+        for item in queue where slots > 0 {
+            slots -= 1
+            starting.insert(item.id)
+            Task {
+                await start(item.id)
+                starting.remove(item.id)
+            }
+        }
+    }
+
+    private func resumeURL(_ key: String) -> URL { folder.appendingPathComponent(key + ".resume") }
+
     private func start(_ key: String) async {
-        guard let item = items[key] else { return }
+        guard let item = items[key], item.state == .queued else { return }
+        guard ensureSpace() else {
+            items[key]?.state = .failed
+            items[key]?.error = "Достигнут лимит места для загрузок"
+            persist()
+            return
+        }
+        // Paused earlier: continue from the saved point.
+        if let data = try? Data(contentsOf: resumeURL(key)) {
+            try? FileManager.default.removeItem(at: resumeURL(key))
+            let task = session.downloadTask(withResumeData: data)
+            task.taskDescription = key
+            tasks[key] = task
+            items[key]?.state = .downloading
+            items[key]?.error = nil
+            persist()
+            task.resume()
+            DebugLog.log("download: resume \(item.title.title) ep \(item.episode.number)")
+            return
+        }
         do {
             let players = try await LibAPI.players(episodeId: item.episode.id)
             guard let p = players.first(where: { $0.team.id == item.team.id && $0.isNative }) else {
@@ -165,8 +229,11 @@ final class DownloadManager: NSObject, ObservableObject {
             guard let href = p.hrefs[label] else { throw LibError.noVideo }
             let server = await LibAPI.rankServers(await LibAPI.videoServers(), href: href).first ?? ""
             guard let url = LibAPI.videoURL(server: server, href: href) else { throw LibError.noVideo }
+            guard items[key]?.state == .queued else { return }   // paused or cancelled meanwhile
             var req = URLRequest(url: url)
             req.setValue(LibAPI.site + "/", forHTTPHeaderField: "Referer")
+            req.allowsCellularAccess = !Self.wifiOnly
+            req.allowsExpensiveNetworkAccess = !Self.wifiOnly
             let task = session.downloadTask(with: req)
             task.taskDescription = key
             tasks[key] = task
@@ -180,12 +247,53 @@ final class DownloadManager: NSObject, ObservableObject {
             items[key]?.state = .failed
             items[key]?.error = error.localizedDescription
             persist()
+            pump()
         }
+    }
+
+    func pause(_ item: DownloadItem) {
+        let key = item.id
+        if let task = tasks[key] {
+            tasks[key] = nil
+            task.cancel(byProducingResumeData: { [weak self] data in
+                Task { @MainActor in
+                    guard let self else { return }
+                    if let data { try? data.write(to: self.resumeURL(key)) }
+                    self.items[key]?.state = .paused
+                    self.persist()
+                    self.pump()
+                }
+            })
+        } else if item.state == .queued {
+            items[key]?.state = .paused
+            persist()
+        }
+    }
+
+    func resume(_ item: DownloadItem) {
+        guard item.state == .paused || item.state == .failed else { return }
+        items[item.id]?.state = .queued
+        items[item.id]?.error = nil
+        persist()
+        pump()
+    }
+
+    func pauseAll() { items.values.filter { $0.state == .downloading || $0.state == .queued }.forEach(pause) }
+    func resumeAll() { items.values.filter { $0.state == .paused }.forEach(resume) }
+
+    /// Moves an item to the front of the queue.
+    func prioritize(_ item: DownloadItem) {
+        let top = (items.values.compactMap(\.priority).max() ?? 0) + 1
+        items[item.id]?.priority = top
+        persist()
+        pump()
     }
 
     func retry(_ item: DownloadItem) {
         items[item.id]?.state = .queued
-        Task { await start(item.id) }
+        items[item.id]?.error = nil
+        persist()
+        pump()
     }
 
     func cancel(_ item: DownloadItem) {
@@ -196,14 +304,46 @@ final class DownloadManager: NSObject, ObservableObject {
 
     func delete(_ item: DownloadItem) {
         if let name = item.fileName { try? FileManager.default.removeItem(at: folder.appendingPathComponent(name)) }
+        try? FileManager.default.removeItem(at: resumeURL(item.id))
         tasks[item.id]?.cancel()
         tasks[item.id] = nil
         items[item.id] = nil
         persist()
+        pump()
     }
 
     func deleteAll(titleId: Int) {
         items.values.filter { $0.title.id == titleId }.forEach(delete)
+    }
+
+    // MARK: Storage
+
+    private func isWatched(_ item: DownloadItem) -> Bool {
+        LibraryStore.current?.isWatched(titleId: item.title.id, number: item.episode.number) ?? false
+    }
+
+    /// Removes finished downloads of watched episodes (when enabled). Called when the app goes to the
+    /// background, so the file that is being played right now is never pulled away.
+    func cleanupWatched() {
+        guard Self.deleteWatched else { return }
+        let watched = items.values.filter { $0.state == .done && isWatched($0) }
+        guard !watched.isEmpty else { return }
+        watched.forEach(delete)
+        DebugLog.log("download: removed \(watched.count) watched episodes")
+    }
+
+    /// Makes room under the limit: watched episodes go first (if allowed), oldest first.
+    private func ensureSpace() -> Bool {
+        guard Self.limitGB > 0 else { return true }
+        let limit = Int64(Self.limitGB * 1_000_000_000)
+        guard totalBytes >= limit else { return true }
+        if Self.deleteWatched {
+            for item in items.values.filter({ $0.state == .done && isWatched($0) }).sorted(by: { $0.date < $1.date }) {
+                delete(item)
+                if totalBytes < limit { return true }
+            }
+        }
+        return totalBytes < limit
     }
 }
 
@@ -251,6 +391,7 @@ extension DownloadManager: URLSessionDownloadDelegate {
             }
             self.tasks[key] = nil
             self.persist()
+            self.pump()
         }
     }
 
@@ -258,10 +399,21 @@ extension DownloadManager: URLSessionDownloadDelegate {
         guard let error, let key = task.taskDescription else { return }
         Task { @MainActor in
             if (error as? URLError)?.code == .cancelled { return }
+            // Network dropped: keep the partial data and retry later instead of failing.
+            if let data = (error as NSError).userInfo[NSURLSessionDownloadTaskResumeData] as? Data {
+                try? data.write(to: self.resumeURL(key))
+                self.items[key]?.state = .queued
+                self.items[key]?.error = "Связь прервалась — продолжим"
+                self.tasks[key] = nil
+                self.persist()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 10) { self.pump() }
+                return
+            }
             self.items[key]?.state = .failed
             self.items[key]?.error = error.localizedDescription
             self.tasks[key] = nil
             self.persist()
+            self.pump()
         }
     }
 

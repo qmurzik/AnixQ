@@ -126,7 +126,9 @@ final class TitleModel: ObservableObject {
             // Ad-free first, then dubs before subtitles.
             teams = order.filter { $0.native && !$0.team.isSubtitles } + order.filter { $0.native && $0.team.isSubtitles }
                 + order.filter { !$0.native }
+            let savedTeam = TitlePlayerSettings.load(title.id).teamId
             selectedTeam = teams.first { $0.id == lastTeamId }
+                ?? teams.first { $0.id == savedTeam }
                 ?? DubPreferences.pick(teams)
                 ?? teams.first { $0.team.name == Self.preferredTeamName && $0.native }
                 ?? teams.first
@@ -415,6 +417,14 @@ struct TitleView: View {
                                         Button {
                                             downloads.download(title: t, episode: ep, team: team.team)
                                         } label: { Label("Скачать", systemImage: "arrow.down.circle") }
+                                    }
+                                    let natives = model.teams.filter { $0.native && $0.id != model.selectedTeam?.id }
+                                    if !natives.isEmpty {
+                                        Menu {
+                                            ForEach(natives) { o in
+                                                Button(o.team.name) { downloads.download(title: t, episode: ep, team: o.team) }
+                                            }
+                                        } label: { Label("Скачать в другой озвучке", systemImage: "waveform.badge.plus") }
                                     }
                                 }
                             }

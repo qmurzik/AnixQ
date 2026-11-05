@@ -347,6 +347,7 @@ struct SettingsView: View {
                     }
                     .onChange(of: downloadQuality) { PlayerPrefs.downloadHeight = $0 }
                     Picker("Качество по умолчанию", selection: $quality) {
+                        Text("Авто").tag(0)
                         Text("1080p").tag(1080)
                         Text("720p").tag(720)
                         Text("480p").tag(480)

@@ -27,9 +27,16 @@ final class PlayerController: ObservableObject {
         didSet {
             if isPlaying { player.rate = rate }
             if PlayerPrefs.rememberSpeed { PlayerPrefs.savedRate = rate }
+            if oldValue != rate { updateTitleSettings { $0.rate = rate == 1 ? nil : rate } }
         }
     }
     @Published var isScrubbing = false
+    /// Settings remembered for this title.
+    @Published private(set) var titleSettings: TitlePlayerSettings
+    @Published private(set) var autoQuality: Bool
+    @Published private(set) var recovering = false
+    var subtitleDelay: Double { titleSettings.subtitleDelay }
+    var audioDelay: Double { titleSettings.audioDelay }
     @Published var fillScreen = false
 
     weak var library: LibraryStore?
@@ -49,6 +56,7 @@ final class PlayerController: ObservableObject {
     private var serverIndex = 0
     private var timeObserver: Any?
     private var endObserver: NSObjectProtocol?
+    private var failObserver: NSObjectProtocol?
     private var statusObservation: NSKeyValueObservation?
     private var itemObservation: NSKeyValueObservation?
     private var loadToken = UUID()
@@ -87,6 +95,9 @@ final class PlayerController: ObservableObject {
         self.teams = teams
         self.index = min(max(0, index), max(0, episodes.count - 1))
         self.team = team
+        let saved = TitlePlayerSettings.load(title.id)
+        self.titleSettings = saved
+        self.autoQuality = (saved.qualityHeight ?? PlayerPrefs.preferredHeight) == 0
         player.allowsExternalPlayback = true
         player.automaticallyWaitsToMinimizeStalling = true
         timeObserver = player.addPeriodicTimeObserver(forInterval: CMTime(seconds: 0.25, preferredTimescale: 600),
@@ -99,6 +110,39 @@ final class PlayerController: ObservableObject {
             Task { @MainActor in self?.statusChanged(st) }
         }
         setupRemoteCommands()
+        if let r = saved.rate { rate = r }
+        networkObserver = NotificationCenter.default.addObserver(forName: .anixqNetworkBack, object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor in self?.networkCameBack() }
+        }
+    }
+
+    private var networkObserver: NSObjectProtocol?
+
+    // MARK: Per-title settings
+
+    func updateTitleSettings(_ change: (inout TitlePlayerSettings) -> Void) {
+        var s = titleSettings
+        change(&s)
+        guard s != titleSettings else { return }
+        titleSettings = s
+        TitlePlayerSettings.save(s, for: title.id)
+    }
+
+    func setSubtitleDelay(_ d: Double) {
+        updateTitleSettings { $0.subtitleDelay = (d * 10).rounded() / 10 }
+    }
+
+    private var audioDelayTask: Task<Void, Never>?
+
+    /// Shifts the sound (MP4 streams); the item is rebuilt at the current position, debounced.
+    func setAudioDelay(_ d: Double) {
+        updateTitleSettings { $0.audioDelay = (d * 10).rounded() / 10 }
+        audioDelayTask?.cancel()
+        audioDelayTask = Task {
+            try? await Task.sleep(nanoseconds: 700_000_000)
+            guard !Task.isCancelled, let q = quality else { return }
+            play(q, at: currentTime)
+        }
     }
 
     // MARK: Loading
@@ -166,7 +210,7 @@ final class PlayerController: ObservableObject {
                 guard token == loadToken else { return }
                 serverIndex = 0
                 rebuildQualities()
-                let preferred = qualities.first { $0.height <= PlayerPrefs.preferredHeight } ?? qualities.last
+                let preferred = initialQuality()
                 // Local position first, then the one saved on the AnimeLib account.
                 var resume = library?.resumePosition(episodeId: ep.id)
                 if resume == nil, let server = p.serverTimecode, server > 15 { resume = server }
@@ -199,15 +243,116 @@ final class PlayerController: ObservableObject {
         .sorted { $0.height > $1.height }
     }
 
+    /// Saved height for this title, the global default, or (auto) a guess from the connection.
+    private func initialQuality() -> StreamQuality? {
+        let wanted = titleSettings.qualityHeight ?? PlayerPrefs.preferredHeight
+        if wanted == 0 {
+            let guess = NetworkMonitor.shared.isExpensive ? 480 : NetworkMonitor.shared.isWiFi ? 1080 : 720
+            let byBitrate = lastObservedBitrate.map { bps in
+                qualities.first { QualityBudget.need($0.height) * 1.3 <= bps }?.height
+            } ?? nil
+            let target = byBitrate ?? guess
+            return qualities.first { $0.height <= target } ?? qualities.last
+        }
+        return qualities.first { $0.height <= wanted } ?? qualities.last
+    }
+
+    // MARK: Automatic quality
+
+    private var stalls: [Date] = []
+    private var lastQualityChange = Date.distantPast
+    private var lastObservedBitrate: Double?
+    private var bufferingSince: Date?
+
+    private func noteStall() {
+        guard autoQuality, isNative, currentTime > 2 else { return }
+        stalls = stalls.filter { Date().timeIntervalSince($0) < 60 } + [Date()]
+        guard stalls.count >= 2, Date().timeIntervalSince(lastQualityChange) > 20,
+              let q = quality, let i = qualities.firstIndex(of: q), i + 1 < qualities.count else { return }
+        stalls = []
+        lastQualityChange = Date()
+        DebugLog.log("player: auto quality down \(q.label) -> \(qualities[i + 1].label)")
+        play(qualities[i + 1], at: currentTime)
+    }
+
+    /// Every half a minute without stalls: step up if the measured speed comfortably allows it.
+    private func considerUpgrade() {
+        guard autoQuality, isNative, isPlaying, Date().timeIntervalSince(lastQualityChange) > 45,
+              stalls.filter({ Date().timeIntervalSince($0) < 90 }).isEmpty,
+              let bps = player.currentItem?.accessLog()?.events.last?.observedBitrate, bps > 0,
+              let q = quality, let i = qualities.firstIndex(of: q), i > 0 else { return }
+        lastObservedBitrate = bps
+        let up = qualities[i - 1]
+        guard bps > QualityBudget.need(up.height) * 1.8 else { return }
+        lastQualityChange = Date()
+        DebugLog.log("player: auto quality up \(q.label) -> \(up.label) (\(Int(bps / 1000)) kbps)")
+        play(up, at: currentTime)
+    }
+
+    func select(autoQuality on: Bool) {
+        autoQuality = on
+        updateTitleSettings { $0.qualityHeight = on ? 0 : quality?.height }
+        lastQualityChange = .distantPast
+    }
+
+    // MARK: Recovery
+
+    /// Network is back: if playback broke, reload the same episode at the same moment.
+    private func networkCameBack() {
+        guard isNative, error != nil || (isBuffering && (bufferingSince.map { Date().timeIntervalSince($0) > 5 } ?? false)) else { return }
+        recover(reason: "network back")
+    }
+
+    private func recover(reason: String) {
+        guard !recovering else { return }
+        recovering = true
+        let at = max(currentTime, library?.resumePosition(episodeId: episode.id) ?? 0)
+        DebugLog.log("player: recovering (\(reason)) at \(Int(at))s")
+        Task {
+            error = nil
+            if serverIndex + 1 < servers.count {
+                serverIndex += 1
+                let label = quality?.label
+                rebuildQualities()
+                if let q = qualities.first(where: { $0.label == label }) ?? qualities.first { play(q, at: at) }
+            } else {
+                await load()
+                if at > 2 { seek(to: at) }
+            }
+            recovering = false
+        }
+    }
+
     private func play(_ q: StreamQuality, at time: Double?) {
         quality = q
         let asset = AVURLAsset(url: q.url, options: ["AVURLAssetHTTPHeaderFieldsKey": ["Referer": LibAPI.site + "/"]])
-        let item = AVPlayerItem(asset: asset)
+        if titleSettings.audioDelay != 0 {
+            Task {
+                let shifted = await AudioOffset.item(for: asset, delay: titleSettings.audioDelay)
+                guard quality == q else { return }
+                attach(shifted ?? AVPlayerItem(asset: asset), at: time)
+                if shifted == nil { DebugLog.log("player: audio delay unavailable for this stream") }
+            }
+            return
+        }
+        attach(AVPlayerItem(asset: asset), at: time)
+    }
+
+    private func attach(_ item: AVPlayerItem, at time: Double?) {
         item.preferredForwardBufferDuration = 0
         if let endObserver { NotificationCenter.default.removeObserver(endObserver) }
         endObserver = NotificationCenter.default.addObserver(forName: .AVPlayerItemDidPlayToEndTime, object: item,
                                                              queue: .main) { [weak self] _ in
             Task { @MainActor in self?.didFinish() }
+        }
+        if let failObserver { NotificationCenter.default.removeObserver(failObserver) }
+        failObserver = NotificationCenter.default.addObserver(forName: .AVPlayerItemFailedToPlayToEndTime, object: item,
+                                                              queue: .main) { [weak self] n in
+            let e = (n.userInfo?[AVPlayerItemFailedToPlayToEndTimeErrorKey] as? Error)?.localizedDescription
+            Task { @MainActor in
+                DebugLog.log("player: failed mid-play \(e ?? "?")")
+                self?.recover(reason: "failed to play to end")
+            }
         }
         itemObservation = item.observe(\.status, options: [.new]) { [weak self] item, _ in
             let st = item.status
@@ -257,8 +402,11 @@ final class PlayerController: ObservableObject {
         guard !tracks.isEmpty else { return }
         DebugLog.log("player: subtitles " + tracks.map { "\($0.label) [\($0.format)]" }.joined(separator: ", "))
         // Subtitle teams: show their subtitles by default; dubs: only if the user turned them on.
-        if team.team.isSubtitles || UserDefaults.standard.bool(forKey: "subs.alwaysOn") {
-            select(subtitle: tracks[0])
+        if titleSettings.subtitlesOff == true { return }
+        if let label = titleSettings.subtitleLabel, let t = tracks.first(where: { $0.label == label }) {
+            select(subtitle: t, remember: false)
+        } else if team.team.isSubtitles || UserDefaults.standard.bool(forKey: "subs.alwaysOn") || titleSettings.subtitlesOff == false {
+            select(subtitle: tracks[0], remember: false)
         }
     }
 
@@ -268,7 +416,22 @@ final class PlayerController: ObservableObject {
         setSubtitleTracks(p.subtitles)
     }
 
-    func select(subtitle s: LibSubtitle?) {
+    /// A subtitle file picked by the user (SRT / ASS / VTT), for the current episode.
+    func addExternalSubtitle(from url: URL) {
+        let tmp = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + "-" + url.lastPathComponent)
+        try? FileManager.default.copyItem(at: url, to: tmp)
+        let sub = LibSubtitle(url: tmp, format: url.pathExtension.lowercased(), label: "Файл: " + url.deletingPathExtension().lastPathComponent)
+        subtitleTracks.append(sub)
+        select(subtitle: sub, remember: false)
+    }
+
+    func select(subtitle s: LibSubtitle?, remember: Bool = true) {
+        if remember {
+            updateTitleSettings {
+                $0.subtitlesOff = s == nil
+                $0.subtitleLabel = s.flatMap { $0.label.hasPrefix("Файл: ") ? nil : $0.label }
+            }
+        }
         subtitle = s
         cues = []
         subtitleText = nil
@@ -310,8 +473,9 @@ final class PlayerController: ObservableObject {
     }
 
     func select(quality q: StreamQuality) {
+        autoQuality = false
+        updateTitleSettings { $0.qualityHeight = q.height }
         guard q != quality else { return }
-        PlayerPrefs.preferredHeight = q.height
         play(q, at: currentTime)
     }
 
@@ -319,6 +483,7 @@ final class PlayerController: ObservableObject {
         guard t != team else { return }
         let resume = currentTime
         team = t
+        updateTitleSettings { $0.teamId = t.id }
         TitleModel.preferredTeamName = t.team.name
         DubPreferences.use(t.team.name)
         SharePlayManager.shared.localChanged(self)
@@ -371,6 +536,7 @@ final class PlayerController: ObservableObject {
 
     func stop() {
         SharePlayManager.shared.detach(self)
+        if let failObserver { NotificationCenter.default.removeObserver(failObserver) }
         saveProgress(force: true)
         countdownTask?.cancel()
         player.pause()
@@ -382,23 +548,41 @@ final class PlayerController: ObservableObject {
 
     private func statusChanged(_ st: AVPlayer.TimeControlStatus) {
         isPlaying = st == .playing
+        let wasBuffering = isBuffering
         isBuffering = st == .waitingToPlayAtSpecifiedRate
+        if isBuffering && !wasBuffering {
+            bufferingSince = Date()
+            noteStall()
+        } else if !isBuffering {
+            bufferingSince = nil
+        }
         if st == .playing, Date().timeIntervalSince(startedAt) < 120, currentTime < 2 {
             DebugLog.log(String(format: "player: PLAYING after %.2fs", Date().timeIntervalSince(startedAt)))
         }
         updateNowPlaying()
     }
 
+    private var lastUpgradeCheck = Date()
+
     private func tick(_ s: Double) {
         guard s.isFinite else { return }
         if !isScrubbing { currentTime = s }
+        // Stuck buffering for a long time: try another mirror at the same moment.
+        if isNative, let since = bufferingSince, Date().timeIntervalSince(since) > 20, currentTime > 1, !recovering {
+            bufferingSince = Date()
+            recover(reason: "buffering 20s")
+        }
+        if Date().timeIntervalSince(lastUpgradeCheck) > 30 {
+            lastUpgradeCheck = Date()
+            considerUpgrade()
+        }
         if let at = sleepAt, Date() >= at {
             sleepAt = nil
             player.pause()
             DebugLog.log("player: sleep timer paused playback")
         }
         if !cues.isEmpty {
-            let text = SubtitleParser.cue(at: s, in: cues)
+            let text = SubtitleParser.cue(at: s - titleSettings.subtitleDelay, in: cues)
             if text != subtitleText { subtitleText = text }
         }
         if duration <= 0, let d = player.currentItem?.duration.seconds, d.isFinite, d > 0 { duration = d }

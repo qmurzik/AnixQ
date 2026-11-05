@@ -1,3 +1,4 @@
+import UniformTypeIdentifiers
 import SwiftUI
 import AVKit
 import MediaPlayer
@@ -39,6 +40,7 @@ struct PlayerScreen: View {
     @AppStorage("subs.font") private var subtitleFont = "system"
     @AppStorage("subs.bold") private var subtitleBold = true
     @State private var frameShot: UIImage?
+    @State private var importingSubtitle = false
     @State private var frameSaved = false
 
     enum DragMode { case brightness, volume, seek, ignored }
@@ -91,6 +93,15 @@ struct PlayerScreen: View {
             OrientationController.set(.portrait)
         }
         .onChange(of: c.isPlaying) { playing in if playing { scheduleHide() } }
+        .fileImporter(isPresented: $importingSubtitle,
+                      allowedContentTypes: [UTType(filenameExtension: "srt") ?? .plainText, UTType(filenameExtension: "ass") ?? .plainText,
+                                            UTType(filenameExtension: "ssa") ?? .plainText, UTType(filenameExtension: "vtt") ?? .plainText,
+                                            .plainText, .data]) { result in
+            guard case .success(let url) = result else { return }
+            let access = url.startAccessingSecurityScopedResource()
+            c.addExternalSubtitle(from: url)
+            if access { url.stopAccessingSecurityScopedResource() }
+        }
         .confirmationDialog("Смотреть вместе", isPresented: $confirmLeaveSharePlay, titleVisibility: .visible) {
             Button("Выйти из SharePlay", role: .destructive) { sharePlay.leave() }
         } message: {
@@ -102,6 +113,21 @@ struct PlayerScreen: View {
         } message: {
             Text(sharePlay.message ?? "")
         }
+    }
+
+    // MARK: Delay control
+
+    private func delayControl(_ title: String, value: Double, set: @escaping (Double) -> Void) -> some View {
+        HStack(spacing: 10) {
+            Text(title).font(.subheadline)
+            Spacer()
+            Button { set(value - 0.1) } label: { Image(systemName: "minus.circle.fill").font(.title3) }
+            Text(String(format: "%+.1f с", value)).font(.subheadline.monospacedDigit()).frame(minWidth: 60)
+                .onTapGesture { set(0) }
+            Button { set(value + 0.1) } label: { Image(systemName: "plus.circle.fill").font(.title3) }
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(.white)
     }
 
     // MARK: Frame capture
@@ -381,8 +407,10 @@ struct PlayerScreen: View {
                 pill("Серии", icon: "list.number") { panel = .episodes }
                 pill(c.team.team.name, icon: "waveform") { panel = .teams }
                 pill(c.rate == 1 ? "1×" : String(format: "%g×", c.rate), icon: "gauge.with.dots.needle.50percent") { panel = .speed }
-                if c.qualities.count > 1 { pill(c.quality?.label ?? "Авто", icon: "sparkles.tv") { panel = .quality } }
-                if !c.subtitleTracks.isEmpty {
+                if c.qualities.count > 1 {
+                    pill(c.autoQuality ? "Авто · \(c.quality?.label ?? "")" : (c.quality?.label ?? "Авто"), icon: "sparkles.tv") { panel = .quality }
+                }
+                if !c.subtitleTracks.isEmpty || c.isNative {
                     pill(c.subtitle == nil ? "Субтитры выкл" : "Субтитры", icon: "captions.bubble") { panel = .subtitles }
                 }
             }
@@ -601,6 +629,13 @@ struct PlayerScreen: View {
                 }
             }
         case .subtitles:
+            Button { importingSubtitle = true } label: {
+                Label("Загрузить файл SRT / ASS…", systemImage: "doc.badge.plus").frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .padding(.horizontal).padding(.vertical, 8)
+            .foregroundStyle(.white)
+            delayControl("Задержка субтитров", value: c.subtitleDelay) { c.setSubtitleDelay($0) }
+                .padding(.horizontal).padding(.bottom, 6)
             panelRow(selected: c.subtitle == nil) {
                 c.select(subtitle: nil)
                 panel = nil
@@ -644,14 +679,31 @@ struct PlayerScreen: View {
         case .sleep:
             sleepPanel
         case .quality:
+            panelRow(selected: c.autoQuality) {
+                c.select(autoQuality: true)
+                panel = nil
+            } content: {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Авто")
+                    Text("Подбирается по скорости сети").font(.caption2).foregroundStyle(.white.opacity(0.5))
+                }
+                Spacer()
+                if c.autoQuality, let q = c.quality { Text(q.label).font(.caption).foregroundStyle(.white.opacity(0.6)) }
+            }
             ForEach(c.qualities) { q in
-                panelRow(selected: q == c.quality) {
+                panelRow(selected: !c.autoQuality && q == c.quality) {
                     c.select(quality: q)
                     panel = nil
                 } content: {
                     Text(q.label)
                     Spacer()
                 }
+            }
+            if c.isNative {
+                delayControl("Задержка звука", value: c.audioDelay) { c.setAudioDelay($0) }
+                    .padding(.horizontal).padding(.top, 8)
+                Text("Сохраняется для этого тайтла. Работает с потоками MP4 AnimeLib.")
+                    .font(.caption2).foregroundStyle(.white.opacity(0.5)).padding(.horizontal)
             }
         }
     }

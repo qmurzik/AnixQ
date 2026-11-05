@@ -42,7 +42,10 @@ struct AnixQApp: App {
         }
         .onChange(of: scenePhase) { phase in
             AppLock.shared.sceneChanged(phase)
-            if phase == .background { WatchingUpdater.scheduleBackgroundRefresh() }
+            if phase == .background {
+                WatchingUpdater.scheduleBackgroundRefresh()
+                DownloadManager.shared.cleanupWatched()
+            }
             guard phase == .active else { return }
             Task {
                 if LibSession.isLoggedIn {

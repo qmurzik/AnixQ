@@ -45,6 +45,7 @@ struct AnixQApp: App {
             if phase == .background {
                 WatchingUpdater.scheduleBackgroundRefresh()
                 DownloadManager.shared.cleanupWatched()
+                BackupManager.autoBackupIfNeeded(library: library)
             }
             guard phase == .active else { return }
             Task {
@@ -139,6 +140,7 @@ struct RootView: View {
                 .onAppear {
                     handlePendingAction()
                     sharePlay.listen()
+                    if lock.locked { AppLock.shared.obscured = false }   // creates the cover window at launch
                 }
                 // SharePlay started by someone else on the FaceTime call.
                 .onReceive(sharePlay.$incoming) { a in
@@ -154,10 +156,6 @@ struct RootView: View {
                 .alert("Комната", isPresented: Binding(get: { room.message != nil }, set: { if !$0 { room.message = nil } })) {
                     Button("OK", role: .cancel) {}
                 } message: { Text(room.message ?? "") }
-                .overlay {
-                    if lock.locked { LockScreen().transition(.opacity) }
-                    else if lock.obscured { Rectangle().fill(.ultraThickMaterial).ignoresSafeArea() }
-                }
                 .fullScreenCover(item: $sharedLaunch) { a in
                     SharePlayLauncher(activity: a).environmentObject(library)
                 }
@@ -192,7 +190,21 @@ struct RootView: View {
         }
     }
 
+    @Environment(\.horizontalSizeClass) private var hSize
+
+    @ViewBuilder
     private var tabs: some View {
+        Group {
+            if Layout.isPad && hSize == .regular && screenshotSlug == nil {
+                SidebarRoot(tab: $tab)
+            } else {
+                tabView
+            }
+        }
+        .background(KeyboardShortcuts(tab: $tab))
+    }
+
+    private var tabView: some View {
         TabView(selection: $tab) {
             NavigationStack {
                 if let slug = screenshotSlug {

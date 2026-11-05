@@ -70,6 +70,31 @@ struct PlayerScreen: View {
                 if let panel { panelView(panel, size: geo.size) }
                 if let shot = frameShot { framePreview(shot) }
                 VolumeSliderHost().frame(width: 1, height: 1).opacity(0.01)
+                playerShortcuts
+                if let n = c.notice {
+                    VStack {
+                        Text(n).font(.footnote.weight(.semibold)).foregroundStyle(.white)
+                            .padding(.horizontal, 14).padding(.vertical, 9)
+                            .background(.ultraThinMaterial, in: Capsule())
+                            .padding(.top, 60)
+                        Spacer()
+                    }
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                    .task(id: n) {
+                        try? await Task.sleep(nanoseconds: 4_000_000_000)
+                        withAnimation { c.notice = nil }
+                    }
+                }
+                if c.recovering {
+                    VStack {
+                        Label("Восстанавливаем воспроизведение…", systemImage: "arrow.clockwise")
+                            .font(.footnote.weight(.semibold)).foregroundStyle(.white)
+                            .padding(.horizontal, 14).padding(.vertical, 9)
+                            .background(.ultraThinMaterial, in: Capsule())
+                            .padding(.top, 60)
+                        Spacer()
+                    }
+                }
             }
         }
         .statusBarHidden()
@@ -113,6 +138,24 @@ struct PlayerScreen: View {
         } message: {
             Text(sharePlay.message ?? "")
         }
+    }
+
+    // MARK: Keyboard (iPad)
+
+    /// Space — play/pause, ←/→ — 10 s, ⇧←/⇧→ — previous/next episode, Esc — close, ⌘F — fill screen.
+    private var playerShortcuts: some View {
+        ZStack {
+            Button("") { c.togglePlay(); showControls = true; scheduleHide() }.keyboardShortcut(.space, modifiers: [])
+            Button("") { c.seek(by: -Double(PlayerPrefs.doubleTapStep)) }.keyboardShortcut(.leftArrow, modifiers: [])
+            Button("") { c.seek(by: Double(PlayerPrefs.doubleTapStep)) }.keyboardShortcut(.rightArrow, modifiers: [])
+            Button("") { c.previous() }.keyboardShortcut(.leftArrow, modifiers: .shift)
+            Button("") { c.next() }.keyboardShortcut(.rightArrow, modifiers: .shift)
+            Button("") { c.fillScreen.toggle() }.keyboardShortcut("f", modifiers: .command)
+            Button("") { if panel != nil { panel = nil } else { dismiss() } }.keyboardShortcut(.escape, modifiers: [])
+        }
+        .opacity(0)
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 
     // MARK: Delay control

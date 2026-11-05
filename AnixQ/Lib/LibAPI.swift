@@ -9,12 +9,12 @@ enum LibSession {
     private static let userIdKey = "animelib.userId"
 
     static var token: String? {
-        get { UserDefaults.standard.string(forKey: tokenKey) }
-        set { UserDefaults.standard.set(newValue, forKey: tokenKey) }
+        get { SecureStore.string(tokenKey) }
+        set { SecureStore.set(tokenKey, newValue) }
     }
     static var refreshToken: String? {
-        get { UserDefaults.standard.string(forKey: refreshKey) }
-        set { UserDefaults.standard.set(newValue, forKey: refreshKey) }
+        get { SecureStore.string(refreshKey) }
+        set { SecureStore.set(refreshKey, newValue) }
     }
     static var username: String? {
         get { UserDefaults.standard.string(forKey: nameKey) }

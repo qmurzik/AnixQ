@@ -25,6 +25,16 @@ struct LibraryView: View {
                 }
             }
 
+            if library.history.isEmpty && library.bookmarks.isEmpty {
+                Section {
+                    NavigationLink { BackupView() } label: {
+                        Label("Восстановить из резервной копии", systemImage: "clock.arrow.circlepath")
+                    }
+                } footer: {
+                    Text("Переустановили приложение? Верните историю и закладки из файла копии.")
+                }
+            }
+
             if let p = library.shikiImport {
                 Section {
                     VStack(alignment: .leading, spacing: 6) {
@@ -491,6 +501,9 @@ struct SettingsView: View {
                 }
 
                 Section("Данные") {
+                    NavigationLink { BackupView() } label: {
+                        Label("Резервная копия", systemImage: "externaldrive.badge.timemachine")
+                    }
                     NavigationLink { ListTransferView() } label: {
                         Label("Экспорт и импорт списка (MAL)", systemImage: "arrow.up.arrow.down.square")
                     }

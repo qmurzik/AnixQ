@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import LocalAuthentication
 
 /// Face ID / Touch ID / passcode lock for the whole app and for chosen bookmark folders.
@@ -6,11 +7,16 @@ import LocalAuthentication
 final class AppLock: ObservableObject {
     static let shared = AppLock()
 
-    @Published private(set) var locked = AppLock.appLockEnabled
+    @Published private(set) var locked = AppLock.appLockEnabled {
+        didSet { updateWindows() }
+    }
     /// Folders opened during this session (locked again when the app goes to the background).
     @Published private(set) var unlockedFolders: Set<Int> = []
     /// Covers the UI in the app switcher.
-    @Published var obscured = false
+    @Published var obscured = false {
+        didSet { updateWindows() }
+    }
+    @Published var lastError: String?
     private var authenticating = false
 
     static var appLockEnabled: Bool {
@@ -45,10 +51,57 @@ final class AppLock: ObservableObject {
         ctx.localizedFallbackTitle = "Ввести код-пароль"
         var error: NSError?
         guard ctx.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) else {
-            // No passcode on the device: nothing to protect with.
-            return true
+            // Only a device without any passcode has nothing to check against; every other error
+            // (lockout, unavailable biometry, system failure) keeps things locked.
+            if (error as? LAError)?.code == .passcodeNotSet {
+                lastError = nil
+                return true
+            }
+            lastError = error?.localizedDescription ?? "Проверка недоступна"
+            DebugLog.log("lock: cannot evaluate \(error?.code ?? 0)")
+            return false
         }
-        return (try? await ctx.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: reason)) ?? false
+        do {
+            let ok = try await ctx.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: reason)
+            lastError = ok ? nil : "Не удалось подтвердить"
+            return ok
+        } catch {
+            let code = (error as? LAError)?.code
+            lastError = code == .userCancel || code == .appCancel || code == .systemCancel ? nil : error.localizedDescription
+            return false
+        }
+    }
+
+    /// Whether a lock can be turned on at all (a device passcode is required).
+    static var canLock: Bool {
+        var error: NSError?
+        return LAContext().canEvaluatePolicy(.deviceOwnerAuthentication, error: &error)
+    }
+
+    // MARK: Cover window
+
+    /// The lock lives in its own window above everything — sheets, full-screen players and
+    /// alerts presented by the app can't end up on top of it.
+    private var windows: [UIWindow] = []
+
+    private func updateWindows() {
+        let show = locked || obscured
+        if show {
+            let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+            for scene in scenes where !windows.contains(where: { $0.windowScene === scene }) {
+                let w = UIWindow(windowScene: scene)
+                w.windowLevel = .alert + 1
+                let host = UIHostingController(rootView: LockCover())
+                host.view.backgroundColor = .clear
+                w.rootViewController = host
+                w.backgroundColor = .clear
+                w.isHidden = false
+                windows.append(w)
+            }
+        } else {
+            windows.forEach { $0.isHidden = true }
+            windows = []
+        }
     }
 
     func unlockApp() async {
@@ -76,6 +129,18 @@ final class AppLock: ObservableObject {
     }
 }
 
+private struct LockCover: View {
+    @ObservedObject private var lock = AppLock.shared
+
+    var body: some View {
+        if lock.locked {
+            LockScreen()
+        } else {
+            Rectangle().fill(.ultraThickMaterial).ignoresSafeArea()
+        }
+    }
+}
+
 struct LockScreen: View {
     @ObservedObject private var lock = AppLock.shared
 
@@ -94,6 +159,9 @@ struct LockScreen: View {
                     }
                     .buttonStyle(PrimaryButtonStyle())
                     .frame(maxWidth: 260)
+                    if let e = lock.lastError {
+                        Text(e).font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center).padding(.horizontal)
+                    }
                 }
             }
         }
@@ -132,6 +200,10 @@ struct LockSettingsView: View {
             Section {
                 Toggle("Блокировать AnixQ", isOn: Binding(get: { appLock }, set: { on in
                     Task {
+                        guard !on || AppLock.canLock else {
+                            AppLock.shared.lastError = "Сначала задайте код-пароль в Настройках iOS."
+                            return
+                        }
                         if await AppLock.shared.authenticate(on ? "Включить блокировку AnixQ" : "Выключить блокировку AnixQ") {
                             appLock = on
                             AppLock.appLockEnabled = on
@@ -139,7 +211,7 @@ struct LockSettingsView: View {
                     }
                 }))
             } footer: {
-                Text("При каждом открытии приложения нужен \(AppLock.biometryName). В переключателе приложений содержимое скрыто.")
+                Text(AppLock.shared.lastError ?? "При каждом открытии приложения нужен \(AppLock.biometryName). В переключателе приложений содержимое скрыто.")
             }
             Section {
                 ForEach(BookmarkStatus.allCases) { s in

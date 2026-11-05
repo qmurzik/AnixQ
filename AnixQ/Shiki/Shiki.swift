@@ -17,20 +17,20 @@ enum ShikiSession {
         set { d.set(newValue, forKey: "shiki.clientId") }
     }
     static var clientSecret: String? {
-        get { d.string(forKey: "shiki.clientSecret") }
-        set { d.set(newValue, forKey: "shiki.clientSecret") }
+        get { SecureStore.string("shiki.clientSecret") }
+        set { SecureStore.set("shiki.clientSecret", newValue) }
     }
     static var appName: String {
         get { d.string(forKey: "shiki.appName") ?? "AnixQ" }
         set { d.set(newValue, forKey: "shiki.appName") }
     }
     static var token: String? {
-        get { d.string(forKey: "shiki.token") }
-        set { d.set(newValue, forKey: "shiki.token") }
+        get { SecureStore.string("shiki.token") }
+        set { SecureStore.set("shiki.token", newValue) }
     }
     static var refreshToken: String? {
-        get { d.string(forKey: "shiki.refresh") }
-        set { d.set(newValue, forKey: "shiki.refresh") }
+        get { SecureStore.string("shiki.refresh") }
+        set { SecureStore.set("shiki.refresh", newValue) }
     }
     static var userId: Int? {
         get { d.object(forKey: "shiki.userId") as? Int }
@@ -42,12 +42,12 @@ enum ShikiSession {
     }
     /// "name=value; name2=value2" for the site session.
     static var cookieHeader: String? {
-        get { d.string(forKey: "shiki.cookies") }
-        set { d.set(newValue, forKey: "shiki.cookies") }
+        get { SecureStore.string("shiki.cookies") }
+        set { SecureStore.set("shiki.cookies", newValue) }
     }
     static var csrf: String? {
-        get { d.string(forKey: "shiki.csrf") }
-        set { d.set(newValue, forKey: "shiki.csrf") }
+        get { SecureStore.string("shiki.csrf") }
+        set { SecureStore.set("shiki.csrf", newValue) }
     }
     static var isLoggedIn: Bool { (token != nil || cookieHeader != nil) && userId != nil }
 

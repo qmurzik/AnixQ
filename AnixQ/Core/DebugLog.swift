@@ -6,7 +6,8 @@ enum DebugLog {
     private static let start = Date()
     private static let queue = DispatchQueue(label: "debuglog")
     private static let url: URL = {
-        let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        // Caches, not Documents: Documents is visible in the Files app (backups live there).
+        let dir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
         let file = dir.appendingPathComponent("debug.log")
         try? Data().write(to: file)
         return file
@@ -28,8 +29,22 @@ enum DebugLog {
         return ring
     }
 
+    /// Tokens, cookies and secrets never reach the log (it can be attached to bug reports).
+    static func redact(_ s: String) -> String {
+        var out = s
+        let patterns = [#"(?i)(bearer\s+)[A-Za-z0-9._\-]+"#,
+                        #"(?i)((?:access_|refresh_)?token["']?\s*[=:]\s*["']?)[A-Za-z0-9._\-]+"#,
+                        #"(?i)(client_secret["']?\s*[=:]\s*["']?)[A-Za-z0-9._\-]+"#,
+                        #"(?i)(_kawai_session|remember_user_token|cookie)=[^;\s]+"#,
+                        #"(?i)(code=)[A-Za-z0-9._\-]{10,}"#]
+        for p in patterns {
+            out = out.replacingOccurrences(of: p, with: "$1•••", options: .regularExpression)
+        }
+        return out
+    }
+
     static func log(_ message: String) {
-        let line = String(format: "[%7.2fs] ", Date().timeIntervalSince(start)) + message + "\n"
+        let line = String(format: "[%7.2fs] ", Date().timeIntervalSince(start)) + redact(message) + "\n"
         ringLock.lock()
         ring.append(String(line.dropLast()))
         if ring.count > 40 { ring.removeFirst(ring.count - 40) }

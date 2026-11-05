@@ -35,6 +35,8 @@ final class PlayerController: ObservableObject {
     @Published private(set) var titleSettings: TitlePlayerSettings
     @Published private(set) var autoQuality: Bool
     @Published private(set) var recovering = false
+    /// Short message shown over the video (e.g. automatic dub switch).
+    @Published var notice: String?
     var subtitleDelay: Double { titleSettings.subtitleDelay }
     var audioDelay: Double { titleSettings.audioDelay }
     @Published var fillScreen = false
@@ -223,6 +225,14 @@ final class PlayerController: ObservableObject {
                 kodikURL = url
                 // No position from a web player: still record the episode in history.
                 library?.touch(title: title, episode: ep, team: team.team)
+            } else if let alt = fallbackTeam(in: players) {
+                // This dub has no video for this episode: switch to another one instead of failing.
+                DebugLog.log("player: \(team.team.name) missing for ep \(ep.number), switching to \(alt.team.name)")
+                notice = "У «\(team.team.name)» нет этой серии — включена «\(alt.team.name)»"
+                team = alt
+                isResolving = false
+                await load()
+                return
             } else {
                 throw LibError.noVideo
             }
@@ -233,6 +243,22 @@ final class PlayerController: ObservableObject {
         }
         isResolving = false
         updateNowPlaying()
+    }
+
+    /// Another team that does have this episode: favourites first, ad-free player first.
+    private func fallbackTeam(in players: [LibPlayer]) -> TeamOption? {
+        var options: [TeamOption] = []
+        for p in players where p.team.id != team.id {
+            if let i = options.firstIndex(where: { $0.team.id == p.team.id }) {
+                options[i].native = options[i].native || p.isNative
+                options[i].kodik = options[i].kodik || p.isKodik
+            } else {
+                options.append(TeamOption(team: p.team, native: p.isNative, kodik: p.isKodik))
+            }
+        }
+        let sameKind = options.filter { $0.team.isSubtitles == team.team.isSubtitles }
+        return DubPreferences.pick(sameKind) ?? sameKind.first { $0.native } ?? DubPreferences.pick(options)
+            ?? options.first { $0.native } ?? options.first
     }
 
     private func rebuildQualities() {

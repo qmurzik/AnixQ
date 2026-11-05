@@ -426,3 +426,30 @@ extension LibraryStore {
         save()
     }
 }
+
+// MARK: - Backup
+
+/// Everything the library knows, for the JSON backup.
+struct LibraryBackup: Codable {
+    var history: [WatchEntry]
+    var positions: [Int: PlaybackPosition]
+    var watched: [Int: Set<String>]
+    var bookmarks: [String: LocalBookmark]
+    var genres: [Int: [String]]
+}
+
+extension LibraryStore {
+    func backupPayload() -> LibraryBackup {
+        LibraryBackup(history: history, positions: positions, watched: watched, bookmarks: bookmarks, genres: genres)
+    }
+
+    /// Replaces the library with a backup (AnimeLib / Shikimori sync takes over afterwards).
+    func restore(_ b: LibraryBackup) {
+        history = b.history.sorted { $0.date > $1.date }
+        positions = b.positions
+        watched = b.watched
+        bookmarks = b.bookmarks
+        genres = b.genres
+        save()
+    }
+}

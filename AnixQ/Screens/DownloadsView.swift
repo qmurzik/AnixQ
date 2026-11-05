@@ -33,6 +33,7 @@ struct DownloadsView: View {
                 }
             }
         }
+        .styledList()
         .navigationTitle("Загрузки")
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {

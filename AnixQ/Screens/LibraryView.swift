@@ -90,6 +90,7 @@ struct LibraryView: View {
                 Text("История")
             }
         }
+        .styledList()
         .listStyle(.insetGrouped)
         .navigationTitle("Медиатека")
         .toolbar {
@@ -145,6 +146,7 @@ struct BookmarkFolderView: View {
                 PosterGrid(titles: titles).padding()
             }
         }
+        .styledBackground()
         .navigationTitle(status.title)
         .refreshable { await library.syncBookmarks(force: true) }
     }
@@ -223,8 +225,12 @@ struct SettingsView: View {
     @AppStorage("adblock") private var adblock = true
     @AppStorage("accent") private var accentRaw = AccentChoice.rose.rawValue
     @AppStorage("appIcon") private var appIcon = AppIconChoice.standard.rawValue
+    @AppStorage(AppStyle.storageKey) private var styleRaw = AppStyle.classic.rawValue
     @AppStorage("subs.alwaysOn") private var subsAlwaysOn = false
     @State private var confirmClear = false
+    @AppStorage(CloudSync.enabledKey) private var cloudOn = true
+    @ObservedObject private var updates = UpdateChecker.shared
+    @ObservedObject private var cloud = CloudSync.shared
 
     var body: some View {
         NavigationStack {
@@ -303,6 +309,11 @@ struct SettingsView: View {
                 }
 
                 Section("Плеер") {
+                    NavigationLink {
+                        DubPreferencesView()
+                    } label: {
+                        LabeledContent("Любимые озвучки", value: DubPreferences.favorites.first ?? "не выбраны")
+                    }
                     Toggle("Следующая серия автоматически", isOn: $autoNext)
                         .onChange(of: autoNext) { PlayerPrefs.autoNext = $0 }
                     Toggle("Пропускать опенинг автоматически", isOn: $autoSkip)
@@ -325,6 +336,28 @@ struct SettingsView: View {
                     .onChange(of: quality) { PlayerPrefs.preferredHeight = $0 }
                     Toggle("Субтитры у озвучек, если есть", isOn: $subsAlwaysOn)
                     Toggle("Блокировать рекламу в Kodik", isOn: $adblock)
+                }
+
+                Section {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 12) {
+                            ForEach(AppStyle.allCases) { style in
+                                Button {
+                                    UserDefaults.standard.set(style.rawValue, forKey: AppStyle.storageKey)
+                                    Theme.configureAppearance()
+                                    styleRaw = style.rawValue
+                                } label: {
+                                    StylePreview(style: style, selected: styleRaw == style.rawValue)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        .padding(.vertical, 6)
+                    }
+                } header: {
+                    Text("Стиль интерфейса")
+                } footer: {
+                    Text("Liquid Glass на iOS 26 использует системное стекло, на более старых — его имитацию. Material You берёт оттенки из цвета акцента.")
                 }
 
                 Section("Оформление") {
@@ -357,10 +390,51 @@ struct SettingsView: View {
                                 .fill(a.color)
                                 .frame(width: 28, height: 28)
                                 .overlay(Circle().stroke(.white, lineWidth: accentRaw == a.rawValue ? 3 : 0))
-                                .onTapGesture { accentRaw = a.rawValue }
+                                .onTapGesture {
+                                    UserDefaults.standard.set(a.rawValue, forKey: "accent")
+                                    Theme.configureAppearance()
+                                    accentRaw = a.rawValue
+                                }
                         }
                     }
                     .padding(.vertical, 4)
+                }
+
+                Section {
+                    Toggle("Синхронизация через iCloud", isOn: $cloudOn)
+                        .onChange(of: cloudOn) { on in if on { cloud.start(library: library) } }
+                    if cloudOn {
+                        LabeledContent("Состояние", value: cloud.status)
+                    }
+                } header: {
+                    Text("iCloud")
+                } footer: {
+                    Text("История, позиции в сериях, закладки и настройки переносятся между вашими iPhone и iPad. Работает, если сертификат, которым подписано приложение, поддерживает iCloud.")
+                }
+
+                Section {
+                    LabeledContent("Версия", value: UpdateChecker.installedVersion)
+                    if let u = updates.available {
+                        Link(destination: UpdateChecker.ipaURL) {
+                            Label("Скачать версию \(u.version)", systemImage: "arrow.down.app.fill")
+                        }
+                    } else {
+                        Button {
+                            Task { await updates.check(force: true) }
+                        } label: {
+                            HStack {
+                                Text(updates.lastChecked == nil ? "Проверить обновления" : "Установлена последняя версия")
+                                Spacer()
+                                if updates.isChecking { ProgressView() }
+                            }
+                        }
+                    }
+                    NavigationLink { ReportProblemView() } label: {
+                        Label("Сообщить о проблеме", systemImage: "exclamationmark.bubble")
+                    }
+                    Link(destination: UpdateChecker.siteURL) { Label("Сайт AnixQ", systemImage: "safari") }
+                } header: {
+                    Text("О приложении")
                 }
 
                 Section("Данные") {
@@ -368,6 +442,7 @@ struct SettingsView: View {
                     Button("Очистить историю просмотра", role: .destructive) { confirmClear = true }
                 }
             }
+            .styledList()
             .navigationTitle("Настройки")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Готово") { dismiss() } } }
@@ -431,6 +506,7 @@ struct DiagnosticsView: View {
                     .textSelection(.enabled)
             }
         }
+        .styledList()
         .navigationTitle("Диагностика")
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {

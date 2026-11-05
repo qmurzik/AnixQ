@@ -24,6 +24,7 @@ struct BrowseView: View {
             }
             .padding(.vertical, 8)
         }
+        .styledBackground()
         .navigationTitle("Каталог")
         .toolbar {
             ToolbarItem(placement: .navigationBarLeading) {
@@ -138,6 +139,13 @@ struct FilterSheet: View {
                         ForEach(years, id: \.self) { Text(String($0)).tag(Int?.some($0)) }
                     }
                 }
+                Section("Количество серий") {
+                    Picker("Серий", selection: Binding(
+                        get: { EpisodeRange(min: draft.episodesMin, max: draft.episodesMax) },
+                        set: { draft.episodesMin = $0.min; draft.episodesMax = $0.max })) {
+                        ForEach(EpisodeRange.presets, id: \.self) { Text($0.title).tag($0) }
+                    }
+                }
                 Section("Жанры") {
                     if genres.isEmpty { ProgressView() }
                     ForEach(genres) { g in
@@ -147,6 +155,7 @@ struct FilterSheet: View {
                     }
                 }
             }
+            .styledList()
             .navigationTitle("Фильтры")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -229,6 +238,7 @@ struct SearchView: View {
                 }
             }
         }
+        .styledList()
         .listStyle(.insetGrouped)
         .navigationTitle("Поиск")
         .toolbar {
@@ -275,5 +285,23 @@ struct SearchView: View {
         var list = recent.filter { $0.caseInsensitiveCompare(q) != .orderedSame }
         list.insert(q, at: 0)
         recentRaw = list.prefix(8).joined(separator: "\n")
+    }
+}
+
+struct EpisodeRange: Hashable {
+    var min: Int?
+    var max: Int?
+
+    static let presets = [EpisodeRange(), EpisodeRange(min: 1, max: 1), EpisodeRange(min: 2, max: 13),
+                          EpisodeRange(min: 14, max: 26), EpisodeRange(min: 27, max: nil)]
+
+    var title: String {
+        switch (min, max) {
+        case (nil, nil): return "Любое"
+        case (1, 1): return "Фильм / 1 серия"
+        case let (lo?, hi?): return "\(lo)–\(hi)"
+        case let (lo?, nil): return "\(lo) и больше"
+        case let (nil, hi?): return "до \(hi)"
+        }
     }
 }

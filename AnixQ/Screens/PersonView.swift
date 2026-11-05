@@ -110,6 +110,7 @@ struct PersonView: View {
                 ProgressView().frame(maxWidth: .infinity, minHeight: 300)
             }
         }
+        .styledBackground()
         .navigationTitle(page?.name ?? "")
         .navigationBarTitleDisplayMode(.inline)
         .task {

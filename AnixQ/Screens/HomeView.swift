@@ -16,6 +16,10 @@ final class HomeModel: ObservableObject {
     @Published var newest: [Title] = []
     @Published var forYou: [Title] = []
     @Published var nextSeasons: [Title] = []
+    @Published var short: [Title] = []
+    @Published var finishedThisYear: [Title] = []
+    @Published var likeCompleted: [Title] = []
+    @Published var likeCompletedSeed: String?
     private var nextSeasonsLoaded = Date.distantPast
 
     /// For finished titles: the next main entry of the franchise (Shikimori order) the user hasn't
@@ -86,6 +90,22 @@ final class HomeModel: ObservableObject {
         forYou = Array(out.prefix(24))
     }
 
+    /// Collections: short series, finished this year, "like the one you finished".
+    func loadCollections(library: LibraryStore) async {
+        let s = Task { try? await LibAPI.catalog(.short, page: 1).items }
+        let f = Task { try? await LibAPI.catalog(.finishedThisYear, page: 1).items }
+        if let items = await s.value, !items.isEmpty { short = Array(items.prefix(24)) }
+        if let items = await f.value, !items.isEmpty { finishedThisYear = Array(items.prefix(24)) }
+
+        let known = Set(library.history.map(\.title.id)).union(library.bookmarks.values.map(\.title.id))
+        let done = library.titles(in: .completed)
+        if let seed = done.first ?? library.history.first(where: { $0.progress > 0.92 })?.title {
+            let similar = await LibAPI.similar(seed.slugURL).filter { !known.contains($0.id) }
+            likeCompleted = Array(similar.prefix(20))
+            likeCompletedSeed = seed.title
+        }
+    }
+
     func load(force: Bool = false) async {
         guard force || Date().timeIntervalSince(lastLoad) > 15 * 60 else { return }
         lastLoad = Date()
@@ -130,6 +150,7 @@ struct HomeView: View {
     @StateObject private var model = HomeModel()
     @EnvironmentObject private var library: LibraryStore
     @ObservedObject private var updater = WatchingUpdater.shared
+    @ObservedObject private var updates = UpdateChecker.shared
 
     var body: some View {
         ScrollView {
@@ -138,6 +159,11 @@ struct HomeView: View {
                     HeroCarousel(items: model.featured)
                 } else {
                     Color.clear.frame(height: 90)
+                }
+
+                if let update = updates.banner {
+                    UpdateBanner(update: update)
+                        .transition(.move(edge: .top).combined(with: .opacity))
                 }
 
                 if !library.history.isEmpty {
@@ -174,6 +200,11 @@ struct HomeView: View {
                 Shelf(title: "Смотрю", titles: library.watchingTitles)
                 Shelf(title: "Продолжение франшиз", titles: model.nextSeasons)
                 Shelf(title: "Для вас", titles: model.forYou)
+                if let seed = model.likeCompletedSeed {
+                    Shelf(title: "Похоже на «\(seed)»", titles: model.likeCompleted)
+                }
+                Shelf(title: "На вечер · до 13 серий", titles: model.short,
+                      seeAll: CatalogRoute(title: "До 13 серий", query: .short))
                 Shelf(title: "Новые серии", titles: model.updated,
                       seeAll: CatalogRoute(title: "Новые серии", query: CatalogQuery(sort: .updated)))
                 Shelf(title: "Онгоинги", titles: model.ongoing,
@@ -184,6 +215,8 @@ struct HomeView: View {
                       seeAll: CatalogRoute(title: "Лучшее по рейтингу", query: CatalogQuery(sort: .rating)))
                 Shelf(title: "Новинки каталога", titles: model.newest,
                       seeAll: CatalogRoute(title: "Новинки", query: CatalogQuery(sort: .newest)))
+                Shelf(title: "Завершились за год", titles: model.finishedThisYear,
+                      seeAll: CatalogRoute(title: "Завершились за год", query: .finishedThisYear))
 
                 if let e = model.error {
                     ErrorState(message: e) { Task { await model.load(force: true) } }
@@ -191,6 +224,7 @@ struct HomeView: View {
             }
             .padding(.bottom, 24)
         }
+        .styledBackground()
         .ignoresSafeArea(edges: .top)
         .toolbar(.hidden, for: .navigationBar)
         .appDestinations()
@@ -201,7 +235,9 @@ struct HomeView: View {
             let seeds = library.history.map(\.title) + library.watchingTitles + library.titles(in: .favorite)
             await model.loadForYou(seeds: seeds, known: known)
             await model.loadNextSeasons(library: library)
+            await model.loadCollections(library: library)
         }
+        .animation(.spring(response: 0.4), value: updates.banner)
     }
 }
 

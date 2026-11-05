@@ -168,6 +168,7 @@ struct TraceSearchView: View {
                         .foregroundStyle(.secondary)
                 }
             }
+            .styledList()
             .navigationTitle("Поиск по кадру")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Закрыть") { dismiss() } } }
@@ -373,6 +374,7 @@ struct RandomPickView: View {
                     }
                 }
             }
+            .styledList()
             .navigationTitle("Что посмотреть?")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Закрыть") { dismiss() } } }

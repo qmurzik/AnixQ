@@ -8,6 +8,7 @@ struct AnixQApp: App {
     @StateObject private var library = LibraryStore()
     @StateObject private var downloads = DownloadManager.shared
     @AppStorage("accent") private var accentRaw = AccentChoice.rose.rawValue
+    @AppStorage(AppStyle.storageKey) private var styleRaw = AppStyle.classic.rawValue
     private var accent: AccentChoice { AccentChoice(rawValue: accentRaw) ?? .rose }
     @Environment(\.scenePhase) private var scenePhase
 
@@ -21,6 +22,9 @@ struct AnixQApp: App {
     var body: some Scene {
         WindowGroup {
             RootView()
+                // Style colours are read statically, so rebuild the UI when the style changes.
+                .id(styleRaw == AppStyle.material.rawValue || styleRaw == AppStyle.glass.rawValue
+                    ? styleRaw + accentRaw : styleRaw)
                 .tint(accent.color)
                 .environmentObject(library)
                 .environmentObject(downloads)
@@ -35,6 +39,8 @@ struct AnixQApp: App {
                     if LibSession.userId == nil { await LibAPI.loadProfile() }
                     await library.syncBookmarks()
                 }
+                CloudSync.shared.start(library: library)
+                await UpdateChecker.shared.check()
                 if ShikiSession.isLoggedIn { await library.importShikimori() }
                 await WatchingUpdater.shared.refresh(library: library)
                 await EpisodeNotifier.reschedule(titles: library.watchingTitles)
@@ -55,6 +61,8 @@ struct RootView: View {
     @State private var shikiLink: ShikiLink?
     @EnvironmentObject private var library: LibraryStore
     @ObservedObject private var network = NetworkMonitor.shared
+    @ObservedObject private var sharePlay = SharePlayManager.shared
+    @State private var sharedLaunch: WatchTogether?
 
     /// Actions requested by Siri / Shortcuts while the app was closed.
     private func handlePendingAction() {
@@ -106,7 +114,19 @@ struct RootView: View {
                 }
                 .animation(.spring(response: 0.35), value: network.isOnline)
                 .onReceive(NotificationCenter.default.publisher(for: .anixqPendingAction)) { _ in handlePendingAction() }
-                .onAppear { handlePendingAction() }
+                .onAppear {
+                    handlePendingAction()
+                    sharePlay.listen()
+                }
+                // SharePlay started by someone else on the FaceTime call.
+                .onReceive(sharePlay.$incoming) { a in
+                    guard let a else { return }
+                    sharePlay.incoming = nil
+                    sharedLaunch = a
+                }
+                .fullScreenCover(item: $sharedLaunch) { a in
+                    SharePlayLauncher(activity: a).environmentObject(library)
+                }
                 .onContinueUserActivity(CSSearchableItemActionType) { activity in
                     if let id = activity.userInfo?[CSSearchableItemActivityIdentifier] as? String,
                        id.hasPrefix("title:") {

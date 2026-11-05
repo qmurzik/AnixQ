@@ -23,8 +23,11 @@ jobs:
 
       - name: Select Xcode
         run: |
-          X=$(ls -d /Applications/Xcode_1[6-9]*.app 2>/dev/null | sort -V | tail -1); [ -n "$X" ] && sudo xcode-select -s "$X"
+          # Newest stable Xcode (26+ brings the iOS 26 SDK with Liquid Glass); betas and RCs are skipped.
+          X=$(ls -d /Applications/Xcode_[0-9]*.app 2>/dev/null | grep -viE 'beta|rc|release_candidate' | sort -V | tail -1)
+          [ -n "$X" ] && sudo xcode-select -s "$X"
           xcodebuild -version
+          xcodebuild -version | head -1 | awk '{print $2}' > xcode-version.txt
 
       - name: Install XcodeGen
         run: brew install xcodegen
@@ -60,7 +63,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: AnixQ-ipa-${{ matrix.os }}
-          path: AnixQ.ipa
+          path: |
+            AnixQ.ipa
+            xcode-version.txt
 
       - name: Upload build log
         if: failure()
@@ -82,7 +87,15 @@ jobs:
           path: dl
       - name: Pick IPA
         run: |
-          IPA=$(find dl -name AnixQ.ipa -size +100k | head -1)
+          # Prefer the build made with the newest Xcode (real Liquid Glass on iOS 26).
+          IPA=""; BEST=0
+          for d in dl/*/; do
+            [ -f "$d/AnixQ.ipa" ] || continue
+            [ "$(stat -c%s "$d/AnixQ.ipa")" -gt 100000 ] || continue
+            V=$(cat "$d/xcode-version.txt" 2>/dev/null | cut -d. -f1); V=${V:-0}
+            echo "$d Xcode $V"
+            if [ -z "$IPA" ] || [ "$V" -gt "$BEST" ]; then IPA="$d/AnixQ.ipa"; BEST=$V; fi
+          done
           test -n "$IPA"
           cp "$IPA" AnixQ.ipa
           echo "IPA_SIZE=$(stat -c%s AnixQ.ipa)" >> "$GITHUB_ENV"

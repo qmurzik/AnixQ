@@ -5,12 +5,15 @@ import UIKit
 enum Theme {
     /// User-selectable accent (Settings → Оформление).
     static var accent: Color { AccentChoice.current.color }
-    static let background = Color(.systemBackground)
-    static let groupedBackground = Color(.systemGroupedBackground)
-    static let card = Color(.secondarySystemBackground)
-    static let cardHighlight = Color(.tertiarySystemBackground)
+    static var style: AppStyle { AppStyle.current }
+    static var background: Color { style.palette.background }
+    static var groupedBackground: Color { style.palette.background }
+    static var card: Color { style.palette.card }
+    static var cardHighlight: Color { style.palette.cardHighlight }
     static let secondaryText = Color.secondary
-    static let stroke = Color.primary.opacity(0.08)
+    static var stroke: Color { style.palette.stroke }
+    /// Corner radius of posters and cards for the current style.
+    static var radius: CGFloat { style.radius }
 
     static func scoreColor(_ score: Double) -> Color {
         switch score {
@@ -21,11 +24,40 @@ enum Theme {
     }
 
     static func configureAppearance() {
-        UITabBar.appearance().scrollEdgeAppearance = {
-            let a = UITabBarAppearance()
-            a.configureWithDefaultBackground()
-            return a
-        }()
+        let style = AppStyle.current
+        let tab = UITabBarAppearance()
+        let nav = UINavigationBarAppearance()
+        switch style {
+        case .classic:
+            tab.configureWithDefaultBackground()
+            nav.configureWithDefaultBackground()
+        case .glass:
+            tab.configureWithTransparentBackground()
+            tab.backgroundEffect = UIBlurEffect(style: .systemUltraThinMaterialDark)
+            tab.backgroundColor = UIColor.white.withAlphaComponent(0.04)
+            nav.configureWithTransparentBackground()
+            nav.backgroundEffect = UIBlurEffect(style: .systemUltraThinMaterialDark)
+        case .material:
+            tab.configureWithOpaqueBackground()
+            tab.backgroundColor = UIColor(style.palette.cardHighlight)
+            tab.shadowColor = .clear
+            nav.configureWithOpaqueBackground()
+            nav.backgroundColor = UIColor(style.palette.background)
+            nav.shadowColor = .clear
+        case .oled:
+            tab.configureWithOpaqueBackground()
+            tab.backgroundColor = .black
+            tab.shadowColor = UIColor.white.withAlphaComponent(0.12)
+            nav.configureWithOpaqueBackground()
+            nav.backgroundColor = .black
+            nav.shadowColor = UIColor.white.withAlphaComponent(0.12)
+        }
+        // On iOS 26 the system bars are Liquid Glass already; keep them for the glass style.
+        if style == .glass, #available(iOS 26.0, *) { return }
+        UITabBar.appearance().standardAppearance = tab
+        UITabBar.appearance().scrollEdgeAppearance = tab
+        UINavigationBar.appearance().standardAppearance = nav
+        UINavigationBar.appearance().compactAppearance = nav
     }
 }
 
@@ -82,7 +114,7 @@ struct SectionTitle<Trailing: View>: View {
 
     var body: some View {
         HStack(alignment: .firstTextBaseline) {
-            Text(title).font(.title2.bold())
+            Text(title).font(Theme.style.sectionFont)
             Spacer()
             trailing()
         }
@@ -107,7 +139,7 @@ struct ScoreBadge: View {
         }
         .padding(.horizontal, 6)
         .padding(.vertical, 3)
-        .background(.ultraThinMaterial, in: Capsule())
+        .surface(Capsule(), level: .chip)
         .foregroundStyle(Theme.scoreColor(score))
     }
 }
@@ -121,25 +153,45 @@ struct PressableStyle: ButtonStyle {
     }
 }
 
-/// White capsule "Play" button as in the TV app.
+/// Main "Play" button: white slab (classic), glass, filled tonal pill (Material You).
 struct PrimaryButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(.headline)
-            .foregroundStyle(.black)
+        let style = Theme.style
+        return configuration.label
+            .font(style == .material ? .headline.weight(.semibold) : .headline)
+            .foregroundStyle(style.primaryButtonText)
             .frame(maxWidth: .infinity, minHeight: 50)
-            .background(.white, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-            .opacity(configuration.isPressed ? 0.8 : 1)
+            .modifier(PrimaryButtonBackground(style: style))
+            .scaleEffect(configuration.isPressed ? 0.97 : 1)
+            .opacity(configuration.isPressed ? 0.85 : 1)
+            .animation(.spring(response: 0.25, dampingFraction: 0.7), value: configuration.isPressed)
     }
 }
 
+private struct PrimaryButtonBackground: ViewModifier {
+    let style: AppStyle
+    func body(content: Content) -> some View {
+        switch style {
+        case .classic, .oled:
+            content.background(.white, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        case .material:
+            content.background(Theme.accent, in: Capsule())
+        case .glass:
+            content.glass(Capsule(), tint: Theme.accent.opacity(0.55), interactive: true)
+        }
+    }
+}
+
+/// Secondary square button next to "Play".
 struct GlassButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label
+        let style = Theme.style
+        return configuration.label
             .font(.headline)
             .foregroundStyle(.primary)
             .frame(minWidth: 50, minHeight: 50)
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .surface(style == .material || style == .glass ? AnyShape(Capsule())
+                        : AnyShape(RoundedRectangle(cornerRadius: 12, style: .continuous)), level: .control)
             .opacity(configuration.isPressed ? 0.7 : 1)
     }
 }
@@ -178,7 +230,7 @@ struct EmptyState: View {
 }
 
 extension View {
-    func cardStyle(radius: CGFloat = 14) -> some View {
-        background(Theme.card, in: RoundedRectangle(cornerRadius: radius, style: .continuous))
+    func cardStyle(radius: CGFloat? = nil) -> some View {
+        surface(RoundedRectangle(cornerRadius: radius ?? Theme.style.cardRadius, style: .continuous), level: .card)
     }
 }

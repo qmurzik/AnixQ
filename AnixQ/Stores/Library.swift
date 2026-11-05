@@ -119,6 +119,7 @@ final class LibraryStore: ObservableObject {
             guard !Task.isCancelled, let data = try? JSONEncoder().encode(snapshot) else { return }
             try? data.write(to: url, options: .atomic)
         }
+        CloudSync.shared.libraryChanged()
     }
 
     // MARK: Playback progress
@@ -342,5 +343,55 @@ final class LibraryStore: ObservableObject {
             lastSyncError = "AnimeLib: \(error.localizedDescription)"
             DebugLog.log("lib: bookmark sync error \(error)")
         }
+    }
+}
+
+// MARK: - iCloud
+
+/// Compact copy of the library kept in iCloud key-value storage.
+struct CloudLibrary: Codable {
+    var history: [WatchEntry]
+    var positions: [Int: PlaybackPosition]
+    var watched: [Int: Set<String>]
+    var bookmarks: [String: LocalBookmark]
+}
+
+extension LibraryStore {
+    func cloudSnapshot() -> CloudLibrary {
+        let recent = positions.sorted { $0.value.date > $1.value.date }.prefix(400)
+        return CloudLibrary(history: Array(history.prefix(80)),
+                            positions: Dictionary(uniqueKeysWithValues: recent.map { ($0.key, $0.value) }),
+                            watched: watched, bookmarks: bookmarks)
+    }
+
+    /// Newest wins per title / episode / bookmark; watched marks are united. Returns true if anything changed.
+    @discardableResult
+    func mergeCloud(_ c: CloudLibrary) -> Bool {
+        var changed = false
+
+        var byTitle = Dictionary(history.map { ($0.title.id, $0) }, uniquingKeysWith: { a, b in a.date >= b.date ? a : b })
+        for e in c.history where (byTitle[e.title.id]?.date ?? .distantPast) < e.date {
+            byTitle[e.title.id] = e
+            changed = true
+        }
+        if changed { history = byTitle.values.sorted { $0.date > $1.date } }
+
+        for (id, p) in c.positions where (positions[id]?.date ?? .distantPast) < p.date {
+            positions[id] = p
+            changed = true
+        }
+        for (id, set) in c.watched {
+            let merged = (watched[id] ?? []).union(set)
+            if merged != watched[id] {
+                watched[id] = merged
+                changed = true
+            }
+        }
+        for (slug, b) in c.bookmarks where (bookmarks[slug]?.date ?? .distantPast) < b.date {
+            bookmarks[slug] = b
+            changed = true
+        }
+        if changed { save() }
+        return changed
     }
 }

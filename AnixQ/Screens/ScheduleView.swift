@@ -50,6 +50,7 @@ struct ScheduleView: View {
                 }
             }
         }
+        .styledList()
         .listStyle(.insetGrouped)
         .navigationTitle("Расписание")
         .toolbar {

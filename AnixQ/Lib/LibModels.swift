@@ -321,6 +321,8 @@ struct CatalogQuery: Equatable, Hashable {
     var statuses: Set<CatalogStatus> = []
     var yearFrom: Int?
     var yearTo: Int?
+    var episodesMin: Int?
+    var episodesMax: Int?
     var text: String = ""
 
     init() {}
@@ -340,6 +342,7 @@ struct CatalogQuery: Equatable, Hashable {
 
     var activeFilterCount: Int {
         genres.count + types.count + statuses.count + ((yearFrom != nil || yearTo != nil) ? 1 : 0)
+            + ((episodesMin != nil || episodesMax != nil) ? 1 : 0)
     }
 
     func items(page: Int) -> [URLQueryItem] {
@@ -358,10 +361,32 @@ struct CatalogQuery: Equatable, Hashable {
         statuses.map(\.rawValue).sorted().forEach { q.append(URLQueryItem(name: "status[]", value: String($0))) }
         if let yearFrom { q.append(URLQueryItem(name: "year_min", value: String(yearFrom))) }
         if let yearTo { q.append(URLQueryItem(name: "year_max", value: String(yearTo))) }
+        if let episodesMin { q.append(URLQueryItem(name: "episodes_min", value: String(episodesMin))) }
+        if let episodesMax { q.append(URLQueryItem(name: "episodes_max", value: String(episodesMax))) }
         return q
     }
 }
 
 extension String {
     var nilIfEmpty: String? { isEmpty ? nil : self }
+}
+
+extension CatalogQuery {
+    /// "На вечер": up to 13 episodes, best rated.
+    static var short: CatalogQuery {
+        var q = CatalogQuery(sort: .rating)
+        q.episodesMax = 13
+        q.statuses = [.finished]
+        return q
+    }
+
+    /// Finished during the last year, best rated.
+    static var finishedThisYear: CatalogQuery {
+        var q = CatalogQuery(sort: .rating)
+        q.statuses = [.finished]
+        let year = Calendar.current.component(.year, from: Date())
+        q.yearFrom = year - 1
+        q.yearTo = year
+        return q
+    }
 }

@@ -127,6 +127,7 @@ final class TitleModel: ObservableObject {
             teams = order.filter { $0.native && !$0.team.isSubtitles } + order.filter { $0.native && $0.team.isSubtitles }
                 + order.filter { !$0.native }
             selectedTeam = teams.first { $0.id == lastTeamId }
+                ?? DubPreferences.pick(teams)
                 ?? teams.first { $0.team.name == Self.preferredTeamName && $0.native }
                 ?? teams.first
             if let t = selectedTeam, t.native { LibAPI.warmUp(episodeId: first.id, teamId: t.id) }
@@ -151,6 +152,7 @@ final class TitleModel: ObservableObject {
     func select(_ team: TeamOption) {
         selectedTeam = team
         Self.preferredTeamName = team.team.name
+        DubPreferences.use(team.team.name)
         if team.native, let e = episodes.first { LibAPI.warmUp(episodeId: e.id, teamId: team.id) }
     }
 }
@@ -193,6 +195,7 @@ struct TitleView: View {
             }
             .padding(.bottom, 30)
         }
+        .styledBackground()
         .coordinateSpace(name: "titleScroll")
         .onPreferenceChange(HeaderOffsetKey.self) { y in
             let past = y < -(Layout.headerHeight - 140)

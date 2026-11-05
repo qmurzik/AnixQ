@@ -103,6 +103,7 @@ final class PlayerController: ObservableObject {
     func start() {
         try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
         try? AVAudioSession.sharedInstance().setActive(true)
+        SharePlayManager.shared.attach(self)
         Task { await load() }
     }
 
@@ -210,6 +211,7 @@ final class PlayerController: ObservableObject {
             let e = item.error?.localizedDescription
             Task { @MainActor in self?.itemStatus(st, duration: d, error: e) }
         }
+        SharePlayManager.shared.itemWillChange(self)
         player.replaceCurrentItem(with: item)
         if let time, time > 1 {
             player.seek(to: CMTime(seconds: time, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero)
@@ -309,6 +311,8 @@ final class PlayerController: ObservableObject {
         let resume = currentTime
         team = t
         TitleModel.preferredTeamName = t.team.name
+        DubPreferences.use(t.team.name)
+        SharePlayManager.shared.localChanged(self)
         Task {
             await load()
             if resume > 5, t.native { seek(to: resume) }
@@ -322,7 +326,20 @@ final class PlayerController: ObservableObject {
             library?.markWatched(title: title, episode: episode, totalEpisodes: episodes.count)
         }
         index = i
+        SharePlayManager.shared.localChanged(self)
         Task { await load() }
+    }
+
+    /// Another SharePlay participant moved to a different episode or dub.
+    func apply(sharedEpisodeId: Int, teamId: Int) {
+        if teamId != team.id, let t = teams.first(where: { $0.id == teamId }) {
+            team = t
+            if let i = episodes.firstIndex(where: { $0.id == sharedEpisodeId }) { index = i }
+            Task { await load() }
+        } else if let i = episodes.firstIndex(where: { $0.id == sharedEpisodeId }), i != index {
+            index = i
+            Task { await load() }
+        }
     }
 
     func next() { go(to: index + 1) }
@@ -334,6 +351,7 @@ final class PlayerController: ObservableObject {
     }
 
     func stop() {
+        SharePlayManager.shared.detach(self)
         saveProgress(force: true)
         countdownTask?.cancel()
         player.pause()

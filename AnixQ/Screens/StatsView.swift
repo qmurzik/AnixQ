@@ -102,6 +102,7 @@ struct StatsView: View {
                 }
             }
         }
+        .styledList()
         .navigationTitle("Статистика")
     }
 

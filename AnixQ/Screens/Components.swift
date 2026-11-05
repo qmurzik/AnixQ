@@ -61,10 +61,11 @@ extension View {
 
 struct PosterImage: View {
     let url: URL?
-    var radius: CGFloat = 10
+    var radius: CGFloat? = nil
 
     var body: some View {
-        Theme.card
+        let radius = self.radius ?? Theme.radius
+        return Theme.card
             .aspectRatio(2.0 / 3.0, contentMode: .fit)
             .overlay { RemoteImage(url: url) }
             .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
@@ -162,8 +163,8 @@ struct ShelfSkeleton: View {
             RoundedRectangle(cornerRadius: 6).fill(Theme.card).frame(width: 180, height: 22).padding(.horizontal)
             HStack(spacing: 12) {
                 ForEach(0..<4, id: \.self) { _ in
-                    RoundedRectangle(cornerRadius: 10).fill(Theme.card).frame(width: 118, height: 177)
-                        .overlay(ShimmerView().clipShape(RoundedRectangle(cornerRadius: 10)))
+                    RoundedRectangle(cornerRadius: Theme.radius).fill(Theme.card).frame(width: 118, height: 177)
+                        .overlay(ShimmerView().clipShape(RoundedRectangle(cornerRadius: Theme.radius)))
                 }
             }
             .padding(.horizontal)
@@ -204,7 +205,8 @@ struct ContinueCard: View {
                 .padding(10)
             }
             .frame(width: width, height: width * 9 / 16)
-            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: Theme.radius + 2, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: Theme.radius + 2, style: .continuous).stroke(Theme.stroke, lineWidth: 0.5))
 
             Text(entry.title.title).font(.subheadline.weight(.semibold)).lineLimit(1)
             Text(entry.teamName).font(.caption).foregroundStyle(.secondary).lineLimit(1)
@@ -298,6 +300,7 @@ struct CatalogListView: View {
                 EmptyState(icon: "tray", title: "Ничего не найдено")
             }
         }
+        .styledBackground()
         .navigationTitle(title)
         .task { if loader.items.isEmpty { await loader.reset(query) } }
         .refreshable { await loader.reset(query) }

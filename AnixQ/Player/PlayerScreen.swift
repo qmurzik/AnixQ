@@ -29,6 +29,8 @@ struct PlayerScreen: View {
     @State private var scrubValue: Double = 0
     @State private var webLoading = true
     @State private var webReload = 0
+    @ObservedObject private var sharePlay = SharePlayManager.shared
+    @State private var confirmLeaveSharePlay = false
     @AppStorage("subs.size") private var subtitleSize: Double = 20
     @AppStorage("subs.background") private var subtitleBackground = true
 
@@ -81,6 +83,17 @@ struct PlayerScreen: View {
             OrientationController.set(.portrait)
         }
         .onChange(of: c.isPlaying) { playing in if playing { scheduleHide() } }
+        .confirmationDialog("Смотреть вместе", isPresented: $confirmLeaveSharePlay, titleVisibility: .visible) {
+            Button("Выйти из SharePlay", role: .destructive) { sharePlay.leave() }
+        } message: {
+            Text("Перемотка, пауза и смена серии синхронизируются у всех участников звонка.")
+        }
+        .alert("SharePlay", isPresented: Binding(get: { sharePlay.message != nil },
+                                                 set: { if !$0 { sharePlay.message = nil } })) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(sharePlay.message ?? "")
+        }
     }
 
     // MARK: Video
@@ -263,6 +276,12 @@ struct PlayerScreen: View {
                     .lineLimit(1)
             }
             Spacer()
+            if c.isNative && (sharePlay.isEligible || sharePlay.isActive) {
+                iconButton("shareplay", size: 17) {
+                    if sharePlay.isActive { confirmLeaveSharePlay = true } else { Task { await sharePlay.start(with: c) } }
+                }
+                .foregroundStyle(sharePlay.isActive ? Color.green : Color.white)
+            }
             RoutePicker().frame(width: 30, height: 30)
             if let pip, AVPictureInPictureController.isPictureInPictureSupported() {
                 iconButton("pip.enter", size: 17) { pip.startPictureInPicture() }

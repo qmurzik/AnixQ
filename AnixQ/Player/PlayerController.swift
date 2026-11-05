@@ -16,6 +16,14 @@ final class PlayerController: ObservableObject {
     @Published private(set) var qualities: [StreamQuality] = []
     @Published private(set) var quality: StreamQuality?
     @Published private(set) var kodikURL: URL?
+    /// Kodik link of this episode for viewers who join a room from a browser (any team if ours has none).
+    private(set) var webKodikURL: URL?
+    /// Direct stream for browser viewers (nil for downloaded files).
+    var webStreamURL: URL? {
+        guard isNative, let q = quality, q.label != "Скачано", !q.url.isFileURL else { return nil }
+        return q.url
+    }
+    var teamName: String { team.team.name }
     @Published private(set) var isResolving = false
     @Published private(set) var isBuffering = false
     @Published private(set) var isPlaying = false
@@ -173,6 +181,7 @@ final class PlayerController: ObservableObject {
         subtitleText = nil
         cues = []
         kodikURL = nil
+        webKodikURL = nil
         error = nil
         currentTime = 0
         duration = 0
@@ -200,6 +209,8 @@ final class PlayerController: ObservableObject {
         do {
             let players = try await LibAPI.players(episodeId: ep.id)
             guard token == loadToken else { return }
+            let kodik = players.first { $0.team.id == team.id && $0.isKodik } ?? players.first { $0.isKodik }
+            webKodikURL = kodik?.kodikSrc.flatMap(LibAPI.kodikURL)
             if team.native, let p = players.first(where: { $0.team.id == team.id && $0.isNative }) {
                 hrefs = p.hrefs
                 playerId = p.playerId

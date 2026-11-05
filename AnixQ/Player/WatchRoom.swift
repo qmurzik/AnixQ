@@ -183,6 +183,11 @@ struct RoomMessage: Codable {
     var position: Double?
     var rate: Float?
     var sentAt: Double
+    /// For browser viewers: direct stream, Kodik fallback, dub name.
+    var stream: String?
+    var kodik: String?
+    var team: String?
+    var web: Bool?
 }
 
 /// "Комната по ссылке": everyone with the link watches the same episode; play, pause, seek and
@@ -339,6 +344,9 @@ final class WatchRoom: ObservableObject {
             m.playing = c.isPlaying || c.isBuffering
             m.position = c.currentTime
             m.rate = c.rate
+            m.stream = c.webStreamURL?.absoluteString
+            m.kodik = c.webKodikURL?.absoluteString
+            m.team = c.teamName
         }
         guard let data = try? JSONEncoder().encode(m) else { return }
         lastSent = Date()
@@ -425,7 +433,7 @@ struct RoomInviteSheet: View {
         VStack(spacing: 18) {
             Image(systemName: "person.2.wave.2.fill").font(.system(size: 44)).foregroundStyle(Theme.accent)
             Text("Комната создана").font(.title2.bold())
-            Text("Отправьте ссылку друзьям. Пауза, перемотка и смена серии будут общими — на iPhone и iPad, без FaceTime.")
+            Text("Отправьте ссылку друзьям. Пауза, перемотка и смена серии будут общими — в AnixQ на iPhone и iPad или прямо в браузере, без FaceTime и установки.")
                 .multilineTextAlignment(.center).foregroundStyle(.secondary)
             Text(url.absoluteString).font(.footnote.monospaced()).padding(10).frame(maxWidth: .infinity)
                 .background(Theme.card, in: RoundedRectangle(cornerRadius: 10))

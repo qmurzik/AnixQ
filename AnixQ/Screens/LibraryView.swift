@@ -374,7 +374,10 @@ struct SettingsView: View {
                                         DispatchQueue.main.async {
                                             if let err {
                                                 DebugLog.log("icon: \(err)")
-                                                iconError = "iOS не сменил иконку: \(err.localizedDescription)"
+                                                let code = (err as NSError).code
+                                                iconError = code == -54
+                                                    ? "iOS запретил смену иконки для этой подписи (ошибка -54: приложению, подписанному через GBox, не дают доступ к базе иконок). В приложении это не исправить: иконку можно поменять при подписи в GBox, если там есть такая настройка."
+                                                    : "iOS не сменил иконку: \(err.localizedDescription)"
                                             } else {
                                                 appIcon = icon.rawValue
                                             }
@@ -426,8 +429,11 @@ struct SettingsView: View {
                 Section {
                     LabeledContent("Версия", value: UpdateChecker.installedVersion)
                     if let u = updates.available {
+                        Button { UpdateChecker.openGBox() } label: {
+                            Label("Обновить до \(u.version) в GBox", systemImage: "arrow.down.app.fill")
+                        }
                         Link(destination: UpdateChecker.ipaURL) {
-                            Label("Скачать версию \(u.version)", systemImage: "arrow.down.app.fill")
+                            Label("Скачать IPA", systemImage: "square.and.arrow.down")
                         }
                     } else {
                         Button {

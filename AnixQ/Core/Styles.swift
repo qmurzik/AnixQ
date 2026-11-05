@@ -223,11 +223,11 @@ struct StyledBackground: View {
         ZStack {
             style.palette.background
             if style == .glass {
-                // Very soft ambient light so the glass layer has something to refract.
-                RadialGradient(colors: [Theme.accent.opacity(0.16), .clear], center: UnitPoint(x: 0, y: 0.55),
-                               startRadius: 0, endRadius: 520)
-                RadialGradient(colors: [Color.indigo.opacity(0.16), .clear], center: UnitPoint(x: 1, y: 0.95),
-                               startRadius: 0, endRadius: 560)
+                // Faint ambient light low on the screen only, so nothing seams against hero images at the top.
+                RadialGradient(colors: [Theme.accent.opacity(0.09), .clear], center: UnitPoint(x: 0.1, y: 1.05),
+                               startRadius: 0, endRadius: 460)
+                RadialGradient(colors: [Color.indigo.opacity(0.10), .clear], center: UnitPoint(x: 0.95, y: 1.0),
+                               startRadius: 0, endRadius: 420)
             }
         }
     }

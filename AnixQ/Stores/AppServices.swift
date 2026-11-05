@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import UserNotifications
 
 // MARK: - Favourite dubs
 
@@ -76,6 +77,45 @@ final class UpdateChecker: ObservableObject {
         objectWillChange.send()
     }
 
+    /// GBox's own link for a source: opens GBox on AnixQ's source, where "Обновить" installs the new version.
+    static var gboxURL: URL? {
+        let encoded = sourceURL.absoluteString.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? ""
+        return URL(string: "GBox://AddSource/\(encoded)")
+    }
+
+    /// Opens GBox; without GBox installed falls back to the IPA download.
+    static func openGBox() {
+        guard let url = gboxURL else { return }
+        UIApplication.shared.open(url) { ok in
+            if !ok { UIApplication.shared.open(ipaURL) }
+        }
+    }
+
+    private var notifiedVersion: String? {
+        get { UserDefaults.standard.string(forKey: "update.notified") }
+        set { UserDefaults.standard.set(newValue, forKey: "update.notified") }
+    }
+
+    /// One system notification per new version.
+    private func notifyIfNeeded(_ u: Update) async {
+        guard notifiedVersion != u.version else { return }
+        var settings = await UNUserNotificationCenter.current().notificationSettings()
+        if settings.authorizationStatus == .notDetermined {
+            // Quiet ("provisional") permission: no prompt, the notice lands in Notification Center.
+            _ = try? await UNUserNotificationCenter.current().requestAuthorization(options: [.provisional, .alert, .sound, .badge])
+            settings = await UNUserNotificationCenter.current().notificationSettings()
+        }
+        guard settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional else { return }
+        notifiedVersion = u.version
+        let content = UNMutableNotificationContent()
+        content.title = "Доступна версия AnixQ \(u.version)"
+        content.body = u.notes.isEmpty ? "Нажмите, чтобы обновить через GBox." : "\(u.notes.prefix(140))\nНажмите, чтобы обновить через GBox."
+        content.sound = .default
+        content.userInfo = ["update": u.version]
+        try? await UNUserNotificationCenter.current().add(
+            UNNotificationRequest(identifier: "update-\(u.version)", content: content, trigger: nil))
+    }
+
     func check(force: Bool = false) async {
         if !force, let lastChecked, Date().timeIntervalSince(lastChecked) < 3 * 3600 { return }
         isChecking = true
@@ -89,6 +129,7 @@ final class UpdateChecker: ObservableObject {
         lastChecked = Date()
         let notes = (app["appUpdateDescription"] as? String) ?? (app["appDescription"] as? String) ?? ""
         available = Self.isNewer(version, than: Self.installedVersion) ? Update(version: version, notes: notes) : nil
+        if let available { await notifyIfNeeded(available) }
         DebugLog.log("update: installed \(Self.installedVersion), latest \(version)")
     }
 
@@ -114,7 +155,7 @@ struct UpdateBanner: View {
                 Image(systemName: "arrow.down.app.fill").font(.title2).foregroundStyle(Theme.accent)
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Доступна версия \(update.version)").font(.headline)
-                    Text("У вас \(UpdateChecker.installedVersion). Обновите через GBox или скачайте IPA.")
+                    Text("У вас \(UpdateChecker.installedVersion). GBox откроется на источнике AnixQ — нажмите «Обновить».")
                         .font(.footnote).foregroundStyle(.secondary)
                 }
                 Spacer(minLength: 0)
@@ -123,8 +164,10 @@ struct UpdateBanner: View {
                 }
             }
             HStack(spacing: 10) {
-                Button { openURL(UpdateChecker.ipaURL) } label: { Text("Скачать IPA").frame(maxWidth: .infinity) }
-                    .buttonStyle(PrimaryButtonStyle())
+                Button { UpdateChecker.openGBox() } label: {
+                    Label("Обновить в GBox", systemImage: "arrow.down.circle.fill").frame(maxWidth: .infinity)
+                }
+                .buttonStyle(PrimaryButtonStyle())
                 Button { openURL(UpdateChecker.releasesURL) } label: {
                     Text("Что нового").padding(.horizontal, 14)
                 }

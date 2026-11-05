@@ -1,3 +1,4 @@
+import UserNotifications
 import Foundation
 import SwiftUI
 import UIKit
@@ -272,7 +273,33 @@ extension DownloadManager: URLSessionDownloadDelegate {
     }
 }
 
-final class AppDelegate: NSObject, UIApplicationDelegate {
+final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
+    func application(_ application: UIApplication,
+                     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
+        UNUserNotificationCenter.current().delegate = self
+        return true
+    }
+
+    /// Show banners while the app is open too.
+    func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification,
+                                withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
+        completionHandler([.banner, .sound, .list])
+    }
+
+    /// Update → GBox; new episode → the title page.
+    func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse,
+                                withCompletionHandler completionHandler: @escaping () -> Void) {
+        let info = response.notification.request.content.userInfo
+        Task { @MainActor in
+            if info["update"] != nil {
+                UpdateChecker.openGBox()
+            } else if let slug = info["slug"] as? String, let url = URL(string: "anixq://title/\(slug)") {
+                UIApplication.shared.open(url)
+            }
+            completionHandler()
+        }
+    }
+
     func application(_ application: UIApplication, handleEventsForBackgroundURLSession identifier: String,
                      completionHandler: @escaping () -> Void) {
         Task { @MainActor in DownloadManager.shared.backgroundCompletion = completionHandler }

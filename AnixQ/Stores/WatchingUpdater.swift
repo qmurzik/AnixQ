@@ -138,6 +138,7 @@ final class WatchingUpdater: ObservableObject {
             scheduleBackgroundRefresh()
             let work = Task { @MainActor in
                 if let lib = library() { await WatchingUpdater.shared.refresh(library: lib, force: true) }
+                await UpdateChecker.shared.check()
                 task.setTaskCompleted(success: true)
             }
             task.expirationHandler = { work.cancel() }

@@ -240,6 +240,7 @@
   .copy { margin-top: 12px; display: flex; align-items: center; gap: 6px; background: rgba(0,0,0,.35); border: 1px solid var(--stroke); border-radius: 14px; padding: 6px 6px 6px 14px; min-width: 0; }
   .copy code { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; color: #e2dcff; }
   .copy button { flex: none; padding: 10px 14px; border-radius: 10px; border: 0; background: var(--text); color: #111; font-weight: 750; font-size: 14px; cursor: pointer; }
+  .gbox-btn { margin-top: 12px; padding: 12px 20px; font-size: 16px; }
   .tools { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
   .tools span { padding: 6px 12px; border-radius: 999px; border: 1px solid var(--stroke); font-size: 14px; color: var(--muted); }
 
@@ -526,7 +527,8 @@
           <h3>Через GBox</h3>
           <p class="muted">Рекомендуем — с автообновлениями</p>
           <div class="step"><span class="num">1</span><div><strong>Установите GBox</strong><p>С официального сайта GBox, если его ещё нет.</p></div></div>
-          <div class="step"><span class="num">2</span><div><strong>Добавьте источник</strong><p>«Источники» → «Добавить» → вставьте адрес:</p>
+          <div class="step"><span class="num">2</span><div><strong>Добавьте источник</strong><p>Одной кнопкой с iPhone — или вручную: «Источники» → «Добавить» → вставьте адрес:</p>
+            <a class="btn primary gbox-btn" href="GBox://AddSource/https%3A%2F%2Fraw.githubusercontent.com%2Fqmurzik%2FAnixQ%2Fgbox-source%2Fgbox.json">Добавить в GBox</a>
             <div class="copy"><code id="src">https://raw.githubusercontent.com/qmurzik/AnixQ/gbox-source/gbox.json</code><button type="button" data-copy="src">Копировать</button></div>
           </div></div>
           <div class="step"><span class="num">3</span><div><strong>Установите AnixQ</strong><p>Найдите его в источнике и нажмите «Установить».</p></div></div>

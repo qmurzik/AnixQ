@@ -44,8 +44,8 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
-            MARKETING_VERSION="1.0.${{ github.run_number }}" \
-            CURRENT_PROJECT_VERSION="${{ github.run_number }}" \
+            MARKETING_VERSION="1.0.$(( ${{ github.run_number }} + 37 ))" \
+            CURRENT_PROJECT_VERSION="$(( ${{ github.run_number }} + 37 ))" \
             build | tee build.log | grep -E "error:|BUILD" || true
           grep -q "BUILD SUCCEEDED" build.log
 
@@ -86,7 +86,7 @@ jobs:
           test -n "$IPA"
           cp "$IPA" AnixQ.ipa
           echo "IPA_SIZE=$(stat -c%s AnixQ.ipa)" >> "$GITHUB_ENV"
-          echo "VERSION=1.0.${{ github.run_number }}" >> "$GITHUB_ENV"
+          echo "VERSION=1.0.$(( ${{ github.run_number }} + 37 ))" >> "$GITHUB_ENV"
       - name: Release notes
         run: git log -1 --pretty=%B > notes.txt
       - name: Create release

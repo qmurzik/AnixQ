@@ -6,7 +6,7 @@
   "sourceLinkTitle": "Сайт",
   "sourceLinkUrl": "https://qmurzik.github.io/AnixQ/",
   "sourceImage": "https://raw.githubusercontent.com/qmurzik/AnixQ/gbox-source/icon.png",
-  "sourceUpdateTime": "2026-11-05T18:12:05+0000",
+  "sourceUpdateTime": "2026-11-05T18:21:39+0000",
   "sourceDescription": "AnixQ — аниме с AnimeLib: каталог, плеер без рекламы, синхронизация с Shikimori.",
   "appCategories": [
     "Приложения"
@@ -15,13 +15,13 @@
     {
       "appType": "SELF_SIGN",
       "appCateIndex": 0,
-      "appUpdateTime": "2026-11-05T18:12:05+0000",
+      "appUpdateTime": "2026-11-05T18:21:39+0000",
       "appName": "AnixQ",
-      "appVersion": "1.0.48",
+      "appVersion": "1.0.49",
       "appImage": "https://raw.githubusercontent.com/qmurzik/AnixQ/gbox-source/icon.png",
-      "appPackage": "https://github.com/qmurzik/AnixQ/releases/download/v1.0.48/AnixQ.ipa",
-      "appSize": 3079114,
-      "appDescription": "• Менеджер загрузок: очередь с приоритетами, пауза, лимит места, удаление просмотренных, несколько озвучек; плеер: авто-качество, задержка звука и субтитров, внешние SRT/ASS, настройки для каждого тайтла, восстановление после сбоев сети"
+      "appPackage": "https://github.com/qmurzik/AnixQ/releases/download/v1.0.49/AnixQ.ipa",
+      "appSize": 3306950,
+      "appDescription": "• Умная медиатека «Для меня», комнаты совместного просмотра по ссылке, поиск аниме по видео"
     }
   ]
 }

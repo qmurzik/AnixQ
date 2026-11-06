@@ -492,6 +492,7 @@ extension LibraryStore {
         }
         let dubsAt = UserDefaults.standard.double(forKey: "dubs.at")
         doc.prefs = SyncDoc.Prefs(dubs: DubPreferences.favorites, at: dubsAt)
+        if let ch = RemoteTV.channel, let k = RemoteTV.keyB64 { doc.remote = SyncDoc.Remote(channel: ch, key: k, at: RemoteTV.at) }
         return doc
     }
 
@@ -545,6 +546,7 @@ extension LibraryStore {
             }
         }
         Self.removedBookmarks = removed
+        if let r = d.remote, RemoteTV.channel == nil || r.at > RemoteTV.at { RemoteTV.adopt(channel: r.channel, key: r.key, at: r.at) }
         if let p = d.prefs, p.at > UserDefaults.standard.double(forKey: "dubs.at") {
             DubPreferences.favorites = p.dubs
             UserDefaults.standard.set(p.at, forKey: "dubs.at")

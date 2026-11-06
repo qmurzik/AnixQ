@@ -488,6 +488,9 @@ struct SettingsView: View {
                 }
 
                 Section {
+                    Button { RemoteTV.shared.showRemote = true } label: {
+                        Label("Пульт телевизора", systemImage: "appletvremote.gen4")
+                    }
                     NavigationLink { DeviceSyncView() } label: {
                         LabeledContent {
                             Text(GistSync.shared.isOn ? "Вкл." : "Выкл.")

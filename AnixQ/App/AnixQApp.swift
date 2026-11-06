@@ -20,6 +20,7 @@ struct AnixQApp: App {
     }
     private var accent: AccentChoice { AccentChoice(rawValue: accentRaw) ?? .rose }
     @Environment(\.scenePhase) private var scenePhase
+    @ObservedObject private var remoteTV = RemoteTV.shared
 
     init() {
         CrashReporter.install()
@@ -39,6 +40,7 @@ struct AnixQApp: App {
                 .environmentObject(downloads)
                 .preferredColorScheme(colorScheme)
                 .task { AdBlocker.shared.warmUp() }
+                .sheet(isPresented: $remoteTV.showRemote) { RemoteTVView().presentationDetents([.large]) }
         }
         .onChange(of: scenePhase) { phase in
             AppLock.shared.sceneChanged(phase)

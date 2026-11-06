@@ -11,6 +11,7 @@ import ru.qmods.anixq.tv.data.Api
 import ru.qmods.anixq.tv.data.Images
 import ru.qmods.anixq.tv.data.Store
 import ru.qmods.anixq.tv.data.Sync
+import ru.qmods.anixq.tv.data.Remote
 import ru.qmods.anixq.tv.data.Updater
 import ru.qmods.anixq.tv.ui.AnixTheme
 import ru.qmods.anixq.tv.ui.App
@@ -23,17 +24,42 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Store.init(applicationContext)
+        ru.qmods.anixq.tv.data.WatchNext.init(applicationContext)
         Coil.setImageLoader(Images.loader(applicationContext))
         if (Store.libToken != null) lifecycleScope.launch { Api.loadProfile() }
         setContent {
-            val nav = remember { Nav().also { applyLaunchExtras(it) } }
+            val nav = remember { Nav().also { applyLaunchExtras(it); this.nav = it } }
+            androidx.compose.runtime.DisposableEffect(nav) {
+                Remote.navigator = { m -> nav.playFromPhone(m) }
+                onDispose { Remote.navigator = null }
+            }
             AnixTheme { App(nav) }
         }
+    }
+
+    private var nav: Nav? = null
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        intent.getStringExtra("rc_play")?.let { runCatching { nav?.playFromPhone(org.json.JSONObject(it)) } }
+        nav?.let { handleSearch(intent, it) }
+    }
+
+    private fun handleSearch(i: android.content.Intent, nav: Nav): Boolean {
+        val q = i.getStringExtra(android.app.SearchManager.QUERY)?.trim()?.takeIf { it.isNotEmpty() } ?: return false
+        if (i.action != android.content.Intent.ACTION_SEARCH && i.action != "android.media.action.MEDIA_PLAY_FROM_SEARCH") return false
+        ru.qmods.anixq.tv.ui.SearchRequest.pending = q
+        ru.qmods.anixq.tv.ui.SearchRequest.playFirst = i.action == "android.media.action.MEDIA_PLAY_FROM_SEARCH"
+        nav.stack.clear(); nav.tab = Tab.SEARCH
+        return true
     }
 
     /** Used by CI screenshots: `-e tab 1`, `-e slug <slug>`, `--ez play true`. */
     private fun applyLaunchExtras(nav: Nav) {
         val i = intent ?: return
+        i.getStringExtra("rc_play")?.let { runCatching { nav.playFromPhone(org.json.JSONObject(it)) }; return }
+        if (handleSearch(i, nav)) return
         i.getStringExtra("tab")?.toIntOrNull()?.let { nav.tab = Tab.entries.getOrElse(it) { Tab.HOME } }
         if (i.getStringExtra("login") != null) { nav.push(LoginRoute); return }
         val slug = i.getStringExtra("slug") ?: return
@@ -45,6 +71,8 @@ class MainActivity : ComponentActivity() {
         super.onStart()
         Sync.start()
         Sync.syncNow()
+        Remote.start(applicationContext)
+        RemoteService.start(applicationContext)
         Updater.checkSometimes()
     }
 

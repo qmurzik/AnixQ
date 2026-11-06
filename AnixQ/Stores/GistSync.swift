@@ -36,6 +36,9 @@ struct SyncDoc: Codable {
     var watched: [String: Watched] = [:]
     var bookmarks: [String: Bookmark] = [:]
     var prefs: Prefs?
+    /// Phone-remote channel created by the TV (see RemoteTV).
+    struct Remote: Codable, Equatable { var channel: String; var key: String; var at: Double }
+    var remote: Remote?
 }
 
 // MARK: - Library <-> document
@@ -397,7 +400,9 @@ struct PairTVView: View {
         if sendShiki {
             p["shiki"] = ["token": ShikiSession.token ?? "", "refresh": ShikiSession.refreshToken ?? "",
                           "cookies": ShikiSession.cookieHeader ?? "", "csrf": ShikiSession.csrf ?? "",
-                          "userId": ShikiSession.userId ?? 0, "nickname": ShikiSession.nickname ?? ""] as [String: Any]
+                          "userId": ShikiSession.userId ?? 0, "nickname": ShikiSession.nickname ?? "",
+                          // So the TV can renew the 1-day token by itself.
+                          "clientId": ShikiSession.clientId ?? "", "clientSecret": ShikiSession.clientSecret ?? ""] as [String: Any]
         }
         p["from"] = UIDevice.current.name
         return (try? JSONSerialization.data(withJSONObject: p)) ?? Data()

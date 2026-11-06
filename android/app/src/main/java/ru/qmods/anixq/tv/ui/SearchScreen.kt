@@ -55,6 +55,9 @@ import ru.qmods.anixq.tv.data.Store
 private val ru = listOf("абвгде", "ёжзийк", "лмнопр", "стуфхц", "чшщъыь", "эюя123", "456789")
 private val en = listOf("abcdef", "ghijkl", "mnopqr", "stuvwx", "yz1234", "567890")
 
+/** Voice search from the system ("Окей, Google, найди … в AnixQ"). */
+object SearchRequest { var pending: String? = null; var playFirst = false }
+
 private object SearchState {
     var popular: List<Title> = emptyList()
     val recent: ArrayList<String> by lazy { ArrayList(Store.recentSearches) }
@@ -64,6 +67,7 @@ private object SearchState {
 @Composable
 fun SearchScreen(nav: Nav) {
     var text by rememberSaveable { mutableStateOf("") }
+    LaunchedEffect(SearchRequest.pending) { SearchRequest.pending?.let { text = it; SearchRequest.pending = null } }
     var latin by rememberSaveable { mutableStateOf(false) }
     var results by remember { mutableStateOf<List<Title>>(emptyList()) }
     var popular by remember { mutableStateOf(SearchState.popular) }
@@ -95,6 +99,8 @@ fun SearchScreen(nav: Nav) {
         results = runCatching { Api.search(q) }.getOrDefault(emptyList())
         busy = false
         if (results.isNotEmpty()) SearchState.remember(q)
+        // "Включи … в AnixQ": open the best match right away.
+        if (SearchRequest.playFirst && results.isNotEmpty()) { SearchRequest.playFirst = false; nav.open(results.first()) }
     }
 
     Row(Modifier.fillMaxSize()) {

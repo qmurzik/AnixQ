@@ -82,10 +82,12 @@ data class Episode(val id: Int, val number: String, val name: String?, val index
 
 data class Team(val id: Int, val name: String, val isSubtitles: Boolean)
 
-data class Segment(val kind: String, val from: Double, val to: Double) {
+data class Segment(val kind: String, val from: Double, val to: Double, val source: Double = 0.0) {
     val isOpening get() = kind.lowercase().let { it.contains("open") || it.contains("опен") }
     val isEnding get() = kind.lowercase().let { it.contains("end") || it.contains("энд") }
 }
+
+data class Subtitle(val url: String, val format: String, val label: String)
 
 data class Player(
     val team: Team,
@@ -95,6 +97,7 @@ data class Player(
     val segments: List<Segment>,
     val playerId: Int?,
     val serverTimecode: Double?,
+    val subtitles: List<Subtitle> = emptyList(),
 ) {
     val isNative get() = player.equals("animelib", true) && hrefs.isNotEmpty()
     val isKodik get() = player.equals("kodik", true) && kodikSrc != null

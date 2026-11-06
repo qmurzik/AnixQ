@@ -413,6 +413,17 @@ struct PlayerScreenV2: View {
 
     private var moreMenu: some View {
         Menu {
+            if RemoteTV.shared.isAvailable {
+                Button {
+                    // Hand the episode over to the TV at this exact moment; the phone becomes the remote.
+                    let at = c.currentTime
+                    if c.isPlaying { c.togglePlay() }
+                    RemoteTV.shared.play(title: c.title, episodeId: c.episode.id, teamId: c.team.id, position: at)
+                    RemoteTV.shared.showRemote = false
+                    dismiss()
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { RemoteTV.shared.showRemote = true }
+                } label: { Label("Продолжить на ТВ", systemImage: "tv") }
+            }
             Section {
                 Button { panel = .sleep } label: {
                     Label(c.sleepAt != nil || c.sleepAfterEpisode ? "Таймер сна включён" : "Таймер сна", systemImage: "moon.zzz")

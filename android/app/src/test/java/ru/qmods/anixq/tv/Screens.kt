@@ -73,6 +73,7 @@ class Screens {
             }
         }
         Store.init(ctx)
+        ru.qmods.anixq.tv.data.Profiles.list.value = listOf(ru.qmods.anixq.tv.data.Profile("main", "Я", 0xFFFF4D7A))
         HomeData.rows.value = listOf("Новые серии" to titles.take(9), "Популярные онгоинги" to titles.drop(5), "Популярное" to titles.reversed())
     }
 
@@ -172,6 +173,12 @@ class Screens {
         val m = playerModel(); m.pos = 512.0; m.sleepAt = System.currentTimeMillis() + 30 * 60_000
         shot("player-more") { androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.fillMaxSize()) { FakeVideo()
             ru.qmods.anixq.tv.ui.Controls(m, androidx.compose.ui.focus.FocusRequester(), androidx.compose.ui.focus.FocusRequester(), {}, {}, {}, {}) } }
+    }
+
+    @Test fun profiles() {
+        ru.qmods.anixq.tv.data.Profiles.list.value = listOf(ru.qmods.anixq.tv.data.Profile("main", "Кирилл", 0xFFFF4D7A),
+            ru.qmods.anixq.tv.data.Profile("p1", "Аня", 0xFF8B5CFF), ru.qmods.anixq.tv.data.Profile("p2", "Детский", 0xFF2ED47A))
+        shot("profiles") { ru.qmods.anixq.tv.ui.ProfilePicker {} }
     }
 
     @Test fun catalog() = shot("catalog") { App(Nav().apply { tab = Tab.CATALOG }) }

@@ -64,6 +64,8 @@ object Store {
     val gistId get() = prefs.getString("gh.gist", null)
     val githubLogin get() = prefs.getString("gh.login", null)
     val shikiNickname get() = prefs.getString("shiki.nickname", null)
+    val shikiJson: JSONObject? get() = prefs.getString("shiki.json", null)?.let { runCatching { JSONObject(it) }.getOrNull() }
+        ?.takeIf { it.str("token") != null || it.str("cookies") != null }
 
     fun setLib(token: String?, refresh: String?, user: String?, userId: Int?) {
         prefs.edit().putString("lib.token", token).putString("lib.refresh", refresh).putString("lib.user", user)
@@ -102,6 +104,30 @@ object Store {
         get() = prefs.getString("search.recent", "")!!.split("\n").filter { it.isNotBlank() }
         set(v) { prefs.edit().putString("search.recent", v.take(8).joinToString("\n")).apply() }
 
+    // Phone remote channel (shared through the gist; see Remote)
+    val remoteChannel: String get() = prefs.getString("rc.channel", "") ?: ""
+    val remoteKey: String get() = prefs.getString("rc.key", "") ?: ""
+    private val remoteAt: Double get() = prefs.getString("rc.at", null)?.toDoubleOrNull() ?: 0.0
+
+    fun ensureRemote() {
+        if (remoteChannel.isNotEmpty() && remoteKey.isNotEmpty()) return
+        val r = java.security.SecureRandom()
+        val abc = "abcdefghjkmnpqrstuvwxyz23456789"
+        val ch = (1..20).map { abc[r.nextInt(abc.length)] }.joinToString("")
+        val key = android.util.Base64.encodeToString(ByteArray(32).also { r.nextBytes(it) },
+            android.util.Base64.URL_SAFE or android.util.Base64.NO_PADDING or android.util.Base64.NO_WRAP)
+        setRemote(ch, key, now())
+        changed()
+    }
+
+    private fun setRemote(ch: String, key: String, at: Double) {
+        prefs.edit().putString("rc.channel", ch).putString("rc.key", key).putString("rc.at", at.toString()).commit()
+    }
+
+    var subtitles: Boolean
+        get() = prefs.getBoolean("subtitles", true)
+        set(v) { prefs.edit().putBoolean("subtitles", v).apply() }
+
     var screensaver: Boolean
         get() = prefs.getBoolean("screensaver", true)
         set(v) { prefs.edit().putBoolean("screensaver", v).apply(); bump() }
@@ -118,9 +144,19 @@ object Store {
         return Triple(eps, (seconds / 3600).toInt(), titles)
     }
 
-    fun init(context: Context) {
-        prefs = context.getSharedPreferences("anixq", Context.MODE_PRIVATE)
+    private var loadedName: String? = null
+
+    /** Load a profile's data ([name] = its SharedPreferences file). Re-calling with the same name is a no-op. */
+    fun init(context: Context, name: String? = null) {
+        if (name == null && loadedName != null) return
+        val n = name ?: run { Profiles.init(context); Profiles.prefsName(Profiles.current.value!!) }
+        if (n == loadedName) return
+        loadedName = n
+        positions.clear(); history.clear(); watched.clear(); bookmarks.clear(); removedBookmarks.clear()
+        dubs = emptyList(); dubsAt = 0.0
+        prefs = context.getSharedPreferences(n, Context.MODE_PRIVATE)
         prefs.getString("library", null)?.let { runCatching { load(JSONObject(it)) } }
+        bump()
     }
 
     private fun bump() { _version.value += 1 }
@@ -210,6 +246,7 @@ object Store {
         return JSONObject().put("v", 1).put("device", "Android TV").put("updated", 0)
             .put("titles", titles).put("progress", progress).put("watched", w).put("bookmarks", b)
             .put("prefs", JSONObject().put("dubs", JSONArray(dubs)).put("at", dubsAt))
+            .apply { if (remoteChannel.isNotEmpty()) put("remote", JSONObject().put("channel", remoteChannel).put("key", remoteKey).put("at", remoteAt)) }
     }
 
     /** Newest wins per key; watched sets are united. Returns true if anything changed. */
@@ -265,6 +302,14 @@ object Store {
         d.optJSONObject("prefs")?.let { p ->
             val at = p.optDouble("at", 0.0)
             if (at > dubsAt) { dubs = p.optJSONArray("dubs")?.strings() ?: dubs; dubsAt = at; changed = true }
+        }
+        d.optJSONObject("remote")?.let { r ->
+            val at = r.optDouble("at", 0.0)
+            val ch = r.str("channel"); val k = r.str("key")
+            if (ch != null && k != null && (remoteChannel.isEmpty() || at > remoteAt) && (ch != remoteChannel || k != remoteKey)) {
+                setRemote(ch, k, at); changed = true
+                if (!initial) Remote.restart()
+            }
         }
         if (changed && !initial) {
             bump()

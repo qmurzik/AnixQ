@@ -176,8 +176,12 @@ object Api {
             val hrefs = LinkedHashMap<String, String>()
             p.obj("video")?.arr("quality")?.forEach { q -> q.str("href")?.let { hrefs[q.int("quality")?.let { "${it}p" } ?: "auto"] = it } }
             val tc = p.opt("timecode")
+            val subs = p.arr("subtitles").mapNotNull { x ->
+                val src = (x.str("src") ?: x.str("url"))?.let { if (it.startsWith("//")) "https:$it" else it } ?: return@mapNotNull null
+                Subtitle(src, (x.str("format") ?: src.substringAfterLast('.')).lowercase(), x.str("name") ?: x.str("label") ?: "Субтитры")
+            }
             Player(team, p.str("player") ?: "?", p.str("src"), hrefs, parseSegments(tc), p.int("id"),
-                (tc as? Number)?.toDouble() ?: (tc as? JSONObject)?.let { it.dbl("timecode") ?: it.dbl("time") })
+                (tc as? Number)?.toDouble() ?: (tc as? JSONObject)?.let { it.dbl("timecode") ?: it.dbl("time") }, subs)
         }
     }
 

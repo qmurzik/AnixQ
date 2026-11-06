@@ -99,6 +99,40 @@ fun SettingsScreen(nav: Nav) {
             }
         }
 
+        item {
+            Section("Профили") {
+                val profiles by ru.qmods.anixq.tv.data.Profiles.list.collectAsState()
+                val me by ru.qmods.anixq.tv.data.Profiles.current.collectAsState()
+                Text("У каждого своя история, закладки и синхронизация. Сейчас: ${me?.name ?: ""}", fontSize = 18.sp, color = C.muted)
+                Spacer(Modifier.height(12.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    if (profiles.size > 1) PillButton("Сменить профиль") { nav.picking = true }
+                    if (profiles.size < 6) PillButton("Добавить профиль") { dialog = "addProfile" }
+                    me?.let { PillButton("Переименовать") { dialog = "renameProfile" } }
+                    if (me?.id != "main") me?.let { p -> PillButton("Удалить «${p.name}»") { ru.qmods.anixq.tv.data.Profiles.remove(p) } }
+                }
+            }
+        }
+
+        item {
+            Section("Пульт с телефона") {
+                val online by ru.qmods.anixq.tv.data.Remote.online.collectAsState()
+                Text(when {
+                    Store.githubToken == null -> "Включите синхронизацию выше — и iPhone сможет включать серии на этом ТВ и управлять ими из любого места."
+                    online -> "Готово: на iPhone откройте серию → «Смотреть на ТВ», или в плеере «⋯» → «Продолжить на ТВ»."
+                    else -> "Подключаемся… (нужна синхронизация и интернет)"
+                }, fontSize = 18.sp, color = if (online) Color(0xFF5BE08F) else C.muted)
+                val ctx = androidx.compose.ui.platform.LocalContext.current
+                if (android.os.Build.VERSION.SDK_INT >= 29 && !android.provider.Settings.canDrawOverlays(ctx)) {
+                    Spacer(Modifier.height(12.dp))
+                    PillButton("Разрешить включать серии, когда AnixQ свёрнут") {
+                        runCatching { ctx.startActivity(android.content.Intent(android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                            android.net.Uri.parse("package:${ctx.packageName}")).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }
+                    }
+                }
+            }
+        }
+
         item { Section("Обновления") { UpdateSection() } }
 
         item {
@@ -149,6 +183,10 @@ fun SettingsScreen(nav: Nav) {
                 }
             }
         }
+    }
+    if (dialog == "addProfile") NameDialog("Новый профиль", "") { n -> dialog = null; if (n != null) ru.qmods.anixq.tv.data.Profiles.switchTo(ru.qmods.anixq.tv.data.Profiles.add(n)) }
+    if (dialog == "renameProfile") ru.qmods.anixq.tv.data.Profiles.current.value?.let { p ->
+        NameDialog("Имя профиля", p.name) { n -> dialog = null; if (!n.isNullOrBlank()) { ru.qmods.anixq.tv.data.Profiles.rename(p, n); ru.qmods.anixq.tv.data.Profiles.current.value = p.copy(name = n) } }
     }
     if (dialog == "signout") ChoiceDialog("Отключить синхронизацию на этом ТВ?", listOf(Choice("Отключить"), Choice("Отмена")), { dialog = null }) {
         if (it == 0) Sync.signOut()

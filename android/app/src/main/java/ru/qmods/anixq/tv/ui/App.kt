@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Bookmarks
 import androidx.compose.material.icons.rounded.Check
@@ -84,7 +85,8 @@ data class TitleRoute(val title: Title) : Route { override val scope get() = "ti
 /** episodeId null = first episode; [next] = the one after [episodeId]. */
 data class PlayerRoute(val title: Title, val episodeId: Int?, val teamId: Int? = null, val next: Boolean = false,
                        /** "Continue": re-read the newest synced position before starting. */ val resume: Boolean = false,
-                       /** Ignore the saved position (episode menu → "С начала"). */ val fromStart: Boolean = false) : Route {
+                       /** Ignore the saved position (episode menu → "С начала"). */ val fromStart: Boolean = false,
+                       /** Exact moment to start at (sent from the phone). */ val startAt: Double? = null) : Route {
     override val scope get() = "player"
 }
 
@@ -92,6 +94,8 @@ data object LoginRoute : Route { override val scope get() = "login" }
 
 class Nav {
     var tab by mutableStateOf(Tab.HOME)
+    /** "Кто смотрит?" on start when there are several profiles. */
+    var picking by mutableStateOf(ru.qmods.anixq.tv.data.Profiles.list.value.size > 1)
     val stack = mutableStateListOf<Route>()
 
     fun open(t: Title) = push(TitleRoute(t))
@@ -101,6 +105,14 @@ class Nav {
     fun push(r: Route) { Focus.leaving(); stack.add(r) }
     /** Replace the player (next episode chosen from inside it). */
     fun replaceTop(r: Route) { if (stack.isNotEmpty()) stack.removeAt(stack.lastIndex); stack.add(r) }
+    /** "Смотреть на ТВ" from the phone: replace whatever is playing. */
+    fun playFromPhone(m: org.json.JSONObject) {
+        val t = m.optJSONObject("title")?.let { Title.fromSync(it) } ?: return
+        stack.removeAll { it is PlayerRoute }
+        push(PlayerRoute(t, m.optInt("episodeId").takeIf { it > 0 }, m.optInt("teamId").takeIf { it > 0 },
+            resume = m.optBoolean("resume"), startAt = m.optDouble("pos", -1.0).takeIf { it >= 0 }))
+    }
+
     fun pop() { if (stack.isNotEmpty()) { val r = stack.removeAt(stack.lastIndex); if (r is TitleRoute) Focus.forget(r.scope) } }
 }
 
@@ -161,6 +173,7 @@ fun App(nav: Nav) {
             nav.stack.clear(); nav.tab = Tab.SETTINGS; true
         } else false
     }) {
+        if (nav.picking && top == null) { ProfilePicker { nav.picking = false; Focus.reset("home"); nav.tab = Tab.HOME }; return@Box }
         when (top) {
             null -> {
                 BackHandler(enabled = nav.tab != Tab.HOME) { nav.tab = Tab.HOME }
@@ -233,7 +246,16 @@ private fun TopBar(nav: Nav) {
         if (ru.qmods.anixq.tv.data.Updater.available != null && update !is ru.qmods.anixq.tv.data.UpdateState.Installing)
             Text("Есть обновление", fontSize = 13.sp, color = C.pink, modifier = Modifier.padding(end = 14.dp))
         Clock()
-        Spacer(Modifier.width(14.dp))
+        Spacer(Modifier.width(10.dp))
+        val profiles by ru.qmods.anixq.tv.data.Profiles.list.collectAsState()
+        val me by ru.qmods.anixq.tv.data.Profiles.current.collectAsState()
+        if (profiles.size > 1) me?.let { p ->
+            Surface(onClick = { nav.picking = true }, modifier = Modifier.padding(horizontal = 4.dp).tick(),
+                shape = ClickableSurfaceDefaults.shape(CircleShape),
+                colors = ClickableSurfaceDefaults.colors(containerColor = Color.Transparent, focusedContainerColor = Color.White),
+                scale = ClickableSurfaceDefaults.scale(focusedScale = 1.1f)) { Box(Modifier.padding(3.dp)) { Avatar(p, 30.dp) } }
+        }
+        Spacer(Modifier.width(4.dp))
         TabItem(Tab.SETTINGS, nav, Modifier.focusRequester(requesters.getValue(Tab.SETTINGS)))
     }
 }

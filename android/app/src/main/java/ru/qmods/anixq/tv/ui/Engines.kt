@@ -53,6 +53,16 @@ class ExoEngine(context: Context, private val onError: (String) -> Unit) : Engin
         setShutterBackgroundColor(Color.BLACK)
         setKeepContentOnPlayerReset(true)
         keepScreenOn = true
+        // Readable from the sofa: white text with a black outline, no box.
+        subtitleView?.setStyle(androidx.media3.ui.CaptionStyleCompat(Color.WHITE, Color.TRANSPARENT, Color.TRANSPARENT,
+            androidx.media3.ui.CaptionStyleCompat.EDGE_TYPE_OUTLINE, Color.BLACK, null))
+        subtitleView?.setFractionalTextSize(0.058f)
+        subtitleView?.setApplyEmbeddedStyles(false)
+    }
+
+    fun setSubtitles(on: Boolean) {
+        exo.trackSelectionParameters = exo.trackSelectionParameters.buildUpon()
+            .setTrackTypeDisabled(androidx.media3.common.C.TRACK_TYPE_TEXT, !on).setPreferredTextLanguage("ru").build()
     }
 
     init {
@@ -61,8 +71,19 @@ class ExoEngine(context: Context, private val onError: (String) -> Unit) : Engin
         })
     }
 
-    fun load(url: String, startAt: Double) {
-        exo.setMediaItem(MediaItem.fromUri(url), (startAt * 1000).toLong())
+    fun load(url: String, startAt: Double, subtitles: List<ru.qmods.anixq.tv.data.Subtitle> = emptyList()) {
+        val subs = subtitles.mapIndexed { i, s ->
+            MediaItem.SubtitleConfiguration.Builder(android.net.Uri.parse(s.url))
+                .setMimeType(when (s.format) {
+                    "vtt", "webvtt" -> androidx.media3.common.MimeTypes.TEXT_VTT
+                    "srt" -> androidx.media3.common.MimeTypes.APPLICATION_SUBRIP
+                    else -> androidx.media3.common.MimeTypes.TEXT_SSA
+                })
+                .setLabel(s.label).setLanguage("ru")
+                .setSelectionFlags(if (i == 0) androidx.media3.common.C.SELECTION_FLAG_DEFAULT else 0)
+                .build()
+        }
+        exo.setMediaItem(MediaItem.Builder().setUri(url).setSubtitleConfigurations(subs).build(), (startAt * 1000).toLong())
         exo.prepare()
         exo.playWhenReady = true
     }
@@ -134,8 +155,20 @@ class KodikEngine(context: Context) : Engine {
         }
     }
 
+    private var loadedAt = 0L
+    /** Kodik didn't start by itself (autoplay blocked / old WebView). */
+    val stuck get() = !started && loadedAt > 0 && System.currentTimeMillis() - loadedAt > 12_000
+
+    /** Hand the remote to Kodik's own buttons inside the page. */
+    fun interactive() {
+        view.isFocusable = true; view.isFocusableInTouchMode = true
+        view.requestFocus()
+        loadedAt = 0
+    }
+
     fun load(url: String, startAt: Double) {
         this.startAt = startAt
+        loadedAt = System.currentTimeMillis()
         started = false; ended = false; position = 0.0; duration = 0.0
         val html = """
             <html><head><meta name="viewport" content="width=device-width,initial-scale=1"></head>

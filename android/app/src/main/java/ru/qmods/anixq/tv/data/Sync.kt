@@ -72,6 +72,9 @@ object Sync {
 
     fun syncNow() { scope.launch { sync() } }
 
+    /** Profile switch: stop syncing the old profile's gist. */
+    fun stopLoop() { loop?.cancel(); loop = null; pushJob?.cancel(); etag = null; lastHash = ""; status.value = "Выключено" }
+
     /** Push right away (leaving the player, app going to background). */
     fun flush() { if (isOn) { pushJob?.cancel(); scope.launch { sync() } } }
 
@@ -159,9 +162,18 @@ object Sync {
                 if (file?.optBoolean("truncated") == true) file.str("raw_url")?.let { u ->
                     content = Api.http.newCall(Request.Builder().url(u).build()).execute().use { it.body?.string().orEmpty() }
                 }
-                if (content.isNotBlank()) withContext(Dispatchers.Main) { Store.importSync(JSONObject(content)) }
+                if (content.isNotBlank()) withContext(Dispatchers.Main) {
+                    if (Store.importSync(JSONObject(content))) {
+                        // Show what you watched on the phone in the TV home screen's "Continue" row too.
+                        Store.continueList.take(4).forEach { e ->
+                            WatchNext.update(e.title, Episode(e.episodeId, e.ep, e.epName, 0), e.teamId, e.pos, e.dur, hasNext = true)
+                        }
+                    }
+                }
                 etag = tag
             }
+            // First sync on this TV: create the phone-remote channel if the gist has none yet.
+            withContext(Dispatchers.Main) { if (Store.remoteChannel.isEmpty()) Store.ensureRemote(); Remote.ensureConnected() }
             val doc = withContext(Dispatchers.Main) { Store.exportSync() }
             val hash = sha(doc.toString())
             if (hash != lastHash) {

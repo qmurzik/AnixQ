@@ -32,3 +32,17 @@ The TV shows a QR code `anixq://pair/<channel>?k=<base64url 32-byte key>`. The p
 (12-byte nonce ‖ ciphertext ‖ 16-byte tag, base64) and publishes it once to MQTT topic
 `anixq/pair/<channel>` on `wss://public.cloud.shiftr.io` (user/password `public`).
 Only the TV knows the key, the broker only sees ciphertext.
+
+## Remote control (phone → TV, any network)
+
+The TV creates `remote: {channel, key, at}` in the sync document after its first sync (newest `at` wins).
+Phones synced with the same gist pick it up automatically — no extra pairing.
+
+- `anixq/rc/<channel>/cmd` — phone → TV, AES-256-GCM sealed JSON (`nonce ‖ ciphertext ‖ tag`, base64):
+  `{cmd, id, at, …}` with `cmd` = `play` (`title`, `episodeId`, `teamId?`, `pos?`), `toggle`, `pause`, `resume`,
+  `seek` (`by`), `seekTo` (`to`), `next`, `prev`, `skip`, `speed` (`value`), `volume` (`dir` ±1), `stop`, `ping`.
+  Commands older than 2 minutes or with a repeated `id` are ignored.
+- `anixq/rc/<channel>/state` — TV → phone, retained, same sealing: `{state, title, slug, cover, ep, epName, team,
+  pos, dur, hasNext, hasPrev, inOpening, speed, device, at}` (every 5 s while playing and on every change).
+
+Relay: `wss://public.cloud.shiftr.io` (MQTT 3.1.1, user/pass `public`).

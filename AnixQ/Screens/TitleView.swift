@@ -442,6 +442,12 @@ struct TitleView: View {
                                     }
                                 }
                                 .contextMenu {
+                                    if RemoteTV.shared.isAvailable {
+                                        Button {
+                                            RemoteTV.shared.play(title: t, episodeId: ep.id, teamId: model.selectedTeam?.id,
+                                                                 position: library.resumePosition(episodeId: ep.id))
+                                        } label: { Label("Смотреть на ТВ", systemImage: "tv") }
+                                    }
                                     watchedToggle(ep)
                                     Button {
                                         comments = CommentTarget(postId: ep.id, type: "episodes", title: "Серия \(ep.number) · комментарии")

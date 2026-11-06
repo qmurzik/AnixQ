@@ -45,6 +45,7 @@ import androidx.compose.material.icons.rounded.VideoLibrary
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableDoubleStateOf
@@ -90,7 +91,59 @@ import ru.qmods.anixq.tv.data.Sync
 import ru.qmods.anixq.tv.data.Title
 
 /** Everything the player screen knows; Compose reads the `by mutableStateOf` fields. */
-class PlayerModel(private val context: Context, private val scope: CoroutineScope, val title: Title, private val route: PlayerRoute) {
+class PlayerModel(private val context: Context, private val scope: CoroutineScope, val title: Title, private val route: PlayerRoute) :
+    ru.qmods.anixq.tv.data.RemoteTarget, ru.qmods.anixq.tv.data.RoomPlayer {
+    var currentUrl: String? = null
+
+    override fun roomState(): org.json.JSONObject = org.json.JSONObject()
+        .put("slug", title.slug).put("titleName", title.title).put("episodeId", episode?.id ?: 0)
+        .put("episodeNumber", episode?.number ?: "").put("teamId", player?.team?.id ?: 0).put("team", player?.team?.name ?: "")
+        .put("playing", playing).put("position", pos).put("rate", speed.toDouble())
+        .apply { currentUrl?.let { put(if (native) "stream" else "kodik", it) } }
+
+    override fun roomApply(m: org.json.JSONObject) {
+        if (m.optString("slug") != title.slug) { say("В комнате смотрят «${m.optString("titleName")}»"); return }
+        val eid = m.optInt("episodeId"); val tid = m.optInt("teamId")
+        if (eid != episode?.id) {
+            val i = episodes.indexOfFirst { it.id == eid }
+            if (i >= 0) load(i, teamId = tid.takeIf { it > 0 }, keepPos = m.optDouble("position", 0.0))
+            return
+        }
+        val remotePlaying = m.optBoolean("playing")
+        var target = m.optDouble("position", pos)
+        if (remotePlaying) target += (System.currentTimeMillis() / 1000.0 + ru.qmods.anixq.tv.data.Sync.serverClockOffset - m.optDouble("sentAt", 0.0))
+            .coerceIn(0.0, 10.0) * m.optDouble("rate", 1.0)
+        if (kotlin.math.abs(target - pos) > 2) { engine?.seek(target); pos = target }
+        if (remotePlaying != playing) toggle()
+    }
+
+    /** Set by the screen: leave the player (phone "Стоп"). */
+    var onExit: () -> Unit = {}
+    private var lastStatePush = 0L
+    private var lastPlaying = false
+
+    override fun remoteCommand(cmd: org.json.JSONObject) {
+        when (cmd.optString("cmd")) {
+            "toggle" -> toggle()
+            "pause" -> if (playing) toggle()
+            "resume" -> if (!playing) toggle()
+            "seek" -> seekBy(cmd.optDouble("by", 10.0))
+            "seekTo" -> { val t = cmd.optDouble("to", pos); seekBy(t - pos) }
+            "next" -> next()
+            "prev" -> prev()
+            "skip" -> if (inOpening) skipOpening() else if (hasNext) next() else seekBy(85.0)
+            "speed" -> if (native) applySpeed(cmd.optDouble("value", 1.0).toFloat())
+            "stop" -> onExit()
+        }
+        ru.qmods.anixq.tv.data.Remote.publishState()
+    }
+
+    override fun remoteState(): org.json.JSONObject = org.json.JSONObject()
+        .put("state", if (message != null && failed) "error" else if (playing) "playing" else "paused")
+        .put("title", title.title).put("slug", title.slug).put("titleId", title.id).put("cover", title.thumb ?: "")
+        .put("ep", episode?.number ?: "").put("epName", episode?.displayTitle ?: "").put("episodeId", episode?.id ?: 0)
+        .put("team", player?.team?.name ?: "").put("pos", pos).put("dur", dur).put("hasNext", hasNext).put("hasPrev", hasPrev)
+        .put("inOpening", inOpening).put("speed", speed.toDouble())
     var episodes by mutableStateOf<List<Episode>>(emptyList())
     var index by mutableIntStateOf(0)
     var players by mutableStateOf<List<Player>>(emptyList())
@@ -110,11 +163,16 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
     var ended by mutableStateOf(false)
 
     var speed by mutableStateOf(1f)
+    var subtitlesOn by mutableStateOf(Store.subtitles)
+    fun toggleSubtitles() { subtitlesOn = !subtitlesOn; Store.subtitles = subtitlesOn; exo?.setSubtitles(subtitlesOn); say(if (subtitlesOn) "Субтитры включены" else "Субтитры выключены") }
     /** Sleep timer: pause at this wall-clock time (0 = off), or when the episode ends. */
     var sleepAt by mutableLongStateOf(0L)
     var sleepAfterEpisode by mutableStateOf(false)
 
     fun applySpeed(f: Float) { speed = f; exo?.exo?.setPlaybackSpeed(f); say(if (f == 1f) "Обычная скорость" else "Скорость ${speedLabel(f)}") }
+
+    var kodikStuck by mutableStateOf(false)
+    fun kodikInteractive() { kodikStuck = false; kodik?.interactive(); say("Управление в плеере Kodik: стрелки и OK") }
 
     var openingSkipped by mutableStateOf(false)
     var nextDismissed by mutableStateOf(false)
@@ -134,7 +192,10 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
     val episode: Episode? get() = episodes.getOrNull(index)
     val hasNext get() = index + 1 < episodes.size
     val hasPrev get() = index > 0
-    val segments: List<Segment> get() = player?.segments ?: emptyList()
+    /** AnimeLib's own timings, or AniSkip's when AnimeLib has none. */
+    var extraSegments by mutableStateOf<List<Segment>>(emptyList())
+    private var aniSkipAsked = -1
+    val segments: List<Segment> get() = player?.segments?.takeIf { it.isNotEmpty() } ?: extraSegments
     val opening: Segment? get() = segments.firstOrNull { it.isOpening }
     val ending: Segment? get() = segments.firstOrNull { it.isEnding }
     val inOpening get() = opening?.let { pos >= it.from - 0.5 && pos < it.to - 2 } == true
@@ -175,7 +236,7 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
         val sameEpisode = i == index && episodes.isNotEmpty() && keepPos != null
         index = i
         val ep = episodes[i]
-        if (!sameEpisode) { openingSkipped = false; nextDismissed = false; viewedSent = false; prefetched = false; pos = 0.0; dur = 0.0; ended = false }
+        if (!sameEpisode) { extraSegments = emptyList(); openingSkipped = false; nextDismissed = false; viewedSent = false; prefetched = false; pos = 0.0; dur = 0.0; ended = false }
         message = if (sameEpisode) "Переключаем…" else "Серия ${ep.number}"
         failed = false
         buffering = true
@@ -193,7 +254,7 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
                 player = chosen
                 val local = Store.resume(ep.id)
                 val remote = chosen.serverTimecode?.takeIf { it > 5 && (route.episodeId != ep.id || local == null) }
-                val startAt = keepPos ?: (if (route.fromStart && !startedOnce) 0.0 else null) ?: local ?: remote ?: 0.0
+                val startAt = keepPos ?: (if (!startedOnce) route.startAt ?: (if (route.fromStart) 0.0 else null) else null) ?: local ?: remote ?: 0.0
                 startedOnce = true
                 if (chosen.isNative) startNative(chosen, startAt, qualityKey) else startKodik(chosen, startAt)
                 if (startAt > 5 && keepPos == null) say("Продолжаем с ${fmt(startAt)}")
@@ -215,7 +276,10 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
         kodik?.release(); kodik = null
         native = true
         val e = exo ?: ExoEngine(context) { err -> onNativeError(err) }.also { exo = it }
-        e.load(Api.videoUrl(servers[0], href), startAt)
+        currentUrl = Api.videoUrl(servers[0], href)
+        e.load(currentUrl!!, startAt, p.subtitles)
+        ru.qmods.anixq.tv.data.Room.sendState()
+        e.setSubtitles(subtitlesOn)
         if (speed != 1f) e.exo.setPlaybackSpeed(speed)
     }
 
@@ -224,7 +288,9 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
         native = false
         quality = null
         val k = kodik ?: KodikEngine(context).also { kodik = it }
-        k.load(Api.kodikUrl(p.kodikSrc!!), startAt)
+        currentUrl = Api.kodikUrl(p.kodikSrc!!)
+        k.load(currentUrl!!, startAt)
+        ru.qmods.anixq.tv.data.Room.sendState()
     }
 
     private fun onNativeError(err: String) {
@@ -234,7 +300,7 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
         if (serverIdx + 1 < servers.size) {
             serverIdx += 1
             say("Зеркало ${serverIdx + 1}…")
-            exo?.load(Api.videoUrl(servers[serverIdx], href), at)
+            exo?.load(Api.videoUrl(servers[serverIdx], href), at, p.subtitles)
             return
         }
         val k = players.firstOrNull { it.team.id == p.team.id && it.isKodik } ?: players.firstOrNull { it.isKodik }
@@ -246,7 +312,15 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
     fun tick() {
         val e = engine ?: return
         pos = e.position; dur = e.duration; playing = e.isPlaying; buffering = e.isBuffering; ended = e.ended
+        // Once we know the length, look up community opening/ending times if AnimeLib has none.
+        val ep0 = episode
+        if (ep0 != null && dur > 60 && aniSkipAsked != ep0.id && player?.segments.isNullOrEmpty()) {
+            aniSkipAsked = ep0.id
+            val mal = title.shikiId
+            if (mal != null) scope.launch { extraSegments = ru.qmods.anixq.tv.data.AniSkip.segments(mal, ep0.number, dur) }
+        }
         if (toast != null && System.currentTimeMillis() - toastAt > 2500) toast = null
+        if (!native && kodik?.stuck == true && !kodikStuck) kodikStuck = true
         if (sleepAt > 0 && System.currentTimeMillis() >= sleepAt) { sleepAt = 0; e.pause(); playing = false; saveProgress(force = true); say("Таймер сна: пауза") }
         if (sleepAfterEpisode && ended) { sleepAfterEpisode = false; saveProgress(force = true); say("Таймер сна: серия закончилась") }
         // Auto-skip the opening once per episode.
@@ -255,7 +329,17 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
         // Watched at 90 %.
         if (!viewedSent && dur > 60 && pos / dur >= 0.9) {
             viewedSent = true
-            episode?.let { ep -> Store.markWatched(title, ep); scope.launch { Api.markViewed(ep.id, player?.playerId) } }
+            episode?.let { ep ->
+                Store.markWatched(title, ep)
+                scope.launch { Api.markViewed(ep.id, player?.playerId) }
+                ru.qmods.anixq.tv.data.Shiki.markEpisode(title.shikiId, ep.number)
+            }
+        }
+        // Keep the phone remote up to date (every 5 s, and right away on play/pause).
+        val nowMs = System.currentTimeMillis()
+        if (nowMs - lastStatePush > 5_000 || playing != lastPlaying) {
+            lastStatePush = nowMs; lastPlaying = playing
+            ru.qmods.anixq.tv.data.Remote.publishState()
         }
         // Warm up the next episode a few minutes before the end, so "next" starts instantly.
         if (hasNext && !prefetched && dur > 0 && dur - pos < 180) {
@@ -279,6 +363,7 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
         if (force || (playing && now - lastSaved > 10_000)) {
             lastSaved = now
             Store.updateProgress(title, ep, p.team, pos, dur)
+            ru.qmods.anixq.tv.data.WatchNext.update(title, ep, p.team.id, pos, dur, hasNext, force)
         }
         if (force || (playing && now - lastRemote > 30_000)) {
             lastRemote = now
@@ -287,13 +372,18 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
         }
     }
 
-    fun toggle() { val e = engine ?: return; if (playing) { e.pause(); playing = false; saveProgress(force = true) } else { e.play(); playing = true } }
+    fun toggle() {
+        val e = engine ?: return
+        if (playing) { e.pause(); playing = false; saveProgress(force = true) } else { e.play(); playing = true }
+        ru.qmods.anixq.tv.data.Room.sendState()
+    }
 
     fun seekBy(d: Double) {
         val e = engine ?: return
         val target = (pos + d).coerceIn(0.0, if (dur > 0) dur - 1 else Double.MAX_VALUE)
         e.seek(target); pos = target
         if (d < 0) nextDismissed = false
+        ru.qmods.anixq.tv.data.Room.sendState()
     }
 
     fun skipOpening(auto: Boolean = false) {
@@ -337,7 +427,16 @@ fun PlayerScreen(nav: Nav, route: PlayerRoute) {
     val countdown by remember(m) { derivedStateOf { m.countdown } }
 
     LaunchedEffect(m) { m.start() }
-    DisposableEffect(m) { onDispose { m.release() } }
+    DisposableEffect(m) {
+        ru.qmods.anixq.tv.data.Remote.target = m
+        ru.qmods.anixq.tv.data.Room.player = m
+        onDispose {
+            if (ru.qmods.anixq.tv.data.Room.player === m) { ru.qmods.anixq.tv.data.Room.player = null; ru.qmods.anixq.tv.data.Room.leave() }
+            m.release()
+            if (ru.qmods.anixq.tv.data.Remote.target === m) ru.qmods.anixq.tv.data.Remote.target = null
+            ru.qmods.anixq.tv.data.Remote.publishState()
+        }
+    }
     LaunchedEffect(m) {
         while (true) {
             m.tick()
@@ -364,6 +463,7 @@ fun PlayerScreen(nav: Nav, route: PlayerRoute) {
 
     fun show() { controls = true; lastInput = System.currentTimeMillis() }
     fun exit() { m.release(); nav.pop() }
+    m.onExit = { exit() }
 
     BackHandler {
         when {
@@ -396,6 +496,7 @@ fun PlayerScreen(nav: Nav, route: PlayerRoute) {
                 when (ev.key) {
                     Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> {
                         when {
+                            m.kodikStuck -> m.kodikInteractive()
                             m.failed -> m.load(m.index)
                             showNext -> m.next()
                             inOpening -> m.skipOpening()
@@ -419,6 +520,16 @@ fun PlayerScreen(nav: Nav, route: PlayerRoute) {
         // Video
         m.exo?.let { e -> if (m.native) AndroidView(factory = { e.view }, modifier = Modifier.fillMaxSize()) }
         m.kodik?.let { k -> if (!m.native) AndroidView(factory = { k.view }, modifier = Modifier.fillMaxSize()) }
+
+        if (m.kodikStuck) {
+            Column(Modifier.align(Alignment.Center).background(Color.Black.copy(alpha = 0.8f), RoundedCornerShape(18.dp)).padding(28.dp),
+                horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("Плеер Kodik не запустился сам", fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.height(8.dp))
+                Text("Нажмите OK — пульт перейдёт в Kodik, там нажмите «Play».\nБез рекламы и без этого шага — войдите в AnimeLib.",
+                    fontSize = 16.sp, color = Color.White.copy(alpha = 0.8f), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+            }
+        }
 
         // Loading / error
         if (m.message != null || (m.buffering && m.native && m.exo != null)) {
@@ -488,12 +599,22 @@ fun PlayerScreen(nav: Nav, route: PlayerRoute) {
         }
         "more" -> ChoiceDialog("Ещё", listOfNotNull(
             if (m.native) Choice("Скорость", hint = speedLabel(m.speed)) else null,
+            if (m.native && m.player?.subtitles?.isNotEmpty() == true) Choice("Субтитры", hint = if (m.subtitlesOn) "включены" else "выключены") else null,
+            Choice("Смотреть вместе", hint = if (ru.qmods.anixq.tv.data.Room.roomId.value != null) "комната открыта" else "друзья с телефона или браузера"),
             Choice("Таймер сна", hint = when {
                 m.sleepAfterEpisode -> "после этой серии"
                 m.sleepAt > 0 -> "через ${((m.sleepAt - System.currentTimeMillis()) / 60_000).coerceAtLeast(1)} мин"
                 else -> "выключен"
             }),
-        ), { dialog = null }) { i -> dialog = if (m.native && i == 0) "speed" else "sleep" }
+        ).let { opts -> opts }, { dialog = null }) { i ->
+            val hasSubs = m.native && m.player?.subtitles?.isNotEmpty() == true
+            val keys = listOfNotNull(if (m.native) "speed" else null, if (hasSubs) "subs" else null, "room", "sleep")
+            when (val k = keys.getOrNull(i)) {
+                "subs" -> { dialog = null; m.toggleSubtitles() }
+                else -> dialog = k
+            }
+        }
+        "room" -> RoomDialog(onClose = { dialog = null })
         "speed" -> {
             val speeds = listOf(0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f)
             ChoiceDialog("Скорость", speeds.map { Choice(speedLabel(it), it == m.speed) }, { dialog = null }) { i -> dialog = null; m.applySpeed(speeds[i]) }
@@ -609,6 +730,38 @@ private fun SeekBar(m: PlayerModel, onAny: () -> Unit, onHide: () -> Unit) {
 }
 
 fun speedLabel(f: Float) = (if (f % 1f == 0f) "${f.toInt()}" else f.toString().trimEnd('0')).replace('.', ',') + "×"
+
+@Composable
+private fun RoomDialog(onClose: () -> Unit) {
+    val id by ru.qmods.anixq.tv.data.Room.roomId.collectAsState()
+    val people by ru.qmods.anixq.tv.data.Room.people.collectAsState()
+    LaunchedEffect(Unit) { if (ru.qmods.anixq.tv.data.Room.roomId.value == null) ru.qmods.anixq.tv.data.Room.create() }
+    androidx.compose.ui.window.Dialog(onDismissRequest = onClose) {
+        Column(Modifier.background(C.card, RoundedCornerShape(22.dp)).padding(28.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Text("Смотреть вместе", fontSize = 24.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(16.dp))
+            id?.let { rid ->
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+                    QrCode(ru.qmods.anixq.tv.data.Room.link(rid), Modifier.size(210.dp))
+                    Column(Modifier.width(300.dp)) {
+                        Text("Друзья сканируют код — откроется AnixQ на iPhone или страница в браузере. Пауза и перемотка общие.", fontSize = 15.sp)
+                        Spacer(Modifier.height(12.dp))
+                        Text("Код комнаты", fontSize = 13.sp, color = C.muted)
+                        Text(rid, fontSize = 26.sp, fontWeight = FontWeight.Bold, color = C.pink, letterSpacing = 2.sp)
+                        Spacer(Modifier.height(10.dp))
+                        Text(if (people.isEmpty()) "Ждём участников…" else "В комнате: " + people.values.joinToString { it.first },
+                            fontSize = 15.sp, color = if (people.isEmpty()) C.muted else Color(0xFF5BE08F))
+                    }
+                }
+            }
+            Spacer(Modifier.height(18.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                PillButton("Готово", primary = true, modifier = Modifier.memo("room", "ok", initial = true)) { onClose() }
+                PillButton("Закрыть комнату") { ru.qmods.anixq.tv.data.Room.leave(); onClose() }
+            }
+        }
+    }
+}
 
 @Composable
 internal fun PauseScreen(m: PlayerModel) {

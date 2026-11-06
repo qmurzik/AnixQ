@@ -91,7 +91,8 @@ object Updater {
                 val info = app.packageManager.getPackageArchiveInfo(file.path, 0)
                 if (info == null || info.packageName != app.packageName) throw Exception("файл повреждён, попробуйте ещё раз")
                 state.value = UpdateState.Installing(r)
-                withContext(Dispatchers.IO) { commit(app, file) }
+                try { withContext(Dispatchers.IO) { commit(app, file) } }
+                catch (e: Exception) { if (!viewInstall(app, file)) throw e }
             } catch (e: Exception) {
                 state.value = UpdateState.Failed("Не получилось: ${e.message}", r)
             }
@@ -132,6 +133,14 @@ object Updater {
         }
     }
 
+    /** Plan B for boxes whose installer rejects sessions: open the APK in the regular package installer. */
+    private fun viewInstall(context: Context, file: File): Boolean = runCatching {
+        val uri = androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.updates", file)
+        context.startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(uri, "application/vnd.android.package-archive")
+            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK))
+        true
+    }.getOrDefault(false)
+
     internal fun result(context: Context, intent: Intent) {
         val r = available
         when (val status = intent.getIntExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_FAILURE)) {
@@ -144,7 +153,11 @@ object Updater {
             PackageInstaller.STATUS_FAILURE_CONFLICT, PackageInstaller.STATUS_FAILURE_INCOMPATIBLE ->
                 state.value = UpdateState.Failed("Эта версия подписана другим ключом. Удалите AnixQ и установите заново: $INSTALL_PAGE", r)
             PackageInstaller.STATUS_FAILURE_STORAGE -> state.value = UpdateState.Failed("Не хватает места на телевизоре", r)
-            else -> state.value = UpdateState.Failed("Установка не удалась (${intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE) ?: status})", r)
+            else -> {
+                val f = File(context.cacheDir, "update.apk")
+                if (!(f.exists() && viewInstall(context, f)))
+                    state.value = UpdateState.Failed("Установка не удалась (${intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE) ?: status})", r)
+            }
         }
     }
 }

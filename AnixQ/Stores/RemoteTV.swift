@@ -65,7 +65,10 @@ final class RemoteTV: ObservableObject {
         let c = MQTTClient()
         client = c
         let stateTopic = "anixq/rc/\(ch)/state"
+        let livePrefix = "anixq/rc/\(ch)/live/"
+        let mine = livePrefix + Self.deviceId
         c.subscribe(stateTopic)
+        c.subscribe(livePrefix + "#")
         c.onState = { [weak self] ok in
             Task { @MainActor in
                 guard let self else { return }
@@ -73,20 +76,63 @@ final class RemoteTV: ObservableObject {
                 if ok {
                     let queued = self.pending; self.pending = []
                     queued.forEach { c.publish("anixq/rc/\(ch)/cmd", $0) }
+                    if let live = self.pendingLive { self.pendingLive = nil; c.publish(mine, live, retain: true) }
                 } else if self.client === c {
-                    // Reconnect quietly while the remote is in use.
+                    // Reconnect quietly while the app is open (live sync) or the remote is in use.
                     self.client = nil
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 3) { if self.showRemote { self.connect() } }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 3) { if self.liveWanted || self.showRemote { self.connect() } }
                 }
             }
         }
         c.onMessage = { [weak self] topic, data in
-            Task { @MainActor in if topic == stateTopic { self?.received(data) } }
+            Task { @MainActor in
+                if topic == stateTopic { self?.received(data) }
+                else if topic.hasPrefix(livePrefix), topic != mine { self?.receivedLive(data) }
+            }
         }
         c.connect(MQTTClient.brokers[0])
     }
 
     func disconnect() { client?.disconnect(); client = nil; connected = false }
+
+    // MARK: Live sync (instant progress between phone and TV, no GitHub)
+
+    static var deviceId: String {
+        if let id = UserDefaults.standard.string(forKey: "rc.device") { return id }
+        let id = "ios-" + UUID().uuidString.prefix(8).lowercased()
+        UserDefaults.standard.set(id, forKey: "rc.device")
+        return id
+    }
+
+    weak var library: LibraryStore?
+    private(set) var liveWanted = false
+    private var pendingLive: Data?
+    private var lastLiveSent = Date.distantPast
+
+    /// App active: keep the channel open so the TV's progress arrives instantly.
+    func startLive(library: LibraryStore) {
+        self.library = library
+        liveWanted = true
+        if isAvailable { connect() }
+    }
+
+    func stopLive() { liveWanted = false; if !showRemote { disconnect() } }
+
+    func publishLive(_ doc: SyncDoc) {
+        guard let key, Self.channel != nil, let json = try? JSONEncoder().encode(doc),
+              let sealed = try? AES.GCM.seal(json, using: key).combined else { return }
+        let msg = Data(sealed.base64EncodedString().utf8)
+        if connected, let c = client, let ch = Self.channel {
+            c.publish("anixq/rc/\(ch)/live/\(Self.deviceId)", msg, retain: true)
+        } else { pendingLive = msg; if liveWanted { connect() } }
+    }
+
+    private func receivedLive(_ data: Data) {
+        guard let key, let b64 = String(data: data, encoding: .utf8), let sealed = Data(base64Encoded: b64),
+              let box = try? AES.GCM.SealedBox(combined: sealed), let plain = try? AES.GCM.open(box, using: key),
+              let doc = try? JSONDecoder().decode(SyncDoc.self, from: plain) else { return }
+        if library?.importSync(doc) == true { DebugLog.log("live: merged changes from \(doc.device)") }
+    }
     func reconnect() { let was = client != nil; disconnect(); if was { connect() } }
 
     private func received(_ data: Data) {

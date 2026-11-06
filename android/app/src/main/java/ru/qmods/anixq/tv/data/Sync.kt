@@ -54,7 +54,7 @@ object Sync {
         loop = scope.launch {
             while (isActive) {
                 sync()
-                delay(10_000)
+                delay(120_000)   // live channel carries the real-time part
             }
         }
     }
@@ -67,14 +67,17 @@ object Sync {
     fun changed() {
         if (!isOn) return
         if (pushJob?.isActive == true) return
-        // GitHub allows ~500 gist writes an hour: while watching push at most every 30 s (flush() is immediate).
-        val wait = maxOf(4_000L, 30_000L - (System.currentTimeMillis() - lastPushAt), backoffUntil - System.currentTimeMillis())
+        // Real-time progress goes over the live channel (Remote); the gist is only durable storage:
+        // write it at most every 10 minutes (and at once when leaving the app / the player).
+        val wait = maxOf(10_000L, 600_000L - (System.currentTimeMillis() - lastPushAt), backoffUntil - System.currentTimeMillis())
         pushJob = scope.launch { delay(wait); sync() }
     }
 
     private var lastPushAt = 0L
     /** Rate-limited by GitHub (403/429): stay quiet for a while. */
     @Volatile private var backoffUntil = 0L
+    private var strikes = 0
+    @Volatile private var retryAfterMs = 0L
 
     fun syncNow() { scope.launch { sync() } }
 
@@ -87,6 +90,7 @@ object Sync {
     /** Make sure we have the other devices' latest position before starting playback (≤ 3 s wait). */
     suspend fun pullFresh() {
         if (!isOn || System.currentTimeMillis() - lastPull < 4_000) return
+        if (Remote.online.value && System.currentTimeMillis() - lastPull < 300_000) return   // live channel is up to date
         kotlinx.coroutines.withTimeoutOrNull(3_000) { sync() }
     }
 
@@ -199,12 +203,17 @@ object Sync {
             }
             lastSync.value = System.currentTimeMillis()
             lastPull = System.currentTimeMillis()
+            strikes = 0
             status.value = "Синхронизировано"
         } catch (e: Exception) {
             if (e.message == "GitHub 403" || e.message == "GitHub 429") {
-                backoffUntil = System.currentTimeMillis() + 120_000
+                // Wait as long as GitHub asks (Retry-After / reset time), doubling on repeats, up to an hour.
+                strikes = (strikes + 1).coerceAtMost(6)
+                val asked = retryAfterMs
+                val wait = maxOf(asked, 120_000L shl (strikes - 1)).coerceAtMost(3_600_000L)
+                backoffUntil = System.currentTimeMillis() + wait
                 Store.dirty = true
-                status.value = "GitHub просит подождать — продолжим через 2 минуты"
+                status.value = "Живая синхронизация работает; GitHub-копия обновится через ${wait / 60_000} мин"
             } else status.value = "Нет связи с GitHub"
             Log.d("AnixQ", "sync: ${e.message}")
         }
@@ -231,6 +240,11 @@ object Sync {
             Api.http.newCall(rb.build()).execute().use { r ->
                 // TV boxes often have a drifting clock: measure it against GitHub so "newest wins" compares real times.
                 r.headers.getDate("Date")?.let { serverClockOffset = (it.time - System.currentTimeMillis()) / 1000.0 }
+                if (r.code == 403 || r.code == 429) {
+                    retryAfterMs = r.header("Retry-After")?.toLongOrNull()?.times(1000)
+                        ?: r.header("X-RateLimit-Reset")?.toLongOrNull()?.let { it * 1000 - System.currentTimeMillis() }?.takeIf { r.header("X-RateLimit-Remaining") == "0" }
+                        ?: 0L
+                }
                 if (r.code == 401) { withContext(Dispatchers.Main) { signOut() }; status.value = "Вход в GitHub истёк"; throw ApiException("401") }
                 if (r.code !in 200..299 && r.code != 304 && r.code != 404) throw ApiException("GitHub ${r.code}")
                 Triple(r.code, r.body?.string().orEmpty(), r.header("ETag"))

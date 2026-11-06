@@ -46,3 +46,15 @@ Phones synced with the same gist pick it up automatically — no extra pairing.
   pos, dur, hasNext, hasPrev, inOpening, speed, device, at}` (every 5 s while playing and on every change).
 
 Relay: `wss://public.cloud.shiftr.io` (MQTT 3.1.1, user/pass `public`).
+
+## Live channel (real-time, no GitHub)
+
+`anixq/rc/<channel>/live/<deviceId>` — each device publishes (retained, same AES-GCM sealing) a small sync
+document with only the title that just changed: progress every save, watched marks, bookmark changes.
+Every device subscribes to `anixq/rc/<channel>/live/#`, ignores its own topic and merges the rest with the
+usual newest-wins rules. Because messages are retained, a device that comes online later still gets the
+other device's latest position at once.
+
+The gist is durable storage only: written at most every 10 minutes (immediately when leaving the player or
+the app), pulled every 2 minutes. On 403/429 the device waits as GitHub asks (`Retry-After` /
+`X-RateLimit-Reset`), doubling on repeats up to an hour; the live channel keeps working meanwhile.

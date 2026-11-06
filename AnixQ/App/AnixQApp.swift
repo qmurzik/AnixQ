@@ -45,6 +45,7 @@ struct AnixQApp: App {
         .onChange(of: scenePhase) { phase in
             AppLock.shared.sceneChanged(phase)
             if phase == .background || phase == .inactive { GistSync.shared.flush() }
+            if phase == .background { RemoteTV.shared.stopLive() }
             if phase == .background {
                 WatchingUpdater.scheduleBackgroundRefresh()
                 DownloadManager.shared.cleanupWatched()
@@ -58,6 +59,7 @@ struct AnixQApp: App {
                 }
                 await library.applyWidgetActions()
                 GistSync.shared.start(library: library)
+                RemoteTV.shared.startLive(library: library)
                 await EpisodeCountdown.refresh(library: library)
                 await CalendarSync.sync(library: library)
                 CloudSync.shared.start(library: library)

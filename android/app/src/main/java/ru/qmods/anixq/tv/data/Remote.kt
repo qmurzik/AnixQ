@@ -55,6 +55,9 @@ object Remote {
 
     private val cmdTopic get() = "anixq/rc/${Store.remoteChannel}/cmd"
     private val stateTopic get() = "anixq/rc/${Store.remoteChannel}/state"
+    /** Live progress between devices (retained per device, so a device coming online gets the latest at once). */
+    private val livePrefix get() = "anixq/rc/${Store.remoteChannel}/live/"
+    private val myLiveTopic get() = livePrefix + Store.deviceId
 
     fun start(context: Context) {
         app = context.applicationContext
@@ -83,6 +86,8 @@ object Remote {
                         2 -> {
                             connected = true; online.value = true
                             webSocket.send(Mqtt.subscribe(cmdTopic).toByteString())
+                            webSocket.send(Mqtt.subscribe(livePrefix + "#").toByteString())
+                            pendingLive?.let { publishLiveNow(it) }
                             pinger?.cancel()
                             pinger = scope.launch { while (isActive && connected) { delay(15_000); webSocket.send(byteArrayOf(0xC0.toByte(), 0).toByteString()) } }
                             publishState()
@@ -90,6 +95,8 @@ object Remote {
                         3 -> {
                             val (t, payload) = Mqtt.publishBody(body)
                             if (t == cmdTopic && payload.isNotEmpty()) open(String(payload))?.let { handle(it) }
+                            else if (t.startsWith(livePrefix) && t != myLiveTopic && payload.isNotEmpty())
+                                open(String(payload))?.let { doc -> scope.launch(Dispatchers.Main) { Store.importSync(doc) } }
                         }
                     }
                 }
@@ -153,6 +160,20 @@ object Remote {
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
                 .putExtra("rc_play", m.toString()))
         }.onFailure { Log.w("AnixQ", "rc: can't open activity: ${it.message}") }
+    }
+
+    @Volatile private var pendingLive: JSONObject? = null
+
+    /** Our latest change (a small sync document for one title) to the other devices — instant, no GitHub. */
+    fun publishLive(doc: JSONObject) {
+        if (Store.remoteChannel.isEmpty()) return
+        if (connected) publishLiveNow(doc) else pendingLive = doc
+    }
+
+    private fun publishLiveNow(doc: JSONObject) {
+        val w = ws ?: return
+        pendingLive = null
+        w.send(Mqtt.publish(myLiveTopic, seal(doc).toByteArray(), retain = true).toByteString())
     }
 
     /** Tell the phone what is on screen (retained, so a remote opened later sees it at once). */

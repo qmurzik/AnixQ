@@ -192,17 +192,49 @@ object Store {
 
     // MARK: Changes
 
+    /** Stable id of this device for the live channel. */
+    val deviceId: String get() = prefs.getString("deviceId", null) ?: ("tv-" + java.util.UUID.randomUUID().toString().take(8)).also {
+        prefs.edit().putString("deviceId", it).apply()
+    }
+
+    /** Sync document with just one title (what changed), sent live to the other devices. Built directly: cheap. */
+    fun exportFor(titleId: Int): JSONObject {
+        val titles = JSONObject(); val progress = JSONObject(); val w = JSONObject(); val b = JSONObject()
+        history.firstOrNull { it.title.id == titleId }?.let { e ->
+            titles.put(titleId.toString(), e.title.toSync())
+            val p = positions[e.episodeId]
+            progress.put(e.episodeId.toString(), JSONObject().put("pos", p?.pos ?: e.pos).put("dur", p?.dur ?: e.dur)
+                .put("at", maxOf(p?.at ?: 0.0, e.at)).put("title", titleId).put("ep", e.ep).put("epName", e.epName)
+                .put("team", e.teamId).put("teamName", e.teamName))
+        }
+        watched[titleId]?.takeIf { it.isNotEmpty() }?.let { set ->
+            w.put(titleId.toString(), JSONObject().put("eps", JSONArray(set.sortedBy { it.toDoubleOrNull() ?: 0.0 }))
+                .put("at", history.firstOrNull { it.title.id == titleId }?.at ?: now()))
+        }
+        bookmarks.values.firstOrNull { it.title.id == titleId }?.let { e ->
+            titles.put(titleId.toString(), e.title.toSync())
+            b.put(e.title.slug, JSONObject().put("title", titleId).put("status", e.status.raw).put("at", e.at))
+        }
+        removedBookmarks.forEach { (slug, at) -> if (bookmarks.values.none { it.title.slug == slug } && history.any { it.title.id == titleId && it.title.slug == slug })
+            b.put(slug, JSONObject().put("status", JSONObject.NULL).put("at", at)) }
+        return JSONObject().put("v", 1).put("device", "Android TV").put("updated", 0)
+            .put("titles", titles).put("progress", progress).put("watched", w).put("bookmarks", b)
+    }
+
+    private fun live(titleId: Int) { runCatching { Remote.publishLive(exportFor(titleId)) } }
+
     fun updateProgress(title: Title, ep: Episode, team: Team, pos: Double, dur: Double) {
         val t = now()
         positions[ep.id] = Pos(pos, dur, t)
         history.removeAll { it.title.id == title.id }
         history.add(0, WatchEntry(title, ep.id, ep.number, ep.name ?: "", team.id, team.name, pos, dur, t))
         changed()
+        live(title.id)
     }
 
     fun markWatched(title: Title, ep: Episode) {
         val set = watched.getOrPut(title.id) { mutableSetOf() }
-        if (set.add(ep.number)) changed()
+        if (set.add(ep.number)) { changed(); live(title.id) }
         if (bookmark(title.slug) == null || bookmark(title.slug) == Bookmark.PLANNED) setBookmark(title, Bookmark.WATCHING)
     }
 
@@ -215,6 +247,7 @@ object Store {
             removedBookmarks.remove(title.slug)
         }
         changed()
+        live(title.id)
     }
 
     fun setDubs(list: List<String>) { dubs = list; dubsAt = now(); changed() }

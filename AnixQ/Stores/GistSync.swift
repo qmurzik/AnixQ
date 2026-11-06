@@ -90,7 +90,7 @@ final class GistSync: ObservableObject {
         self.library = library
         guard isOn else { status = "Выключено"; return }
         if timer == nil {
-            timer = Timer.scheduledTimer(withTimeInterval: 12, repeats: true) { [weak self] _ in
+            timer = Timer.scheduledTimer(withTimeInterval: 120, repeats: true) { [weak self] _ in
                 Task { @MainActor in await self?.sync() }
             }
         }
@@ -108,7 +108,9 @@ final class GistSync: ObservableObject {
         guard isOn, pushTask == nil else { return }
         // GitHub allows ~500 gist writes an hour: while watching, push at most every 30 s
         // (pause, leaving the player and backgrounding still push at once via flush()).
-        let wait = max(4, 30 - Date().timeIntervalSince(lastPush), backoffUntil.timeIntervalSinceNow)
+        // Real-time progress travels over the live channel (RemoteTV); the gist is durable storage only:
+        // written at most every 10 minutes (flush() still writes at once when leaving the player / app).
+        let wait = max(10, 600 - Date().timeIntervalSince(lastPush), backoffUntil.timeIntervalSinceNow)
         pushTask = Task {
             try? await Task.sleep(nanoseconds: UInt64(wait * 1_000_000_000))
             pushTask = nil
@@ -119,6 +121,8 @@ final class GistSync: ObservableObject {
     private var lastPush = Date.distantPast
     /// After GitHub refuses (403/429 rate limit) we stay quiet for a while instead of hammering it.
     private var backoffUntil = Date.distantPast
+    private var strikes = 0
+    private var retryAfter: Double = 0
 
     /// Push now — leaving the player or the app. Keeps running briefly in the background so the TV gets it.
     func flush() {
@@ -137,6 +141,8 @@ final class GistSync: ObservableObject {
     /// Before starting an episode: get the TV's latest position (waits at most ~3 s).
     func pullFresh() async {
         guard isOn, Date().timeIntervalSince(lastSync ?? .distantPast) > 4 else { return }
+        // The live channel already brings the TV's position instantly.
+        if RemoteTV.shared.connected, Date().timeIntervalSince(lastSync ?? .distantPast) < 300 { return }
         await withTaskGroup(of: Void.self) { g in
             g.addTask { await self.sync() }
             g.addTask { try? await Task.sleep(nanoseconds: 3_000_000_000) }
@@ -269,12 +275,16 @@ final class GistSync: ObservableObject {
                 etag = nil
             }
             lastSync = Date()
+            strikes = 0
             status = "Синхронизировано"
         } catch {
             if case LibError.badStatus(let code) = error, code == 403 || code == 429 {
-                backoffUntil = Date().addingTimeInterval(120)
-                status = "GitHub просит подождать — продолжим через 2 минуты"
-                DebugLog.log("sync: GitHub rate limit (\(code)), pausing sync for 2 min")
+                // Wait as long as GitHub asks, doubling on repeats (2, 4, 8 … up to 60 min).
+                strikes = min(strikes + 1, 6)
+                let wait = min(3600, max(retryAfter, 120 * pow(2, Double(strikes - 1))))
+                backoffUntil = Date().addingTimeInterval(wait)
+                status = "Живая синхронизация работает; копия в GitHub обновится через \(Int(wait / 60)) мин"
+                DebugLog.log("sync: GitHub rate limit (\(code)), next gist write in \(Int(wait))s")
             } else {
                 status = "Нет связи с GitHub"
                 DebugLog.log("sync: \(error.localizedDescription)")
@@ -317,6 +327,12 @@ final class GistSync: ObservableObject {
         }
         let (data, resp) = try await URLSession.shared.data(for: req)
         let http = resp as? HTTPURLResponse
+        if let h = http, h.statusCode == 403 || h.statusCode == 429 {
+            let ra = (h.value(forHTTPHeaderField: "Retry-After")).flatMap(Double.init)
+            let reset = (h.value(forHTTPHeaderField: "X-RateLimit-Remaining") == "0")
+                ? (h.value(forHTTPHeaderField: "X-RateLimit-Reset")).flatMap(Double.init).map { $0 - Date().timeIntervalSince1970 } : nil
+            retryAfter = ra ?? reset ?? 0
+        }
         let code = http?.statusCode ?? 0
         if code == 401 {
             signOut()

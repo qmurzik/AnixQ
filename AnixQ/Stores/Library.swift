@@ -140,6 +140,7 @@ final class LibraryStore: ObservableObject {
         history.insert(entry, at: 0)
         if history.count > 300 { history.removeLast(history.count - 300) }
         save()
+        RemoteTV.shared.publishLive(exportFor(titleId: title.id))
     }
 
     /// Records that an episode was opened without a known position (Kodik web player), so it shows
@@ -188,6 +189,7 @@ final class LibraryStore: ObservableObject {
         let already = watched[title.id]?.contains(episode.number) ?? false
         watched[title.id, default: []].insert(episode.number)
         save()
+        RemoteTV.shared.publishLive(exportFor(titleId: title.id))
         WatchingUpdater.shared.episodeWatched(titleId: title.id)
         guard !already else { return }
         let isLast = totalEpisodes > 0 && Int(episode.numberValue) >= totalEpisodes && !title.isOngoing
@@ -243,6 +245,7 @@ final class LibraryStore: ObservableObject {
         removed[title.slugURL] = status == nil ? Date().timeIntervalSince1970 : nil
         Self.removedBookmarks = removed
         save()
+        RemoteTV.shared.publishLive(exportFor(titleId: title.id, removedSlug: status == nil ? title.slugURL : nil))
         guard LibSession.isLoggedIn else { return }
         Task {
             do {
@@ -493,6 +496,29 @@ extension LibraryStore {
         let dubsAt = UserDefaults.standard.double(forKey: "dubs.at")
         doc.prefs = SyncDoc.Prefs(dubs: DubPreferences.favorites, at: dubsAt)
         if let ch = RemoteTV.channel, let k = RemoteTV.keyB64 { doc.remote = SyncDoc.Remote(channel: ch, key: k, at: RemoteTV.at) }
+        return doc
+    }
+
+    /// Just one title's state (what changed) — sent live to the TV, no GitHub involved.
+    func exportFor(titleId: Int, removedSlug: String? = nil) -> SyncDoc {
+        var doc = SyncDoc()
+        doc.device = UIDevice.current.model
+        if let e = history.first(where: { $0.title.id == titleId }) {
+            doc.titles[String(titleId)] = e.title
+            let p = positions[e.episodeId]
+            doc.progress[String(e.episodeId)] = SyncDoc.Prog(pos: p?.position ?? e.position, dur: p?.duration ?? e.duration,
+                at: max(p?.date.timeIntervalSince1970 ?? 0, e.date.timeIntervalSince1970), title: titleId, ep: e.episodeNumber,
+                epName: e.episodeName, team: e.teamId, teamName: e.teamName)
+        }
+        if let set = watched[titleId], !set.isEmpty {
+            let at = history.first { $0.title.id == titleId }?.date.timeIntervalSince1970 ?? Date().timeIntervalSince1970
+            doc.watched[String(titleId)] = SyncDoc.Watched(eps: set.sorted { (Double($0) ?? 0) < (Double($1) ?? 0) }, at: at)
+        }
+        if let pair = bookmarks.first(where: { $0.value.title.id == titleId }) {
+            doc.titles[String(titleId)] = pair.value.title
+            doc.bookmarks[pair.key] = SyncDoc.Bookmark(title: titleId, status: pair.value.status.rawValue, at: pair.value.date.timeIntervalSince1970)
+        }
+        if let slug = removedSlug { doc.bookmarks[slug] = SyncDoc.Bookmark(title: nil, status: nil, at: Date().timeIntervalSince1970) }
         return doc
     }
 

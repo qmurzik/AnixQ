@@ -263,6 +263,8 @@ struct SettingsView: View {
     @State private var confirmClear = false
     @State private var iconError: String?
     @State private var countdownTick = 0
+    @State private var playerTick = 0
+    @AppStorage(PlayerVersion.key) private var playerVersion = "new"
     @State private var calendarOn = CalendarSync.enabled
     @State private var calendarNote: String?
     @AppStorage(CloudSync.enabledKey) private var cloudOn = true
@@ -354,6 +356,15 @@ struct SettingsView: View {
                 }
 
                 Section("Плеер") {
+                    Picker("Плеер", selection: $playerVersion) {
+                        Text("Новый").tag("new")
+                        Text("Старый").tag("old")
+                    }
+                    .pickerStyle(.segmented)
+                    if playerVersion != "old" {
+                        Toggle("Открывать сразу на весь экран", isOn: Binding(get: { PlayerVersion.startFullscreen },
+                                                                            set: { PlayerVersion.startFullscreen = $0; playerTick += 1 }))
+                    }
                     NavigationLink {
                         DubPreferencesView()
                     } label: {

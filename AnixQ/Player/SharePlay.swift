@@ -180,7 +180,7 @@ struct SharePlayLauncher: View {
         Group {
             if let team = model.teams.first(where: { $0.id == activity.teamId }) ?? model.selectedTeam,
                let index = model.episodes.firstIndex(where: { $0.id == activity.episodeId }) {
-                PlayerScreen(title: model.displayTitle, background: nil, episodes: model.episodes,
+                AnyPlayerScreen(title: model.displayTitle, background: nil, episodes: model.episodes,
                              teams: model.teams, startIndex: index, team: team)
             } else if failed {
                 VStack(spacing: 14) {

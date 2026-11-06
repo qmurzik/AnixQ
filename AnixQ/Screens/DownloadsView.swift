@@ -54,7 +54,7 @@ struct DownloadsView: View {
         .fullScreenCover(item: $playing) { p in
             let done = p.items.filter { $0.state == .done }
             let team = done.first?.team ?? p.items[0].team
-            PlayerScreen(title: p.title, background: nil, episodes: done.map(\.episode),
+            AnyPlayerScreen(title: p.title, background: nil, episodes: done.map(\.episode),
                          teams: [TeamOption(team: team, native: true, kodik: false)],
                          startIndex: max(0, done.firstIndex { $0.id == p.items[p.index].id } ?? 0),
                          team: TeamOption(team: team, native: true, kodik: false))

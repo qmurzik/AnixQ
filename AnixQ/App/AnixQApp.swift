@@ -303,7 +303,7 @@ struct DebugAutoplayView: View {
     var body: some View {
         Group {
             if ready, let team = model.selectedTeam, !model.episodes.isEmpty {
-                PlayerScreen(title: model.displayTitle, background: nil, episodes: model.episodes,
+                AnyPlayerScreen(title: model.displayTitle, background: nil, episodes: model.episodes,
                              teams: model.teams, startIndex: 0, team: team)
             } else {
                 ProgressView()
@@ -321,8 +321,10 @@ struct DebugAutoplayView: View {
             let after = UserDefaults.standard.integer(forKey: "autoLandscapeAfter")
             if after > 0 {
                 try? await Task.sleep(nanoseconds: UInt64(after) * 1_000_000_000)
-                OrientationController.set(.portrait)
-                DebugLog.log("autoplay: rotate to portrait")
+                // The old player opens in landscape, the new one in portrait: show the other orientation.
+                let to: OrientationController.Target = PlayerVersion.useNew ? .landscape : .portrait
+                OrientationController.set(to)
+                DebugLog.log("autoplay: rotate to \(to == .landscape ? "landscape" : "portrait")")
             }
         }
     }

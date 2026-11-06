@@ -238,7 +238,7 @@ struct TitleView: View {
             Button("Отмена", role: .cancel) { noteEpisode = nil }
         }
         .fullScreenCover(item: $play) { req in
-            PlayerScreen(title: t, background: model.detail?.backgroundURL, episodes: model.episodes,
+            AnyPlayerScreen(title: t, background: model.detail?.backgroundURL, episodes: model.episodes,
                          teams: model.teams, startIndex: req.episodeIndex, team: req.team)
         }
         .sheet(isPresented: $showAllEpisodes) { allEpisodesSheet }

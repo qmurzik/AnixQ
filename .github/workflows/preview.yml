@@ -33,6 +33,7 @@ jobs:
           grep -q "BUILD SUCCEEDED" sim.log
       - name: Screenshots
         run: |
+          set +e
           DEVICE=$(xcrun simctl list devices available | grep -E "iPhone 1[5-9] Pro \(|iPhone [0-9]+ Pro \(" | head -1 | grep -oE "[0-9A-F-]{36}")
           [ -n "$DEVICE" ] || DEVICE=$(xcrun simctl list devices available | grep -E "iPhone" | head -1 | grep -oE "[0-9A-F-]{36}")
           echo "Device: $DEVICE"
@@ -44,7 +45,7 @@ jobs:
           shot() { # name, wait, args...
             name=$1; wait=$2; shift 2
             xcrun simctl terminate "$DEVICE" ru.qmods.anixq 2>/dev/null || true
-            xcrun simctl launch "$DEVICE" ru.qmods.anixq $BASE "$@" >/dev/null
+            xcrun simctl launch --console-pty "$DEVICE" ru.qmods.anixq $BASE "$@" > "preview/$name.console.txt" 2>&1 &
             sleep "$wait"
             xcrun simctl io "$DEVICE" screenshot "preview/$name.png" >/dev/null
           }
@@ -64,6 +65,10 @@ jobs:
           sleep 12; xcrun simctl io "$DEVICE" screenshot preview/player_landscape_60s.png >/dev/null
           DATA=$(xcrun simctl get_app_container "$DEVICE" ru.qmods.anixq data)
           cp "$DATA/Library/Caches/debug.log" preview/player.log 2>/dev/null || true
+          # Crash reports and the app's system log, for diagnosing launches that die.
+          cp ~/Library/Logs/DiagnosticReports/*AnixQ* preview/ 2>/dev/null
+          xcrun simctl spawn "$DEVICE" log show --last 30m --style compact --predicate 'process == "AnixQ"' > preview/system.log 2>&1
+          tail -c 200000 preview/system.log > preview/system_tail.log
           ls preview
       - uses: actions/upload-artifact@v4
         if: always()

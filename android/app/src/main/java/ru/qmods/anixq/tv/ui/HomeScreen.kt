@@ -103,10 +103,10 @@ fun HomeScreen(nav: Nav) {
             Spot(shown, Modifier.height(200.dp))
             val list = rememberLazyListState()
             LazyColumn(state = list, modifier = Modifier.fillMaxSize(), contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 40.dp)) {
-                if (Store.githubToken == null) item("pair") {
+                if (Store.libToken == null) item("login") {
                     Row(Modifier.padding(start = 48.dp, bottom = 22.dp), verticalAlignment = Alignment.CenterVertically) {
-                        PillButton("Связать с iPhone — продолжать с того же места", Icons.Rounded.PhoneIphone, primary = true,
-                            modifier = Modifier.memo("home", "pair", initial = cont.isEmpty())) { nav.tab = Tab.SETTINGS }
+                        PillButton("Войти в AnimeLib — плеер без рекламы", Icons.Rounded.PhoneIphone, primary = true,
+                            modifier = Modifier.memo("home", "login", initial = cont.isEmpty())) { nav.push(LoginRoute) }
                     }
                 }
                 if (cont.isNotEmpty()) item("continue") {
@@ -123,7 +123,7 @@ fun HomeScreen(nav: Nav) {
                 if (watching.isNotEmpty()) item("watching") { TitleShelf("Смотрю", watching, "home", { spot = it }) { nav.open(it) } }
                 rows.forEachIndexed { i, (name, titles) ->
                     item(name) {
-                        TitleShelf(name, titles, "home", { spot = it }, initialKey = if (i == 0 && cont.isEmpty() && Store.githubToken != null) titles.first().id else null) { nav.open(it) }
+                        TitleShelf(name, titles, "home", { spot = it }, initialKey = if (i == 0 && cont.isEmpty() && Store.libToken != null) titles.first().id else null) { nav.open(it) }
                     }
                 }
                 if (planned.isNotEmpty()) item("planned") { TitleShelf("Запланировано", planned, "home", { spot = it }) { nav.open(it) } }

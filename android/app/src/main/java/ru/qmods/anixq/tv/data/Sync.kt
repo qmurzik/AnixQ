@@ -201,11 +201,18 @@ object Sync {
  * encrypts the logins with that key (AES-256-GCM) and publishes them over the same MQTT relay the
  * watch rooms use. Only this TV can decrypt them.
  */
-class Pairing(private val onDone: (String) -> Unit, private val onError: (String) -> Unit) {
+class Pairing(
+    private val onDone: (String) -> Unit,
+    private val onError: (String) -> Unit,
+    /** Login and password typed on a phone/PC (site page) for the TV to sign in with. */
+    private val onCredentials: ((String, String) -> Unit)? = null,
+) {
     private val channel: String
     private val key = ByteArray(32).also { SecureRandom().nextBytes(it) }
     private var ws: WebSocket? = null
-    private var finished = false
+    private var pinger: Job? = null
+    private var failures = 0
+    @Volatile private var finished = false
 
     init {
         val alphabet = "abcdefghjkmnpqrstuvwxyz23456789"
@@ -214,8 +221,11 @@ class Pairing(private val onDone: (String) -> Unit, private val onError: (String
     }
 
     val topic get() = "anixq/pair/$channel"
-    val qrText: String
-        get() = "anixq://pair/$channel?k=" + Base64.encodeToString(key, Base64.URL_SAFE or Base64.NO_PADDING or Base64.NO_WRAP)
+    private val keyText get() = Base64.encodeToString(key, Base64.URL_SAFE or Base64.NO_PADDING or Base64.NO_WRAP)
+    /** Opens AnixQ on an iPhone directly. */
+    val qrText: String get() = "anixq://pair/$channel?k=$keyText"
+    /** Site page for any phone or computer: sign in to AnimeLib there, or hand over to AnixQ on iPhone. The key stays in the #fragment. */
+    val webUrl: String get() = "https://qmurzik.github.io/AnixQ/tv/#c=$channel&k=$keyText"
 
     fun start() {
         val req = Request.Builder().url("wss://public.cloud.shiftr.io").header("Sec-WebSocket-Protocol", "mqtt").build()
@@ -226,7 +236,14 @@ class Pairing(private val onDone: (String) -> Unit, private val onError: (String
             override fun onMessage(webSocket: WebSocket, bytes: ByteString) {
                 Mqtt.parse(bytes.toByteArray()) { type, body ->
                     when (type) {
-                        2 -> webSocket.send(Mqtt.subscribe(topic).toByteString())
+                        2 -> {
+                            webSocket.send(Mqtt.subscribe(topic).toByteString())
+                            // Keep-alive is 30 s: ping well inside it so the relay never drops us.
+                            pinger?.cancel()
+                            pinger = CoroutineScope(Dispatchers.IO).launch {
+                                while (isActive && !finished) { delay(15_000); webSocket.send(byteArrayOf(0xC0.toByte(), 0).toByteString()) }
+                            }
+                        }
                         3 -> {
                             val (t, payload) = Mqtt.publishBody(body)
                             if (t == topic && payload.isNotEmpty() && !finished) handle(String(payload))
@@ -235,7 +252,11 @@ class Pairing(private val onDone: (String) -> Unit, private val onError: (String
                 }
             }
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-                if (!finished) onError("Нет связи: ${t.message}")
+                pinger?.cancel()
+                if (finished) return
+                // Reconnect quietly; the QR stays valid.
+                CoroutineScope(Dispatchers.IO).launch { delay(3000); if (!finished) start() }
+                if (++failures >= 3) onError("Нет связи с сервером сопряжения, пробуем снова…")
             }
         })
     }
@@ -246,6 +267,14 @@ class Pairing(private val onDone: (String) -> Unit, private val onError: (String
             val cipher = Cipher.getInstance("AES/GCM/NoPadding")
             cipher.init(Cipher.DECRYPT_MODE, SecretKeySpec(key, "AES"), GCMParameterSpec(128, sealed, 0, 12))
             val json = JSONObject(String(cipher.doFinal(sealed, 12, sealed.size - 12)))
+            val creds = json.optJSONObject("credentials")
+            if (creds != null && onCredentials != null) {
+                // Keep listening: the password may be wrong and the user will send it again.
+                ws?.send(Mqtt.publish(topic, ByteArray(0), retain = true).toByteString())
+                val l = creds.str("login") ?: ""; val p = creds.optString("password")
+                CoroutineScope(Dispatchers.Main).launch { onCredentials.invoke(l, p) }
+                return
+            }
             finished = true
             // Clear the retained message from the relay.
             ws?.send(Mqtt.publish(topic, ByteArray(0), retain = true).toByteString())
@@ -266,7 +295,7 @@ class Pairing(private val onDone: (String) -> Unit, private val onError: (String
         }
     }
 
-    fun stop() { finished = true; ws?.close(1000, null) }
+    fun stop() { finished = true; pinger?.cancel(); ws?.close(1000, null) }
 }
 
 /** Minimal MQTT 3.1.1 packets (QoS 0), as in the iOS app. */

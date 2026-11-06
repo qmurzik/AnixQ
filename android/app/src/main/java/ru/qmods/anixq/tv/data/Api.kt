@@ -88,6 +88,17 @@ object Api {
         } catch (e: Exception) { false }
     }
 
+    /** OAuth code from the AnimeLib sign-in page -> tokens (PKCE, the same client the site uses). */
+    suspend fun exchangeCode(code: String, verifier: String, redirect: String): Boolean {
+        val json = request("/auth/oauth/token", method = "POST", auth = false, retried = true,
+            body = JSONObject().put("grant_type", "authorization_code").put("client_id", "1").put("redirect_uri", redirect)
+                .put("code_verifier", verifier).put("code", code)) as? JSONObject ?: return false
+        val access = json.str("access_token") ?: return false
+        Store.setLib(access, json.str("refresh_token"), null, null)
+        loadProfile()
+        return true
+    }
+
     private fun data(any: Any): Any? = (any as? JSONObject)?.opt("data")
 
     fun clearCache() = synchronized(cache) { cache.clear() }

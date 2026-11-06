@@ -15,6 +15,7 @@ launch -e tab 2;              shot 04-search 10
 key DPAD_CENTER DPAD_RIGHT DPAD_CENTER DPAD_DOWN DPAD_CENTER; shot 05-search-typed 10
 launch -e tab 4;              shot 06-settings 6
 key DPAD_CENTER;              shot 07-pair 8
+launch -e login 1;            shot 07b-login 15
 launch -e slug $S;            shot 08-title 15
 key DPAD_DOWN DPAD_DOWN;      shot 09-title-episodes 4
 launch -e slug $S --ez play true; shot 10-player 40

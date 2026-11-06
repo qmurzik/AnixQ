@@ -74,6 +74,8 @@ data class PlayerRoute(val title: Title, val episodeId: Int?, val teamId: Int? =
     override val scope get() = "player"
 }
 
+data object LoginRoute : Route { override val scope get() = "login" }
+
 class Nav {
     var tab by mutableStateOf(Tab.HOME)
     val stack = mutableStateListOf<Route>()
@@ -122,7 +124,7 @@ fun Modifier.memo(scope: String, key: String, initial: Boolean = false): Modifie
 fun App(nav: Nav) {
     val holder = rememberSaveableStateHolder()
     val top = nav.stack.lastOrNull()
-    BackHandler(enabled = top != null && top !is PlayerRoute) { nav.pop() }
+    BackHandler(enabled = top != null && top !is PlayerRoute && top != LoginRoute) { nav.pop() }
     Box(Modifier.fillMaxSize().background(C.bg)) {
         when (top) {
             null -> {
@@ -150,7 +152,7 @@ fun App(nav: Nav) {
                                 Tab.CATALOG -> CatalogScreen(nav)
                                 Tab.SEARCH -> SearchScreen(nav)
                                 Tab.LIBRARY -> LibraryScreen(nav)
-                                Tab.SETTINGS -> SettingsScreen()
+                                Tab.SETTINGS -> SettingsScreen(nav)
                             }
                         }
                     }
@@ -158,6 +160,7 @@ fun App(nav: Nav) {
             }
             is TitleRoute -> holder.SaveableStateProvider(top.scope + nav.stack.size) { TitleScreen(nav, top.title) }
             is PlayerRoute -> PlayerScreen(nav, top)
+            LoginRoute -> LoginScreen(nav)
         }
     }
 }

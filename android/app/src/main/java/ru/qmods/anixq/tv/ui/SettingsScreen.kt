@@ -41,7 +41,7 @@ import java.util.Date
 import java.util.Locale
 
 @Composable
-fun SettingsScreen() {
+fun SettingsScreen(nav: Nav) {
     val version by Store.version.collectAsState()
     val status by Sync.status.collectAsState()
     val last by Sync.lastSync.collectAsState()
@@ -54,34 +54,33 @@ fun SettingsScreen() {
         item { ScreenTitle("Настройки") }
 
         item {
-            Section("Синхронизация с iPhone") {
+            Section("AnimeLib") {
+                Text(Store.libUser?.let { "Аккаунт: $it — плеер без рекламы, отметки серий на сайте" }
+                    ?: "Без входа доступен только плеер Kodik (с рекламой). Войти можно пультом или с любого телефона по QR — iPhone не нужен.",
+                    fontSize = 15.sp, color = C.muted)
+                Spacer(Modifier.height(12.dp))
+                if (Store.libToken != null) PillButton("Выйти из AnimeLib") { Store.setLib(null, null, null, null) }
+                else PillButton("Войти в AnimeLib", primary = true, modifier = Modifier.memo("settings", "login", initial = true)) { nav.push(LoginRoute) }
+            }
+        }
+
+        item {
+            Section("Синхронизация между устройствами") {
                 Text(
                     if (Store.githubToken != null) "Подключено${Store.githubLogin?.let { " · GitHub $it" } ?: ""} · $status" +
                         (if (last > 0) " · ${SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date(last))}" else "")
-                    else "Прогресс, история и закладки хранятся в вашем приватном GitHub Gist — общий для ТВ и iPhone.",
+                    else "Нужна, только если смотрите ещё и на iPhone (или на втором ТВ): прогресс, история и закладки в вашем приватном GitHub Gist.",
                     fontSize = 15.sp, color = C.muted,
                 )
                 Spacer(Modifier.height(12.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    PillButton("Войти с телефона", Icons.Rounded.PhoneIphone, primary = Store.githubToken == null,
-                        modifier = Modifier.memo("settings", "pair", initial = true)) { pairing = true }
+                    PillButton("Связать с iPhone (AnixQ)", Icons.Rounded.PhoneIphone, primary = Store.githubToken == null && Store.libToken != null,
+                        modifier = Modifier.memo("settings", "pair")) { pairing = true }
                     if (Store.githubToken == null) PillButton("Войти через GitHub на ТВ") { Sync.signInOnTv(); dialog = "device" }
                     else {
                         PillButton("Синхронизировать", Icons.Rounded.Sync) { Sync.syncNow() }
                         PillButton("Выйти") { dialog = "signout" }
                     }
-                }
-            }
-        }
-
-        item {
-            Section("AnimeLib") {
-                Text(Store.libUser?.let { "Аккаунт: $it — плеер без рекламы, отметки серий на сайте" }
-                    ?: "Без входа доступен только плеер Kodik (с рекламой). Войдите с телефона — нужен вход в AnimeLib на iPhone.",
-                    fontSize = 15.sp, color = C.muted)
-                if (Store.libToken != null) {
-                    Spacer(Modifier.height(12.dp))
-                    PillButton("Выйти из AnimeLib") { Store.setLib(null, null, null, null) }
                 }
             }
         }

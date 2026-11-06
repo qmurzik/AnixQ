@@ -12,6 +12,7 @@ import ru.qmods.anixq.tv.data.Sync
 import ru.qmods.anixq.tv.ui.AnixTheme
 import ru.qmods.anixq.tv.ui.App
 import ru.qmods.anixq.tv.ui.Nav
+import ru.qmods.anixq.tv.ui.LoginRoute
 import ru.qmods.anixq.tv.ui.Tab
 import ru.qmods.anixq.tv.data.Title
 
@@ -30,6 +31,7 @@ class MainActivity : ComponentActivity() {
     private fun applyLaunchExtras(nav: Nav) {
         val i = intent ?: return
         i.getStringExtra("tab")?.toIntOrNull()?.let { nav.tab = Tab.entries.getOrElse(it) { Tab.HOME } }
+        if (i.getStringExtra("login") != null) { nav.push(LoginRoute); return }
         val slug = i.getStringExtra("slug") ?: return
         val t = Title(id = slug.substringBefore("--").toIntOrNull() ?: 0, slug = slug)
         if (i.getBooleanExtra("play", false)) nav.play(t, null) else nav.open(t)

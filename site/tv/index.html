@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<meta name="referrer" content="no-referrer">
+<title>Вход на ТВ · AnixQ</title>
+<link rel="icon" href="../favicon.png">
+<style>
+  :root { --bg:#0b0912; --card:rgba(255,255,255,.06); --stroke:rgba(255,255,255,.1); --text:#f6f4fb; --muted:#a8a3b9;
+          --grad:linear-gradient(115deg,#ff4d7a,#8b5cff); --ok:#5be08f; --bad:#ff6b81; }
+  * { box-sizing:border-box; }
+  html, body { margin:0; background:var(--bg); color:var(--text); }
+  body { font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif; min-height:100vh;
+         display:flex; justify-content:center; padding:28px 16px 40px; }
+  main { width:100%; max-width:420px; }
+  .logo { font-weight:900; letter-spacing:-.02em; background:var(--grad); -webkit-background-clip:text; background-clip:text; color:transparent; font-size:20px; }
+  h1 { font-size:27px; line-height:1.15; margin:14px 0 6px; letter-spacing:-.02em; }
+  p.lead { color:var(--muted); margin:0 0 22px; }
+  .card { background:var(--card); border:1px solid var(--stroke); border-radius:18px; padding:18px; margin-bottom:14px; }
+  .card h2 { font-size:17px; margin:0 0 4px; }
+  .card p { color:var(--muted); font-size:14px; margin:0 0 14px; }
+  label { display:block; font-size:13px; color:var(--muted); margin:0 0 6px; }
+  input { width:100%; margin:0 0 12px; padding:14px; border-radius:12px; border:1px solid var(--stroke); background:rgba(0,0,0,.35);
+          color:var(--text); font:inherit; font-size:16px; }
+  input:focus { outline:2px solid #8b5cff; outline-offset:1px; }
+  .btn { display:block; width:100%; padding:15px 20px; border-radius:14px; border:0; font:700 16px/1 inherit; font-family:inherit;
+         text-align:center; text-decoration:none; color:#fff; background:var(--grad); cursor:pointer; }
+  .btn.ghost { background:var(--card); border:1px solid var(--stroke); }
+  .btn:disabled { opacity:.6; cursor:default; }
+  .status { min-height:22px; margin:12px 0 0; font-size:14px; color:var(--muted); }
+  .status.ok { color:var(--ok); } .status.bad { color:var(--bad); }
+  .note { font-size:12.5px; color:var(--muted); margin-top:18px; }
+  .hidden { display:none; }
+  .pw { position:relative; }
+  .pw button { position:absolute; right:8px; top:8px; padding:7px 10px; border-radius:9px; border:0; background:var(--card); color:var(--muted); font:inherit; font-size:13px; cursor:pointer; }
+</style>
+</head>
+<body>
+<main>
+  <div class="logo">AnixQ TV</div>
+  <h1>Вход на телевизоре</h1>
+  <p class="lead">Введите данные здесь — они появятся в форме входа на телевизоре.</p>
+
+  <div id="bad" class="card hidden">
+    <h2>Ссылка неполная</h2>
+    <p>Откройте эту страницу, отсканировав QR-код на экране телевизора (AnixQ TV → Настройки → Войти в AnimeLib).</p>
+  </div>
+
+  <div id="ios" class="card hidden">
+    <h2>Есть AnixQ на этом iPhone?</h2>
+    <p>Откройте приложение — оно передаст на ТВ и AnimeLib, и синхронизацию просмотра.</p>
+    <a id="iosBtn" class="btn" href="#">Открыть в AnixQ</a>
+  </div>
+
+  <form id="form" class="card" autocomplete="on">
+    <h2>Аккаунт AnimeLib</h2>
+    <p>Тот же, что на anilib.me (один аккаунт для всех *LIB сайтов).</p>
+    <label for="login">Email или никнейм</label>
+    <input id="login" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" required>
+    <label for="password">Пароль</label>
+    <div class="pw">
+      <input id="password" name="password" type="password" autocomplete="current-password" required>
+      <button type="button" id="eye">показать</button>
+    </div>
+    <button class="btn" id="send" type="submit">Войти на телевизоре</button>
+    <div id="status" class="status"></div>
+  </form>
+
+  <p class="note">
+    Логин и пароль шифруются прямо на этой странице ключом из QR-кода (он в части адреса после «#»,
+    которая никуда не отправляется) и расшифровываются только на вашем телевизоре. Телевизор подставляет их
+    в форму входа AnimeLib на своём экране. Мы их не храним и не видим.
+    Входили через VK или Яндекс? Войдите на телевизоре на экране слева — там есть эти кнопки.
+  </p>
+</main>
+<script>
+(function () {
+  var h = new URLSearchParams(location.hash.slice(1));
+  var channel = h.get('c') || '', key = h.get('k') || '';
+  var $ = function (id) { return document.getElementById(id); };
+  if (!/^[a-z0-9]{8,40}$/.test(channel) || key.length < 40 || !window.crypto || !crypto.subtle) {
+    $('bad').classList.remove('hidden'); $('form').classList.add('hidden'); return;
+  }
+  if (/iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)) {
+    $('ios').classList.remove('hidden');
+    $('iosBtn').href = 'anixq://pair/' + channel + '?k=' + key;
+  }
+  $('eye').onclick = function () {
+    var p = $('password'); p.type = p.type === 'password' ? 'text' : 'password';
+    this.textContent = p.type === 'password' ? 'показать' : 'скрыть';
+  };
+
+  function b64urlToBytes(s) {
+    s = s.replace(/-/g, '+').replace(/_/g, '/'); while (s.length % 4) s += '=';
+    var bin = atob(s), out = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+    return out;
+  }
+  function bytesToB64(b) { var s = ''; for (var i = 0; i < b.length; i++) s += String.fromCharCode(b[i]); return btoa(s); }
+  var enc = new TextEncoder();
+
+  async function seal(obj) {
+    var k = await crypto.subtle.importKey('raw', b64urlToBytes(key), 'AES-GCM', false, ['encrypt']);
+    var nonce = crypto.getRandomValues(new Uint8Array(12));
+    var ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv: nonce }, k, enc.encode(JSON.stringify(obj))));
+    var all = new Uint8Array(12 + ct.length); all.set(nonce, 0); all.set(ct, 12);
+    return bytesToB64(all);   // nonce ‖ ciphertext ‖ tag, as the TV expects
+  }
+
+  // Minimal MQTT 3.1.1 over WebSocket (same relay the apps use).
+  function str(s) { var b = enc.encode(s); return [b.length >> 8, b.length & 255].concat(Array.from(b)); }
+  function len(n) { var out = []; do { var d = n % 128; n = Math.floor(n / 128); if (n > 0) d |= 128; out.push(d); } while (n > 0); return out; }
+  function packet(h, body) { return new Uint8Array([h].concat(len(body.length), body)); }
+
+  function publish(text) {
+    return new Promise(function (resolve, reject) {
+      var ws = new WebSocket('wss://public.cloud.shiftr.io', 'mqtt'); ws.binaryType = 'arraybuffer';
+      var timer = setTimeout(function () { try { ws.close(); } catch (e) {} reject(new Error('timeout')); }, 12000);
+      ws.onopen = function () {
+        var vh = str('MQTT').concat([4, 0xC2, 0, 30]);
+        var id = 'anixq-web-' + Math.random().toString(36).slice(2, 10);
+        ws.send(packet(0x10, vh.concat(str(id), str('public'), str('public'))));
+      };
+      ws.onmessage = function (e) {
+        var d = new Uint8Array(e.data);
+        if ((d[0] >> 4) !== 2) return;            // CONNACK
+        if (d[3] !== 0) { clearTimeout(timer); reject(new Error('refused')); return; }
+        ws.send(packet(0x31, str('anixq/pair/' + channel).concat(Array.from(enc.encode(text)))));  // retained
+        setTimeout(function () { try { ws.send(new Uint8Array([0xE0, 0])); ws.close(); } catch (x) {} clearTimeout(timer); resolve(); }, 600);
+      };
+      ws.onerror = function () { clearTimeout(timer); reject(new Error('ws')); };
+    });
+  }
+
+  $('form').onsubmit = async function (e) {
+    e.preventDefault();
+    var login = $('login').value.trim(), password = $('password').value;
+    if (!login || !password) return;
+    var st = $('status'), btn = $('send');
+    btn.disabled = true; st.className = 'status'; st.textContent = 'Отправляем на телевизор…';
+    try {
+      var sealed = await seal({ credentials: { login: login, password: password }, from: 'сайта' });
+      await publish(sealed);
+      st.className = 'status ok';
+      st.textContent = 'Отправлено! На телевизоре отметьте «Я не робот» и нажмите «Войти». Если вход не принят — исправьте и отправьте снова.';
+    } catch (err) {
+      st.className = 'status bad';
+      st.textContent = 'Не удалось связаться с телевизором. Проверьте интернет и попробуйте ещё раз.';
+    }
+    btn.disabled = false;
+  };
+})();
+</script>
+</body>
+</html>

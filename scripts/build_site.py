@@ -162,7 +162,7 @@ def load_releases():
         return []
 
 
-releases = [r for r in load_releases() if not r.get("draft")]
+releases = [r for r in load_releases() if not r.get("draft") and r.get("tag_name", "").startswith("v")]
 items = []
 for r in releases:
     date = (r.get("published_at") or "")[:10]

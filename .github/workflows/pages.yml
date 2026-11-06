@@ -6,7 +6,7 @@ on:
     paths: [ "site/**", "scripts/build_site.py", ".github/workflows/pages.yml" ]
   # Refresh the changelog after every app release.
   workflow_run:
-    workflows: [ "Build IPA" ]
+    workflows: [ "Build IPA", "Android TV" ]
     types: [ completed ]
   workflow_dispatch:
 
@@ -28,6 +28,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: python3 scripts/build_site.py _site
+      - name: Latest TV app next to the install page (short direct link for Downloader)
+        env: { GH_TOKEN: "${{ github.token }}" }
+        run: gh release download tv -p AnixQ-TV.apk --output _site/tv.apk --repo "${{ github.repository }}" || echo "no TV build yet"
       - name: Publish to gh-pages
         run: |
           cd _site

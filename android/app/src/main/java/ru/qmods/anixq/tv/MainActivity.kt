@@ -9,6 +9,7 @@ import kotlinx.coroutines.launch
 import ru.qmods.anixq.tv.data.Api
 import ru.qmods.anixq.tv.data.Store
 import ru.qmods.anixq.tv.data.Sync
+import ru.qmods.anixq.tv.data.Updater
 import ru.qmods.anixq.tv.ui.AnixTheme
 import ru.qmods.anixq.tv.ui.App
 import ru.qmods.anixq.tv.ui.Nav
@@ -41,5 +42,6 @@ class MainActivity : ComponentActivity() {
         super.onStart()
         Sync.start()
         Sync.syncNow()
+        Updater.checkSometimes()
     }
 }

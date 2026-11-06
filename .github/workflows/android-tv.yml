@@ -4,9 +4,19 @@ on:
   push:
     branches: [ "main" ]
     paths: [ "android/**", ".github/workflows/android-tv.yml" ]
+  # Keeps the cached signing key alive (caches expire after 7 days without use).
+  schedule:
+    - cron: "41 4 */4 * *"
   workflow_dispatch:
     inputs:
-      screenshots:
+      keepalive:
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/cache/restore@v4
+        with: { path: ~/anixq-tv-signing.p12, key: anixq-tv-signing-v1 }
+
+  screenshots:
         description: "Run the TV emulator and take screenshots"
         type: boolean
         default: true
@@ -16,6 +26,7 @@ permissions:
 
 jobs:
   build:
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     outputs:
@@ -26,24 +37,31 @@ jobs:
         with: { distribution: temurin, java-version: "17" }
       - uses: gradle/actions/setup-gradle@v4
         with: { gradle-version: "8.14.3" }
-      # Without a key in the secrets, keep the runner's debug key between builds so updates install over each other.
+      # One signing key for every build, so the app can update itself over the installed version.
+      # A key in the repository secrets wins; otherwise a key made once and kept in the Actions cache
+      # (the "keepalive" job below touches it so it never expires).
       - uses: actions/cache@v4
-        with: { path: ~/.android/debug.keystore, key: anixq-tv-debug-keystore }
-      - name: Make sure the fallback key exists
-        run: |
-          [ -f ~/.android/debug.keystore ] || { mkdir -p ~/.android; keytool -genkeypair -keystore ~/.android/debug.keystore -storepass android -keypass android \
-            -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 36500 -dname "CN=Android Debug,O=Android,C=US"; }
+        with: { path: ~/anixq-tv-signing.p12, key: anixq-tv-signing-v1 }
       - id: v
         run: echo "version=1.0.${{ github.run_number }}" >> "$GITHUB_OUTPUT"
-      - name: Signing key from secrets (optional)
-        env: { KS: "${{ secrets.ANDROID_KEYSTORE_B64 }}" }
+      - name: Signing key
+        env:
+          KS: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          KS_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
         run: |
-          if [ -n "$KS" ]; then echo "$KS" | base64 -d > "$RUNNER_TEMP/release.jks"; echo "ANDROID_KEYSTORE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"; fi
+          if [ -n "$KS" ]; then
+            echo "$KS" | base64 -d > "$RUNNER_TEMP/release.jks"
+            echo "ANDROID_KEYSTORE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+            echo "ANDROID_KEYSTORE_PASSWORD=$KS_PASS" >> "$GITHUB_ENV"
+          else
+            [ -f ~/anixq-tv-signing.p12 ] || keytool -genkeypair -keystore ~/anixq-tv-signing.p12 -storetype PKCS12 \
+              -storepass anixq-tv -keypass anixq-tv -alias anixq -keyalg RSA -keysize 2048 -validity 36500 -dname "CN=AnixQ TV"
+            echo "ANDROID_KEYSTORE=$HOME/anixq-tv-signing.p12" >> "$GITHUB_ENV"
+            echo "ANDROID_KEYSTORE_PASSWORD=anixq-tv" >> "$GITHUB_ENV"
+          fi
       - name: Build
         working-directory: android
-        env:
-          BUILD_NUMBER: ${{ github.run_number }}
-          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        env: { BUILD_NUMBER: "${{ github.run_number }}" }
         run: gradle --no-daemon assembleRelease
       - run: cp android/app/build/outputs/apk/release/app-release.apk AnixQ-TV.apk
       - uses: actions/upload-artifact@v4
@@ -56,7 +74,19 @@ jobs:
           gh release create "tv-v$V" AnixQ-TV.apk --title "AnixQ TV $V" --notes "Android TV: установите AnixQ-TV.apk (Downloader → ссылка на файл)." --latest=false
           # Rolling link that always points at the newest TV build.
           gh release view tv >/dev/null 2>&1 || gh release create tv --title "AnixQ TV (последняя)" --notes "Постоянная ссылка на последнюю сборку для Android TV." --latest=false
-          gh release upload tv AnixQ-TV.apk --clobber
+          # What the app on the TV checks for updates.
+          NOTES=$(git log -1 --format=%s | head -c 400)
+          python3 -c "import json,sys; json.dump({'code': int(sys.argv[1]), 'name': sys.argv[2], 'notes': sys.argv[3],
+            'apk': 'https://github.com/${{ github.repository }}/releases/download/tv-v'+sys.argv[2]+'/AnixQ-TV.apk'}, open('tv-version.json','w'), ensure_ascii=False)" \
+            "${{ github.run_number }}" "$V" "$NOTES"
+          gh release upload tv AnixQ-TV.apk tv-version.json --clobber
+
+  keepalive:
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/cache/restore@v4
+        with: { path: ~/anixq-tv-signing.p12, key: anixq-tv-signing-v1 }
 
   screenshots:
     needs: build

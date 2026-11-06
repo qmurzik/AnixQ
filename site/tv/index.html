@@ -33,6 +33,9 @@
   .status.ok { color:var(--ok); } .status.bad { color:var(--bad); }
   .note { font-size:12.5px; color:var(--muted); margin-top:18px; }
   .hidden { display:none; }
+  .steps { margin:8px 0 0; padding-left:20px; color:var(--text); font-size:15px; } .steps li { margin-bottom:10px; }
+  .url { margin:8px 0 2px; padding:10px 12px; border-radius:10px; background:rgba(0,0,0,.35); border:1px solid var(--stroke);
+         font:700 17px/1.3 ui-monospace,Menlo,Consolas,monospace; letter-spacing:.01em; word-break:break-all; }
   .pw { position:relative; }
   .pw button { position:absolute; right:8px; top:8px; padding:7px 10px; border-radius:9px; border:0; background:var(--card); color:var(--muted); font:inherit; font-size:13px; cursor:pointer; }
 </style>
@@ -40,12 +43,30 @@
 <body>
 <main>
   <div class="logo">AnixQ TV</div>
-  <h1>Вход на телевизоре</h1>
-  <p class="lead">Введите данные здесь — они появятся в форме входа на телевизоре.</p>
+  <h1 id="h1">Вход на телевизоре</h1>
+  <p class="lead" id="lead">Введите данные здесь — они появятся в форме входа на телевизоре.</p>
 
-  <div id="bad" class="card hidden">
-    <h2>Ссылка неполная</h2>
-    <p>Откройте эту страницу, отсканировав QR-код на экране телевизора (AnixQ TV → Настройки → Войти в AnimeLib).</p>
+  <div id="install" class="hidden">
+    <div class="card">
+      <h2>Самый простой способ — приложение Downloader</h2>
+      <ol class="steps">
+        <li>На телевизоре откройте Google Play и установите <b>Downloader</b> (оранжевая иконка, автор AFTVnews).</li>
+        <li>Откройте Downloader и в строку адреса введите пультом:<div class="url">qmurzik.github.io/AnixQ/tv.apk</div></li>
+        <li>Нажмите «Go». Если ТВ спросит — разрешите Downloader устанавливать приложения. Затем «Установить».</li>
+      </ol>
+    </div>
+    <div class="card">
+      <h2>С телефона на Android</h2>
+      <p>Поставьте на телефон и на ТВ приложение «Send files to TV», скачайте файл кнопкой ниже и отправьте его на телевизор.
+        Или скопируйте файл на флешку и откройте его на ТВ через любой файловый менеджер.</p>
+      <a class="btn" href="../tv.apk" download="AnixQ-TV.apk">Скачать AnixQ-TV.apk</a>
+    </div>
+    <div class="card">
+      <h2>Обновления</h2>
+      <p style="margin:0">Ставить вручную нужно только один раз: новые версии приложение скачивает и предлагает установить само
+        (Настройки → Обновления на телевизоре).</p>
+    </div>
+    <p class="note">После установки: Настройки → «Войти в AnimeLib» — пультом или с телефона по QR-коду, iPhone не нужен.</p>
   </div>
 
   <div id="ios" class="card hidden">
@@ -81,7 +102,12 @@
   var channel = h.get('c') || '', key = h.get('k') || '';
   var $ = function (id) { return document.getElementById(id); };
   if (!/^[a-z0-9]{8,40}$/.test(channel) || key.length < 40 || !window.crypto || !crypto.subtle) {
-    $('bad').classList.remove('hidden'); $('form').classList.add('hidden'); return;
+    // Opened without a QR: this is the install guide.
+    document.title = 'AnixQ для Android TV';
+    $('h1').textContent = 'AnixQ для Android TV';
+    $('lead').textContent = 'Аниме на телевизоре: продолжить с того же места, пропуск опенингов, следующая серия одной кнопкой.';
+    $('install').classList.remove('hidden'); $('form').classList.add('hidden');
+    document.querySelector('main > p.note').classList.add('hidden'); return;
   }
   if (/iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)) {
     $('ios').classList.remove('hidden');

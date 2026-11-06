@@ -97,6 +97,8 @@ fun SettingsScreen(nav: Nav) {
             }
         }
 
+        item { Section("Обновления") { UpdateSection() } }
+
         item {
             Section("Пульт") {
                 listOf(

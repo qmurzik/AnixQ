@@ -103,6 +103,7 @@ fun HomeScreen(nav: Nav) {
             Spot(shown, Modifier.height(200.dp))
             val list = rememberLazyListState()
             LazyColumn(state = list, modifier = Modifier.fillMaxSize(), contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 40.dp)) {
+                item("update") { UpdateBanner() }
                 if (Store.libToken == null) item("login") {
                     Row(Modifier.padding(start = 48.dp, bottom = 22.dp), verticalAlignment = Alignment.CenterVertically) {
                         PillButton("Войти в AnimeLib — плеер без рекламы", Icons.Rounded.PhoneIphone, primary = true,

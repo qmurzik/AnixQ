@@ -4,3 +4,4 @@ local.properties
 *.keystore
 app/src/test/resources/fake/
 app/src/test/snapshots/
+.kotlin/

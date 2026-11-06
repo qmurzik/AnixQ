@@ -802,7 +802,10 @@ final class PlayerController: ObservableObject {
 
     private func setupRemoteCommands() {
         let c = MPRemoteCommandCenter.shared()
-        c.playCommand.addTarget { [weak self] _ in Task { @MainActor in self?.player.play() }; return .success }
+        c.playCommand.addTarget { [weak self] _ in
+            Task { @MainActor in DebugLog.log("player: play from Now Playing / headphones"); self?.player.play() }
+            return .success
+        }
         c.pauseCommand.addTarget { [weak self] _ in
             Task { @MainActor in
                 DebugLog.log("player: pause from Now Playing / headphones")
@@ -811,7 +814,10 @@ final class PlayerController: ObservableObject {
             return .success
         }
         c.togglePlayPauseCommand.addTarget { [weak self] _ in
-            Task { @MainActor in self?.togglePlay() }
+            Task { @MainActor in
+                DebugLog.log("player: play/pause from headphones / Control Center / Siri")
+                self?.togglePlay()
+            }
             return .success
         }
         c.skipForwardCommand.preferredIntervals = [10]

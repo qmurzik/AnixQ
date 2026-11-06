@@ -6,7 +6,9 @@ import androidx.activity.compose.setContent
 import androidx.compose.runtime.remember
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
+import coil.Coil
 import ru.qmods.anixq.tv.data.Api
+import ru.qmods.anixq.tv.data.Images
 import ru.qmods.anixq.tv.data.Store
 import ru.qmods.anixq.tv.data.Sync
 import ru.qmods.anixq.tv.data.Updater
@@ -21,6 +23,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Store.init(applicationContext)
+        Coil.setImageLoader(Images.loader(applicationContext))
         if (Store.libToken != null) lifecycleScope.launch { Api.loadProfile() }
         setContent {
             val nav = remember { Nav().also { applyLaunchExtras(it) } }

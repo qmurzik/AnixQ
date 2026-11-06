@@ -97,8 +97,19 @@ class KodikEngine(context: Context) : Engine {
         settings.domStorageEnabled = true
         settings.mediaPlaybackRequiresUserGesture = false
         settings.userAgentString = settings.userAgentString.replace("; wv", "")
-        webChromeClient = WebChromeClient()
-        webViewClient = WebViewClient()
+        webChromeClient = object : WebChromeClient() {
+            override fun onConsoleMessage(m: android.webkit.ConsoleMessage): Boolean {
+                android.util.Log.d("AnixQ", "kodik console: ${m.message().take(200)}"); return true
+            }
+        }
+        webViewClient = object : WebViewClient() {
+            override fun onReceivedSslError(v: WebView, h: android.webkit.SslErrorHandler, e: android.net.http.SslError) {
+                android.util.Log.w("AnixQ", "kodik ssl error ${e.primaryError} ${e.url}"); h.cancel()
+            }
+            override fun onReceivedError(v: WebView, r: android.webkit.WebResourceRequest, e: android.webkit.WebResourceError) {
+                if (r.isForMainFrame || r.url.host?.contains("kodik") == true) android.util.Log.w("AnixQ", "kodik load error ${e.errorCode} ${r.url}")
+            }
+        }
         addJavascriptInterface(Bridge(), "AQ")
         importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
     }

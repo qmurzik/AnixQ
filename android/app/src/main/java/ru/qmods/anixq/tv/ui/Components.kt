@@ -20,6 +20,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -30,6 +31,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
@@ -40,6 +44,7 @@ import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Border
 import androidx.tv.material3.ClickableSurfaceDefaults
 import androidx.tv.material3.Icon
+import androidx.tv.material3.LocalContentColor
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
@@ -59,10 +64,22 @@ object C {
     val grad = Brush.horizontalGradient(listOf(pink, violet))
 }
 
+/**
+ * The layout was drawn for ~1200 dp wide; most TVs report 960 dp, so everything is scaled to 80 %
+ * (7 posters per row instead of 5, like other TV apps).
+ */
+private const val UI_SCALE = 0.8f
+
 @Composable
 fun AnixTheme(content: @Composable () -> Unit) {
-    MaterialTheme(colorScheme = darkColorScheme(primary = C.pink, secondary = C.violet, background = C.bg, surface = C.card,
-        onSurface = C.text, onBackground = C.text), content = content)
+    val d = LocalDensity.current
+    CompositionLocalProvider(LocalDensity provides Density(d.density * UI_SCALE, d.fontScale)) {
+        MaterialTheme(colorScheme = darkColorScheme(primary = C.pink, secondary = C.violet, background = C.bg, surface = C.card,
+            onSurface = C.text, onBackground = C.text)) {
+            // Text outside a Surface would otherwise be black on the dark background.
+            CompositionLocalProvider(LocalContentColor provides C.text, content = content)
+        }
+    }
 }
 
 /** Any focusable thing: grows and gets a white frame when focused. */
@@ -83,7 +100,11 @@ fun Focusable(
         modifier = modifier,
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(radius)),
         colors = ClickableSurfaceDefaults.colors(containerColor = container, contentColor = C.text,
-            focusedContainerColor = focusedContainer, focusedContentColor = C.text, pressedContainerColor = focusedContainer),
+            focusedContainerColor = focusedContainer,
+            // Dark text on light focus backgrounds (keyboard keys, round player buttons).
+            focusedContentColor = if (focusedContainer.luminance() > 0.5f) Color.Black else C.text,
+            pressedContainerColor = focusedContainer,
+            pressedContentColor = if (focusedContainer.luminance() > 0.5f) Color.Black else C.text),
         scale = ClickableSurfaceDefaults.scale(focusedScale = scale),
         border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(3.dp, Color.White), shape = RoundedCornerShape(radius))),
     ) { content() }

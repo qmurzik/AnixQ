@@ -1,6 +1,8 @@
 package ru.qmods.anixq.tv.ui
 
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -94,7 +96,7 @@ fun CatalogScreen(nav: Nav) {
     ) {
         item(span = { GridItemSpan(maxLineSpan) }, key = "head") { ScreenTitle("Каталог") }
         item(span = { GridItemSpan(maxLineSpan) }, key = "filters") {
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.padding(bottom = 6.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.padding(bottom = 6.dp).horizontalScroll(rememberScrollState())) {
                 CatalogSort.entries.forEach { s ->
                     Chip(s.title, query.sort == s) { apply(query.copy(sort = s)) }
                 }

@@ -22,4 +22,5 @@ launch -e slug $S --ez play true; shot 10-player 40
 key DPAD_UP;                  shot 11-player-controls 3
 key BACK DPAD_DOWN;           shot 12-player-episodes 3
 adb logcat -d > shots/logcat.txt
+adb logcat -d -s AnixQ > shots/app-log.txt
 exit 0

@@ -53,6 +53,13 @@ jobs:
             CURRENT_PROJECT_VERSION="$(( ${{ github.run_number }} + 37 ))" \
             build | tee build.log | grep -E "error:|BUILD" || true
           grep -q "BUILD SUCCEEDED" build.log
+          # iOS 26-only Swift overlays must not stop the app from launching on iOS 16–18:
+          # mark them weak in every binary (debug builds keep code in AnixQ.debug.dylib), then re-sign ad hoc.
+          for bin in build/Release-iphoneos/AnixQ.app/AnixQ build/Release-iphoneos/AnixQ.app/AnixQ.debug.dylib build/Release-iphoneos/AnixQ.app/PlugIns/*.appex/*; do
+            [ -f "$bin" ] && file "$bin" | grep -q Mach-O || continue
+            python3 scripts/weaken_dylibs.py "$bin" libswiftWebKit libswift_WebKit_SwiftUI
+            codesign -f -s - "$bin" 2>/dev/null || true
+          done
 
       - name: Add loose alternate icons
         # Some re-signers and iOS versions only find alternate icons as loose PNGs listed in CFBundleIconFiles.

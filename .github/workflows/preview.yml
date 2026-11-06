@@ -31,6 +31,13 @@ jobs:
             -sdk iphonesimulator -arch arm64 SYMROOT="$PWD/build" CODE_SIGNING_ALLOWED=NO build \
             | tee sim.log | grep -E "error:|BUILD" || true
           grep -q "BUILD SUCCEEDED" sim.log
+          # iOS 26-only Swift overlays must not stop the app from launching on iOS 16–18:
+          # mark them weak in every binary (debug builds keep code in AnixQ.debug.dylib), then re-sign ad hoc.
+          for bin in build/Debug-iphonesimulator/AnixQ.app/AnixQ build/Debug-iphonesimulator/AnixQ.app/AnixQ.debug.dylib build/Debug-iphonesimulator/AnixQ.app/PlugIns/*.appex/*; do
+            [ -f "$bin" ] && file "$bin" | grep -q Mach-O || continue
+            python3 scripts/weaken_dylibs.py "$bin" libswiftWebKit libswift_WebKit_SwiftUI
+            codesign -f -s - "$bin" 2>/dev/null || true
+          done
       - name: Screenshots
         run: |
           set +e

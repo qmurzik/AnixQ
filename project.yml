@@ -33,9 +33,6 @@ targets:
         GENERATE_INFOPLIST_FILE: NO
         INFOPLIST_FILE: AnixQ/Resources/Info.plist
         CODE_SIGN_ENTITLEMENTS: AnixQ/AnixQ.entitlements
-        # Xcode 26 links the Swift WebKit overlay that only exists on iOS 26: weak-link it so the
-        # app still launches on iOS 16–18.
-        OTHER_LDFLAGS: "$(inherited) -Wl,-weak-lswiftWebKit"
 
   AnixQWidget:
     type: app-extension

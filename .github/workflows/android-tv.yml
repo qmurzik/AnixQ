@@ -52,6 +52,9 @@ jobs:
             echo "ANDROID_KEYSTORE=$HOME/anixq-tv-signing.p12" >> "$GITHUB_ENV"
             echo "ANDROID_KEYSTORE_PASSWORD=anixq-tv" >> "$GITHUB_ENV"
           fi
+      - name: Remote-control focus tests
+        working-directory: android
+        run: gradle --no-daemon testDebugUnitTest --tests 'ru.qmods.anixq.tv.focus.*'
       - name: Build
         working-directory: android
         env: { BUILD_NUMBER: "${{ github.run_number }}" }

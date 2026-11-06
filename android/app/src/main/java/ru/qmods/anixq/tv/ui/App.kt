@@ -178,16 +178,21 @@ fun App(nav: Nav) {
             null -> {
                 BackHandler(enabled = nav.tab != Tab.HOME) { nav.tab = Tab.HOME }
                 // Each tab draws its own backdrop and leaves room for the bar on top.
-                holder.SaveableStateProvider(nav.tab.name) {
-                    when (nav.tab) {
-                        Tab.HOME -> HomeScreen(nav)
-                        Tab.CATALOG -> CatalogScreen(nav)
-                        Tab.SEARCH -> SearchScreen(nav)
-                        Tab.LIBRARY -> LibraryScreen(nav)
-                        Tab.SETTINGS -> SettingsScreen(nav)
+                // One focus group for the tab's content: "down" from the bar always lands in it
+                // (geometric search from the far-right "Настройки" tab found nothing on some boxes).
+                val content = remember { FocusRequester() }
+                Box(Modifier.fillMaxSize().focusRequester(content).focusGroup()) {
+                    holder.SaveableStateProvider(nav.tab.name) {
+                        when (nav.tab) {
+                            Tab.HOME -> HomeScreen(nav)
+                            Tab.CATALOG -> CatalogScreen(nav)
+                            Tab.SEARCH -> SearchScreen(nav)
+                            Tab.LIBRARY -> LibraryScreen(nav)
+                            Tab.SETTINGS -> SettingsScreen(nav)
+                        }
                     }
                 }
-                TopBar(nav)
+                TopBar(nav, content)
             }
             is TitleRoute -> holder.SaveableStateProvider(top.scope + nav.stack.size) { TitleScreen(nav, top.title) }
             is PlayerRoute -> PlayerScreen(nav, top)
@@ -232,13 +237,20 @@ val TopBarHeight = 64.dp
 /** Google-TV-like tabs on top; moving across them switches the screen. */
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
-private fun TopBar(nav: Nav) {
+private fun TopBar(nav: Nav, content: FocusRequester) {
     val update by ru.qmods.anixq.tv.data.Updater.state.collectAsState()
     val requesters = remember { Tab.entries.associateWith { FocusRequester() } }
     // Coming up from the content always lands on the current tab (never jumps to Settings by accident).
     Row(Modifier.fillMaxWidth().height(TopBarHeight).background(Brush.verticalGradient(listOf(C.bg.copy(alpha = 0.9f), Color.Transparent)))
         .padding(horizontal = 48.dp).focusProperties { enter = { requesters.getValue(nav.tab) } }
-        .onFocusChanged { Focus.barActive = it.hasFocus }.focusGroup(),
+        .onFocusChanged { Focus.barActive = it.hasFocus }
+        .onPreviewKeyEvent { e ->
+            if (e.type == KeyEventType.KeyDown && e.key == Key.DirectionDown) {
+                Focus.barActive = false
+                runCatching { content.requestFocus() }.isSuccess
+            } else false
+        }
+        .focusGroup(),
         verticalAlignment = Alignment.CenterVertically) {
         Text("AnixQ", fontSize = 21.sp, fontWeight = FontWeight.Black, color = C.pink, modifier = Modifier.padding(end = 28.dp))
         Tab.entries.filter { it != Tab.SETTINGS }.forEach { t -> TabItem(t, nav, Modifier.focusRequester(requesters.getValue(t))) }

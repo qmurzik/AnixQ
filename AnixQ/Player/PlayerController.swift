@@ -169,7 +169,11 @@ final class PlayerController: ObservableObject {
         try? AVAudioSession.sharedInstance().setActive(true)
         SharePlayManager.shared.attach(self)
         WatchRoom.shared.attach(self)
-        Task { await load() }
+        Task {
+            // Resume exactly where the TV stopped.
+            await GistSync.shared.pullFresh()
+            await load()
+        }
     }
 
     func load() async {
@@ -635,6 +639,7 @@ final class PlayerController: ObservableObject {
         player.pause()
         player.replaceCurrentItem(with: nil)
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
+        GistSync.shared.flush()
     }
 
     // MARK: Observers

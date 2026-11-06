@@ -36,6 +36,12 @@ import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.nativeKeyCode
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.composed
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -73,7 +79,8 @@ enum class Tab(val label: String, val icon: ImageVector) {
 sealed interface Route { val scope: String }
 data class TitleRoute(val title: Title) : Route { override val scope get() = "title:${title.id}" }
 /** episodeId null = first episode; [next] = the one after [episodeId]. */
-data class PlayerRoute(val title: Title, val episodeId: Int?, val teamId: Int? = null, val next: Boolean = false) : Route {
+data class PlayerRoute(val title: Title, val episodeId: Int?, val teamId: Int? = null, val next: Boolean = false,
+                       /** "Continue": re-read the newest synced position before starting. */ val resume: Boolean = false) : Route {
     override val scope get() = "player"
 }
 
@@ -84,7 +91,8 @@ class Nav {
     val stack = mutableStateListOf<Route>()
 
     fun open(t: Title) = push(TitleRoute(t))
-    fun play(t: Title, episodeId: Int?, teamId: Int? = null, next: Boolean = false) = push(PlayerRoute(t, episodeId, teamId, next))
+    fun play(t: Title, episodeId: Int?, teamId: Int? = null, next: Boolean = false, resume: Boolean = false) =
+        push(PlayerRoute(t, episodeId, teamId, next, resume))
 
     fun push(r: Route) { Focus.leaving(); stack.add(r) }
     /** Replace the player (next episode chosen from inside it). */
@@ -105,7 +113,11 @@ object Focus {
     fun forget(scope: String) { last.remove(scope); pending.remove(scope); started.remove(scope) }
     fun reset(scope: String) { last.remove(scope); pending.remove(scope); started.remove(scope) }
 
+    /** True while the cursor is in the top bar: browsing tabs must not pull it down into the screen. */
+    @Volatile var barActive = false
+
     internal fun shouldTake(scope: String, key: String, initial: Boolean): Boolean {
+        if (barActive) return false
         if (scope in pending && last[scope] == key) { pending.remove(scope); started.add(scope); return true }
         if (initial && scope !in started && last[scope] == null) { started.add(scope); return true }
         return false
@@ -128,7 +140,12 @@ fun App(nav: Nav) {
     val holder = rememberSaveableStateHolder()
     val top = nav.stack.lastOrNull()
     BackHandler(enabled = top != null && top !is PlayerRoute && top != LoginRoute) { nav.pop() }
-    Box(Modifier.fillMaxSize().background(C.bg)) {
+    Box(Modifier.fillMaxSize().background(C.bg).onPreviewKeyEvent { e ->
+        // The remote's Menu / Settings button opens Settings from anywhere outside the player.
+        if (e.type == KeyEventType.KeyDown && (e.key == Key.Menu || e.key.nativeKeyCode == android.view.KeyEvent.KEYCODE_SETTINGS) && top !is PlayerRoute) {
+            nav.stack.clear(); nav.tab = Tab.SETTINGS; true
+        } else false
+    }) {
         when (top) {
             null -> {
                 BackHandler(enabled = nav.tab != Tab.HOME) { nav.tab = Tab.HOME }
@@ -161,7 +178,8 @@ private fun TopBar(nav: Nav) {
     val requesters = remember { Tab.entries.associateWith { FocusRequester() } }
     // Coming up from the content always lands on the current tab (never jumps to Settings by accident).
     Row(Modifier.fillMaxWidth().height(TopBarHeight).background(Brush.verticalGradient(listOf(C.bg.copy(alpha = 0.9f), Color.Transparent)))
-        .padding(horizontal = 48.dp).focusProperties { enter = { requesters.getValue(nav.tab) } }.focusGroup(),
+        .padding(horizontal = 48.dp).focusProperties { enter = { requesters.getValue(nav.tab) } }
+        .onFocusChanged { Focus.barActive = it.hasFocus }.focusGroup(),
         verticalAlignment = Alignment.CenterVertically) {
         Text("AnixQ", fontSize = 21.sp, fontWeight = FontWeight.Black, color = C.pink, modifier = Modifier.padding(end = 28.dp))
         Tab.entries.filter { it != Tab.SETTINGS }.forEach { t -> TabItem(t, nav, Modifier.focusRequester(requesters.getValue(t))) }
@@ -170,7 +188,7 @@ private fun TopBar(nav: Nav) {
             Text("Есть обновление", fontSize = 13.sp, color = C.pink, modifier = Modifier.padding(end = 14.dp))
         Clock()
         Spacer(Modifier.width(14.dp))
-        TabItem(Tab.SETTINGS, nav, Modifier.focusRequester(requesters.getValue(Tab.SETTINGS)), iconOnly = true)
+        TabItem(Tab.SETTINGS, nav, Modifier.focusRequester(requesters.getValue(Tab.SETTINGS)))
     }
 }
 

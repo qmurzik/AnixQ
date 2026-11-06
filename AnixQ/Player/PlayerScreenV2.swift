@@ -290,7 +290,16 @@ struct PlayerScreenV2: View {
         DragGesture(minimumDistance: 14)
             .onChanged { v in
                 if dragMode == nil {
-                    if abs(v.translation.width) > abs(v.translation.height) {
+                    // Swipes that start at the screen edges belong to iOS (home bar, Control Center,
+                    // notifications): never turn them into brightness / volume / seek.
+                    let edge = max(48, size.height * 0.12)
+                    if isLand && (v.startLocation.y < edge || v.startLocation.y > size.height - edge
+                                  || v.startLocation.x < 24 || v.startLocation.x > size.width - 24) {
+                        dragMode = .ignored
+                    // Wait for a clear direction so a short tap-drag doesn't jump the volume.
+                    } else if max(abs(v.translation.width), abs(v.translation.height)) < 22 {
+                        return
+                    } else if abs(v.translation.width) > abs(v.translation.height) {
                         dragMode = PlayerPrefs.gestureSeek ? .seek : .ignored
                         dragStart = c.currentTime
                     } else if !isLand {

@@ -38,11 +38,11 @@ fun UpdateBanner(modifier: Modifier = Modifier) {
     Row(modifier.padding(start = 48.dp, bottom = 22.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
         when (val s = state) {
             is UpdateState.Downloading -> UpdateProgress("Скачиваем ${r.name}…", s.progress)
-            is UpdateState.Installing -> Text("Устанавливаем ${r.name}…", fontSize = 16.sp)
+            is UpdateState.Installing -> Text("Устанавливаем ${r.name}…", fontSize = 19.sp)
             else -> {
                 PillButton("Обновить до ${r.name}", Icons.Rounded.SystemUpdate, primary = true) { Updater.install(context) }
-                if (s is UpdateState.Failed) Text(s.message, fontSize = 14.sp, color = C.pink, modifier = Modifier.width(560.dp))
-                else if (r.notes.isNotBlank()) Text(r.notes, fontSize = 14.sp, color = C.muted, maxLines = 1, modifier = Modifier.width(560.dp))
+                if (s is UpdateState.Failed) Text(s.message, fontSize = 17.sp, color = C.pink, modifier = Modifier.width(560.dp))
+                else if (r.notes.isNotBlank()) Text(r.notes, fontSize = 17.sp, color = C.muted, maxLines = 1, modifier = Modifier.width(560.dp))
             }
         }
     }
@@ -54,22 +54,22 @@ fun UpdateSection() {
     val state by Updater.state.collectAsState()
     val context = LocalContext.current
     Column {
-        Text("Установлена версия ${BuildConfig.VERSION_NAME}", fontSize = 15.sp, color = C.muted)
+        Text("Установлена версия ${BuildConfig.VERSION_NAME}", fontSize = 18.sp, color = C.muted)
         Spacer(Modifier.height(12.dp))
         when (val s = state) {
             is UpdateState.Downloading -> UpdateProgress("Скачиваем ${s.release.name}…", s.progress)
-            is UpdateState.Installing -> Text("Открываем установщик…", fontSize = 16.sp)
+            is UpdateState.Installing -> Text("Открываем установщик…", fontSize = 19.sp)
             is UpdateState.Available -> Column {
-                Text("Доступна версия ${s.release.name}", fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
-                if (s.release.notes.isNotBlank()) Text(s.release.notes, fontSize = 14.sp, color = C.muted, modifier = Modifier.padding(vertical = 6.dp))
+                Text("Доступна версия ${s.release.name}", fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
+                if (s.release.notes.isNotBlank()) Text(s.release.notes, fontSize = 17.sp, color = C.muted, modifier = Modifier.padding(vertical = 6.dp))
                 PillButton("Установить", Icons.Rounded.SystemUpdate, primary = true) { Updater.install(context) }
             }
             else -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                 PillButton(if (s is UpdateState.Checking) "Проверяем…" else "Проверить обновления") { Updater.check() }
                 when (s) {
-                    UpdateState.UpToDate -> Text("У вас последняя версия", fontSize = 15.sp, color = Color(0xFF5BE08F))
+                    UpdateState.UpToDate -> Text("У вас последняя версия", fontSize = 18.sp, color = Color(0xFF5BE08F))
                     is UpdateState.Failed -> Column {
-                        Text(s.message, fontSize = 14.sp, color = C.pink, modifier = Modifier.width(620.dp))
+                        Text(s.message, fontSize = 17.sp, color = C.pink, modifier = Modifier.width(620.dp))
                         if (s.release != null) PillButton("Повторить") { Updater.install(context) }
                     }
                     else -> {}
@@ -77,14 +77,14 @@ fun UpdateSection() {
             }
         }
         Spacer(Modifier.height(8.dp))
-        Text("Новые версии приходят сами — ставить вручную нужно было только первый раз.", fontSize = 13.sp, color = C.muted)
+        Text("Новые версии приходят сами — ставить вручную нужно было только первый раз.", fontSize = 16.sp, color = C.muted)
     }
 }
 
 @Composable
 private fun UpdateProgress(label: String, p: Float) {
     Column(Modifier.width(420.dp)) {
-        Text("$label ${(p * 100).toInt()}%", fontSize = 16.sp)
+        Text("$label ${(p * 100).toInt()}%", fontSize = 19.sp)
         Spacer(Modifier.height(8.dp))
         Box(Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(50)).background(Color.White.copy(alpha = 0.2f))) {
             Box(Modifier.fillMaxWidth(p.coerceIn(0f, 1f)).height(8.dp).background(C.grad))

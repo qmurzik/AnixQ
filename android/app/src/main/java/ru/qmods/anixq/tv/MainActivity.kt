@@ -47,4 +47,9 @@ class MainActivity : ComponentActivity() {
         Sync.syncNow()
         Updater.checkSometimes()
     }
+
+    override fun onStop() {
+        super.onStop()
+        Sync.flush()
+    }
 }

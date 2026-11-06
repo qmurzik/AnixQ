@@ -130,7 +130,7 @@ fun HomeScreen(nav: Nav) {
                     Shelf("Продолжить просмотр") {
                         items(cont, key = { "c" + it.title.id }) { e ->
                             ContinueCard(e,
-                                onClick = { nav.play(e.title, e.episodeId, e.teamId, next = e.progress > 0.92) },
+                                onClick = { nav.play(e.title, e.episodeId, e.teamId, next = e.progress > 0.92, resume = true) },
                                 onLongClick = { nav.open(e.title) },
                                 modifier = Modifier.memo("home", "c${e.title.id}", initial = e == cont.first()),
                                 onFocus = { spot.value = e.title })

@@ -151,7 +151,7 @@ fun TitleScreen(nav: Nav, start: Title) {
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
                     when {
                         plan != null -> PillButton(plan.label, Icons.Rounded.PlayArrow, primary = true,
-                            modifier = Modifier.memo(sc, "play", initial = true)) { nav.play(title, plan.episode.id, teamId) }
+                            modifier = Modifier.memo(sc, "play", initial = true)) { nav.play(title, plan.episode.id, teamId, resume = Store.lastEntry(title.id) != null) }
                         error != null -> PillButton("Повторить", modifier = Modifier.memo(sc, "retry", initial = true)) { nav.pop(); nav.open(start) }
                         episodes?.isEmpty() == true -> Text("Серий пока нет", color = C.muted, fontSize = 17.sp)
                         else -> Text("Загрузка серий…", color = C.muted, fontSize = 17.sp)

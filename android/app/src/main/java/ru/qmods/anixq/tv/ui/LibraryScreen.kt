@@ -54,7 +54,7 @@ fun LibraryScreen(nav: Nav) {
         }
         if (section < 0) {
             items(history, key = { "h" + it.title.id }) { e ->
-                ContinueCard(e, onClick = { nav.play(e.title, e.episodeId, e.teamId, next = e.progress > 0.92) }, onLongClick = { nav.open(e.title) },
+                ContinueCard(e, onClick = { nav.play(e.title, e.episodeId, e.teamId, next = e.progress > 0.92, resume = true) }, onLongClick = { nav.open(e.title) },
                     modifier = Modifier.memo("library", "h${e.title.id}"))
             }
         } else {

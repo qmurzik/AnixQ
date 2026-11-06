@@ -322,7 +322,14 @@ struct PlayerScreen: View {
         DragGesture(minimumDistance: 12)
             .onChanged { v in
                 if dragMode == nil {
-                    if abs(v.translation.width) > abs(v.translation.height) {
+                    // Edge swipes are iOS's (home bar, Control Center, notifications).
+                    let edge = max(48, size.height * 0.12)
+                    if v.startLocation.y < edge || v.startLocation.y > size.height - edge
+                        || v.startLocation.x < 24 || v.startLocation.x > size.width - 24 {
+                        dragMode = .ignored
+                    } else if max(abs(v.translation.width), abs(v.translation.height)) < 22 {
+                        return
+                    } else if abs(v.translation.width) > abs(v.translation.height) {
                         dragMode = PlayerPrefs.gestureSeek ? .seek : .ignored
                         dragStart = c.currentTime
                     } else {

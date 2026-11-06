@@ -54,18 +54,32 @@ object Sync {
         loop = scope.launch {
             while (isActive) {
                 sync()
-                delay(20_000)
+                delay(10_000)
             }
         }
     }
 
+    /** Seconds to add to the local clock to get GitHub's time. */
+    @Volatile var serverClockOffset = 0.0
+    private var lastPull = 0L
+
+    /** Local change: push within ~4 s. Not reset by further changes, so playback progress can't postpone it forever. */
     fun changed() {
         if (!isOn) return
-        pushJob?.cancel()
-        pushJob = scope.launch { delay(6_000); sync() }
+        if (pushJob?.isActive == true) return
+        pushJob = scope.launch { delay(4_000); sync() }
     }
 
     fun syncNow() { scope.launch { sync() } }
+
+    /** Push right away (leaving the player, app going to background). */
+    fun flush() { if (isOn) { pushJob?.cancel(); scope.launch { sync() } } }
+
+    /** Make sure we have the other devices' latest position before starting playback (≤ 3 s wait). */
+    suspend fun pullFresh() {
+        if (!isOn || System.currentTimeMillis() - lastPull < 4_000) return
+        kotlinx.coroutines.withTimeoutOrNull(3_000) { sync() }
+    }
 
     // MARK: Sign-in on the TV (GitHub device flow)
 
@@ -157,6 +171,7 @@ object Sync {
                 etag = null
             }
             lastSync.value = System.currentTimeMillis()
+            lastPull = System.currentTimeMillis()
             status.value = "Синхронизировано"
         } catch (e: Exception) {
             status.value = "Нет связи с GitHub"
@@ -183,6 +198,8 @@ object Sync {
             etag?.let { rb.header("If-None-Match", it) }
             if (method == "GET") rb.get() else rb.method(method, (body ?: JSONObject()).toString().toRequestBody("application/json".toMediaType()))
             Api.http.newCall(rb.build()).execute().use { r ->
+                // TV boxes often have a drifting clock: measure it against GitHub so "newest wins" compares real times.
+                r.headers.getDate("Date")?.let { serverClockOffset = (it.time - System.currentTimeMillis()) / 1000.0 }
                 if (r.code == 401) { withContext(Dispatchers.Main) { signOut() }; status.value = "Вход в GitHub истёк"; throw ApiException("401") }
                 if (r.code !in 200..299 && r.code != 304 && r.code != 404) throw ApiException("GitHub ${r.code}")
                 Triple(r.code, r.body?.string().orEmpty(), r.header("ETag"))

@@ -89,7 +89,7 @@ object Store {
 
     private fun bump() { _version.value += 1 }
 
-    private fun now() = System.currentTimeMillis() / 1000.0
+    private fun now() = System.currentTimeMillis() / 1000.0 + Sync.serverClockOffset
 
     // MARK: Queries
 

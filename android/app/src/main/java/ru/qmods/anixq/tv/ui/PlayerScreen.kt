@@ -83,6 +83,7 @@ import ru.qmods.anixq.tv.data.Episode
 import ru.qmods.anixq.tv.data.Player
 import ru.qmods.anixq.tv.data.Segment
 import ru.qmods.anixq.tv.data.Store
+import ru.qmods.anixq.tv.data.Sync
 import ru.qmods.anixq.tv.data.Title
 
 /** Everything the player screen knows; Compose reads the `by mutableStateOf` fields. */
@@ -139,12 +140,19 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
     fun start() {
         scope.launch {
             try {
+                // Fresh progress from the phone first, so we resume exactly where it stopped.
+                Sync.pullFresh()
                 val eps = Api.episodes(title.slug)
                 if (eps.isEmpty()) { message = "Серий нет"; failed = true; return@launch }
                 episodes = eps
-                var i = route.episodeId?.let { id -> eps.indexOfFirst { it.id == id } }?.takeIf { it >= 0 } ?: 0
-                if (route.next && i + 1 < eps.size) i += 1
-                load(i, teamId = route.teamId)
+                // "Continue" re-reads the newest entry: the phone may have moved on since the card was drawn.
+                val latest = if (route.resume) Store.lastEntry(title.id) else null
+                val epId = latest?.episodeId ?: route.episodeId
+                val next = if (latest != null) latest.progress > 0.92 else route.next
+                var i = epId?.let { id -> eps.indexOfFirst { it.id == id } }?.takeIf { it >= 0 }
+                    ?: latest?.let { l -> eps.indexOfFirst { it.number == l.ep } }?.takeIf { it >= 0 } ?: 0
+                if (next && i + 1 < eps.size) i += 1
+                load(i, teamId = latest?.teamId ?: route.teamId)
             } catch (e: Exception) { message = e.message ?: "Ошибка"; failed = true }
         }
     }
@@ -285,6 +293,7 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
 
     fun release() {
         saveProgress(force = true)
+        Sync.flush()
         exo?.release(); kodik?.release()
         exo = null; kodik = null
     }
@@ -439,7 +448,8 @@ fun PlayerScreen(nav: Nav, route: PlayerRoute) {
         // Controls
         AnimatedVisibility(controls && panel == Panel.NONE, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.fillMaxSize()) {
             Controls(m, playBtn, skipBtn, onAny = { lastInput = System.currentTimeMillis() },
-                onEpisodes = { panel = Panel.EPISODES }, onDub = { dialog = "dub" }, onQuality = { dialog = "quality" })
+                onEpisodes = { panel = Panel.EPISODES }, onDub = { dialog = "dub" }, onQuality = { dialog = "quality" },
+                onHide = { controls = false })
         }
 
         // Episodes
@@ -480,7 +490,7 @@ fun PlayerScreen(nav: Nav, route: PlayerRoute) {
 
 @Composable
 internal fun Controls(m: PlayerModel, playBtn: FocusRequester, skipBtn: FocusRequester, onAny: () -> Unit,
-                     onEpisodes: () -> Unit, onDub: () -> Unit, onQuality: () -> Unit) {
+                     onEpisodes: () -> Unit, onDub: () -> Unit, onQuality: () -> Unit, onHide: () -> Unit = {}) {
     Box(Modifier.fillMaxSize()) {
         Box(Modifier.fillMaxWidth().height(170.dp).background(Brush.verticalGradient(0f to Color.Black.copy(alpha = 0.8f), 1f to Color.Black.copy(alpha = 0f))))
         Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(320.dp)
@@ -496,15 +506,15 @@ internal fun Controls(m: PlayerModel, playBtn: FocusRequester, skipBtn: FocusReq
         }
         Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(horizontal = 48.dp, vertical = 36.dp)) {
             if (m.inOpening && !m.openingSkipped) {
-                PillButton("Пропустить опенинг", Icons.Rounded.FastForward, primary = true, modifier = Modifier.focusRequester(skipBtn)) { m.skipOpening() }
+                PillButton("Пропустить опенинг", Icons.Rounded.FastForward, primary = true, modifier = Modifier.focusRequester(skipBtn)) { m.skipOpening(); onHide() }
                 Spacer(Modifier.height(16.dp))
             }
-            SeekBar(m, onAny)
+            SeekBar(m, onAny, onHide)
             Spacer(Modifier.height(18.dp))
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 if (m.hasPrev) RoundButton(Icons.Rounded.SkipPrevious) { m.prev() }
                 RoundButton(Icons.Rounded.FastRewind) { m.seekBy(-10.0) }
-                RoundButton(if (m.playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, big = true, modifier = Modifier.focusRequester(playBtn)) { m.toggle() }
+                RoundButton(if (m.playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, big = true, modifier = Modifier.focusRequester(playBtn)) { m.toggle(); if (m.playing) onHide() }
                 RoundButton(Icons.Rounded.FastForward) { m.seekBy(10.0) }
                 if (m.hasNext) RoundButton(Icons.Rounded.SkipNext) { m.next() }
                 Spacer(Modifier.width(16.dp))
@@ -518,7 +528,7 @@ internal fun Controls(m: PlayerModel, playBtn: FocusRequester, skipBtn: FocusReq
 }
 
 @Composable
-private fun SeekBar(m: PlayerModel, onAny: () -> Unit) {
+private fun SeekBar(m: PlayerModel, onAny: () -> Unit, onHide: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
     Row(verticalAlignment = Alignment.CenterVertically) {
         Box(
@@ -531,7 +541,7 @@ private fun SeekBar(m: PlayerModel, onAny: () -> Unit) {
                     when (ev.key) {
                         Key.DirectionLeft -> { m.seekBy(-step); true }
                         Key.DirectionRight -> { m.seekBy(step); true }
-                        Key.DirectionCenter, Key.Enter -> { m.toggle(); true }
+                        Key.DirectionCenter, Key.Enter -> { m.toggle(); if (m.playing) onHide(); true }
                         else -> false
                     }
                 }

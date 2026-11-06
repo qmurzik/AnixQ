@@ -42,6 +42,7 @@ struct AnixQApp: App {
         }
         .onChange(of: scenePhase) { phase in
             AppLock.shared.sceneChanged(phase)
+            if phase == .background || phase == .inactive { GistSync.shared.flush() }
             if phase == .background {
                 WatchingUpdater.scheduleBackgroundRefresh()
                 DownloadManager.shared.cleanupWatched()

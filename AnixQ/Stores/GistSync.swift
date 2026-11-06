@@ -87,7 +87,7 @@ final class GistSync: ObservableObject {
         self.library = library
         guard isOn else { status = "Выключено"; return }
         if timer == nil {
-            timer = Timer.scheduledTimer(withTimeInterval: 20, repeats: true) { [weak self] _ in
+            timer = Timer.scheduledTimer(withTimeInterval: 12, repeats: true) { [weak self] _ in
                 Task { @MainActor in await self?.sync() }
             }
         }
@@ -99,14 +99,39 @@ final class GistSync: ObservableObject {
         timer = nil
     }
 
-    /// Local data changed: sync soon (debounced, so playback progress goes out every few seconds at most).
+    /// Local data changed: push within ~4 s. Further changes don't postpone it (the player saves every 5 s,
+    /// so a reset-on-every-change debounce never fired while watching).
     func changed() {
-        guard isOn else { return }
-        pushTask?.cancel()
+        guard isOn, pushTask == nil else { return }
         pushTask = Task {
-            try? await Task.sleep(nanoseconds: 6_000_000_000)
-            guard !Task.isCancelled else { return }
+            try? await Task.sleep(nanoseconds: 4_000_000_000)
+            pushTask = nil
             await sync()
+        }
+    }
+
+    /// Push now — leaving the player or the app. Keeps running briefly in the background so the TV gets it.
+    func flush() {
+        guard isOn else { return }
+        pushTask?.cancel(); pushTask = nil
+        var bg = UIBackgroundTaskIdentifier.invalid
+        bg = UIApplication.shared.beginBackgroundTask(withName: "anixq.sync") { UIApplication.shared.endBackgroundTask(bg) }
+        Task {
+            // If a sync is already running, wait for it and push again with the newest position.
+            for _ in 0..<20 where busy { try? await Task.sleep(nanoseconds: 150_000_000) }
+            await sync()
+            UIApplication.shared.endBackgroundTask(bg)
+        }
+    }
+
+    /// Before starting an episode: get the TV's latest position (waits at most ~3 s).
+    func pullFresh() async {
+        guard isOn, Date().timeIntervalSince(lastSync ?? .distantPast) > 4 else { return }
+        await withTaskGroup(of: Void.self) { g in
+            g.addTask { await self.sync() }
+            g.addTask { try? await Task.sleep(nanoseconds: 3_000_000_000) }
+            _ = await g.next()
+            g.cancelAll()
         }
     }
 

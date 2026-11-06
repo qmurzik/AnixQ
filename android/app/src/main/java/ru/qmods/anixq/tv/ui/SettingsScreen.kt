@@ -57,7 +57,7 @@ fun SettingsScreen(nav: Nav) {
             Section("AnimeLib") {
                 Text(Store.libUser?.let { "Аккаунт: $it — плеер без рекламы, отметки серий на сайте" }
                     ?: "Без входа доступен только плеер Kodik (с рекламой). Войти можно пультом или с любого телефона по QR — iPhone не нужен.",
-                    fontSize = 15.sp, color = C.muted)
+                    fontSize = 18.sp, color = C.muted)
                 Spacer(Modifier.height(12.dp))
                 if (Store.libToken != null) PillButton("Выйти из AnimeLib") { Store.setLib(null, null, null, null) }
                 else PillButton("Войти в AnimeLib", primary = true, modifier = Modifier.memo("settings", "login", initial = true)) { nav.push(LoginRoute) }
@@ -70,7 +70,7 @@ fun SettingsScreen(nav: Nav) {
                     if (Store.githubToken != null) "Подключено${Store.githubLogin?.let { " · GitHub $it" } ?: ""} · $status" +
                         (if (last > 0) " · ${SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date(last))}" else "")
                     else "Нужна, только если смотрите ещё и на iPhone (или на втором ТВ): прогресс, история и закладки в вашем приватном GitHub Gist.",
-                    fontSize = 15.sp, color = C.muted,
+                    fontSize = 18.sp, color = C.muted,
                 )
                 Spacer(Modifier.height(12.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -91,7 +91,7 @@ fun SettingsScreen(nav: Nav) {
                 Toggle("Сразу включать следующую серию", Store.autoNext) { Store.autoNext = it }
                 Spacer(Modifier.height(6.dp))
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("Качество", fontSize = 17.sp, modifier = Modifier.width(220.dp))
+                    Text("Качество", fontSize = 20.sp, modifier = Modifier.width(260.dp))
                     listOf(1080, 720, 480).forEach { q -> Chip("${q}p", Store.preferredQuality == q) { Store.preferredQuality = q } }
                 }
             }
@@ -110,8 +110,8 @@ fun SettingsScreen(nav: Nav) {
                     "Долгое OK на «Продолжить»" to "страница тайтла",
                 ).forEach { (k, v) ->
                     Row(Modifier.padding(vertical = 3.dp)) {
-                        Text(k, fontSize = 15.sp, fontWeight = FontWeight.Bold, modifier = Modifier.width(260.dp))
-                        Text(v, fontSize = 15.sp, color = C.muted)
+                        Text(k, fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.width(300.dp))
+                        Text(v, fontSize = 18.sp, color = C.muted)
                     }
                 }
             }
@@ -124,24 +124,24 @@ fun SettingsScreen(nav: Nav) {
     if (dialog == "device") {
         Dialog(onDismissRequest = { dialog = null }) {
             Column(Modifier.background(C.card, RoundedCornerShape(22.dp)).padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("Вход через GitHub", fontSize = 24.sp, fontWeight = FontWeight.Bold)
+                Text("Вход через GitHub", fontSize = 28.sp, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(16.dp))
                 val d = device
                 if (d == null) {
-                    Text(if (Store.githubToken != null) "Готово! Синхронизация включена." else "Получаем код…", fontSize = 17.sp, color = C.muted)
+                    Text(if (Store.githubToken != null) "Готово! Синхронизация включена." else "Получаем код…", fontSize = 20.sp, color = C.muted)
                     Spacer(Modifier.height(16.dp))
                     PillButton("Закрыть", modifier = Modifier.memo("device", "close", initial = true)) { dialog = null }
                 } else {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(28.dp)) {
                         QrCode(d.second, Modifier.size(200.dp))
                         Column {
-                            Text("1. Откройте ${d.second.removePrefix("https://")}", fontSize = 16.sp)
-                            Text("    (или отсканируйте QR)", fontSize = 14.sp, color = C.muted)
+                            Text("1. Откройте ${d.second.removePrefix("https://")}", fontSize = 19.sp)
+                            Text("    (или отсканируйте QR)", fontSize = 17.sp, color = C.muted)
                             Spacer(Modifier.height(10.dp))
-                            Text("2. Введите код:", fontSize = 16.sp)
+                            Text("2. Введите код:", fontSize = 19.sp)
                             Text(d.first, fontSize = 40.sp, fontWeight = FontWeight.Black, color = C.pink, letterSpacing = 4.sp)
                             Spacer(Modifier.height(10.dp))
-                            Text("Ждём подтверждения…", fontSize = 14.sp, color = C.muted)
+                            Text("Ждём подтверждения…", fontSize = 17.sp, color = C.muted)
                         }
                     }
                 }
@@ -162,11 +162,11 @@ private fun PairDialog(onClose: () -> Unit) {
     DisposableEffect(pairing) { pairing.start(); onDispose { pairing.stop() } }
     Dialog(onDismissRequest = onClose) {
         Column(Modifier.background(C.card, RoundedCornerShape(22.dp)).padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("Вход с iPhone", fontSize = 24.sp, fontWeight = FontWeight.Bold)
+            Text("Вход с iPhone", fontSize = 28.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(18.dp))
             if (state != null) {
-                Text("Готово — данные получены с $state", fontSize = 18.sp)
-                Text("Синхронизация включится через пару секунд", fontSize = 14.sp, color = C.muted)
+                Text("Готово — данные получены с $state", fontSize = 21.sp)
+                Text("Синхронизация включится через пару секунд", fontSize = 17.sp, color = C.muted)
                 Spacer(Modifier.height(18.dp))
                 PillButton("Отлично", primary = true, modifier = Modifier.memo("pairdone", "ok", initial = true)) { onClose() }
             } else {
@@ -177,8 +177,8 @@ private fun PairDialog(onClose: () -> Unit) {
                         Step("2", "Нажмите «Открыть в AnixQ»")
                         Step("3", "Подтвердите, что передать: синхронизацию, AnimeLib, Shikimori")
                         Spacer(Modifier.height(8.dp))
-                        Text("Данные шифруются ключом из этого QR — никто, кроме ТВ, их не прочитает.", fontSize = 13.sp, color = C.muted)
-                        error?.let { Text(it, fontSize = 14.sp, color = C.pink, modifier = Modifier.padding(top = 8.dp)) }
+                        Text("Данные шифруются ключом из этого QR — никто, кроме ТВ, их не прочитает.", fontSize = 16.sp, color = C.muted)
+                        error?.let { Text(it, fontSize = 17.sp, color = C.pink, modifier = Modifier.padding(top = 8.dp)) }
                     }
                 }
                 Spacer(Modifier.height(18.dp))
@@ -191,17 +191,17 @@ private fun PairDialog(onClose: () -> Unit) {
 @Composable
 private fun Step(n: String, text: String) {
     Row(Modifier.padding(vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text(n, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Color.White,
+        Text(n, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color.White,
             modifier = Modifier.background(C.pink, RoundedCornerShape(50)).padding(horizontal = 9.dp, vertical = 2.dp))
         Spacer(Modifier.width(10.dp))
-        Text(text, fontSize = 16.sp)
+        Text(text, fontSize = 19.sp)
     }
 }
 
 @Composable
 private fun Section(title: String, content: @Composable () -> Unit) {
     Column(Modifier.fillMaxWidth().background(Color.White.copy(alpha = 0.05f), RoundedCornerShape(18.dp)).padding(22.dp)) {
-        Text(title, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+        Text(title, fontSize = 24.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(8.dp))
         content()
     }
@@ -212,7 +212,7 @@ private fun Toggle(label: String, value: Boolean, onChange: (Boolean) -> Unit) {
     Focusable(onClick = { onChange(!value) }, modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp), radius = 12.dp, scale = 1.01f,
         container = Color.Transparent) {
         Row(Modifier.padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(label, fontSize = 17.sp, modifier = Modifier.weight(1f))
+            Text(label, fontSize = 20.sp, modifier = Modifier.weight(1f))
             Row(Modifier.width(52.dp).height(30.dp).background(if (value) C.pink else Color.White.copy(alpha = 0.2f), RoundedCornerShape(50)).padding(4.dp),
                 horizontalArrangement = if (value) Arrangement.End else Arrangement.Start) {
                 androidx.compose.foundation.layout.Box(Modifier.size(22.dp).background(Color.White, RoundedCornerShape(50)))

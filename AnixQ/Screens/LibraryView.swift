@@ -488,6 +488,18 @@ struct SettingsView: View {
                 }
 
                 Section {
+                    NavigationLink { DeviceSyncView() } label: {
+                        LabeledContent {
+                            Text(GistSync.shared.isOn ? "Вкл." : "Выкл.")
+                        } label: {
+                            Label("Синхронизация устройств (iPhone ↔ ТВ)", systemImage: "tv.and.mediabox")
+                        }
+                    }
+                } header: {
+                    Text("Синхронизация")
+                }
+
+                Section {
                     Toggle("Синхронизация через iCloud", isOn: $cloudOn)
                         .onChange(of: cloudOn) { on in if on { cloud.start(library: library) } }
                     if cloudOn {

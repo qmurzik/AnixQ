@@ -120,6 +120,7 @@ final class LibraryStore: ObservableObject {
             try? data.write(to: url, options: .atomic)
         }
         CloudSync.shared.libraryChanged()
+        GistSync.shared.changed()
     }
 
     // MARK: Playback progress
@@ -238,6 +239,9 @@ final class LibraryStore: ObservableObject {
         } else {
             bookmarks[title.slugURL] = nil
         }
+        var removed = Self.removedBookmarks
+        removed[title.slugURL] = status == nil ? Date().timeIntervalSince1970 : nil
+        Self.removedBookmarks = removed
         save()
         guard LibSession.isLoggedIn else { return }
         Task {
@@ -451,5 +455,101 @@ extension LibraryStore {
         bookmarks = b.bookmarks
         genres = b.genres
         save()
+    }
+}
+
+// MARK: - Device sync (GitHub Gist, docs/sync-format.md)
+
+extension LibraryStore {
+    func exportSync() -> SyncDoc {
+        var doc = SyncDoc()
+        for e in history { doc.titles[String(e.title.id)] = e.title }
+        for b in bookmarks.values { doc.titles[String(b.title.id)] = b.title }
+        for (eid, p) in positions {
+            doc.progress[String(eid)] = SyncDoc.Prog(pos: p.position, dur: p.duration, at: p.date.timeIntervalSince1970)
+        }
+        // The newest episode of each title carries the "continue watching" details.
+        for e in history {
+            var p = doc.progress[String(e.episodeId)]
+                ?? SyncDoc.Prog(pos: e.position, dur: e.duration, at: e.date.timeIntervalSince1970)
+            p.at = max(p.at, e.date.timeIntervalSince1970)
+            p.title = e.title.id
+            p.ep = e.episodeNumber
+            p.epName = e.episodeName
+            p.team = e.teamId
+            p.teamName = e.teamName
+            doc.progress[String(e.episodeId)] = p
+        }
+        for (tid, set) in watched where !set.isEmpty {
+            let at = history.first { $0.title.id == tid }?.date.timeIntervalSince1970 ?? 0
+            doc.watched[String(tid)] = SyncDoc.Watched(eps: set.sorted { (Double($0) ?? 0) < (Double($1) ?? 0) }, at: at)
+        }
+        for (slug, b) in bookmarks {
+            doc.bookmarks[slug] = SyncDoc.Bookmark(title: b.title.id, status: b.status.rawValue, at: b.date.timeIntervalSince1970)
+        }
+        for (slug, at) in Self.removedBookmarks where bookmarks[slug] == nil {
+            doc.bookmarks[slug] = SyncDoc.Bookmark(title: nil, status: nil, at: at)
+        }
+        let dubsAt = UserDefaults.standard.double(forKey: "dubs.at")
+        doc.prefs = SyncDoc.Prefs(dubs: DubPreferences.favorites, at: dubsAt)
+        return doc
+    }
+
+    /// Newest wins per episode / title / bookmark; watched marks are united. Returns true if anything changed.
+    @discardableResult
+    func importSync(_ d: SyncDoc) -> Bool {
+        var changed = false
+        func title(_ id: Int?) -> Title? {
+            guard let id else { return nil }
+            return d.titles[String(id)] ?? history.first { $0.title.id == id }?.title
+                ?? bookmarks.values.first { $0.title.id == id }?.title
+        }
+        for (key, p) in d.progress {
+            guard let eid = Int(key) else { continue }
+            let date = Date(timeIntervalSince1970: p.at)
+            if (positions[eid]?.date ?? .distantPast) < date, p.dur > 0 {
+                positions[eid] = PlaybackPosition(position: p.pos, duration: p.dur, date: date)
+                changed = true
+            }
+            // Continue watching: the other device's latest episode of a title.
+            if let t = title(p.title), let ep = p.ep, let team = p.team {
+                let local = history.first { $0.title.id == t.id }
+                if (local?.date ?? .distantPast) < date {
+                    history.removeAll { $0.title.id == t.id }
+                    history.append(WatchEntry(title: t, episodeId: eid, episodeNumber: ep, episodeName: p.epName ?? "",
+                                              teamId: team, teamName: p.teamName ?? "", position: p.pos, duration: p.dur,
+                                              date: date))
+                    changed = true
+                }
+            }
+        }
+        if changed { history.sort { $0.date > $1.date } }
+        for (key, w) in d.watched {
+            guard let tid = Int(key) else { continue }
+            let merged = (watched[tid] ?? []).union(w.eps)
+            if merged != watched[tid] { watched[tid] = merged; changed = true }
+        }
+        var removed = Self.removedBookmarks
+        for (slug, b) in d.bookmarks {
+            let localAt = bookmarks[slug]?.date.timeIntervalSince1970 ?? removed[slug] ?? 0
+            guard b.at > localAt else { continue }
+            if let raw = b.status, let status = BookmarkStatus(rawValue: raw), let t = title(b.title) {
+                bookmarks[slug] = LocalBookmark(title: t, status: status, remoteId: bookmarks[slug]?.remoteId,
+                                                date: Date(timeIntervalSince1970: b.at))
+                removed[slug] = nil
+                changed = true
+            } else if b.status == nil, bookmarks[slug] != nil {
+                bookmarks[slug] = nil
+                removed[slug] = b.at
+                changed = true
+            }
+        }
+        Self.removedBookmarks = removed
+        if let p = d.prefs, p.at > UserDefaults.standard.double(forKey: "dubs.at") {
+            DubPreferences.favorites = p.dubs
+            UserDefaults.standard.set(p.at, forKey: "dubs.at")
+        }
+        if changed { save() }
+        return changed
     }
 }

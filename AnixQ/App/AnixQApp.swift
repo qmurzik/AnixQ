@@ -54,6 +54,7 @@ struct AnixQApp: App {
                     await library.syncBookmarks()
                 }
                 await library.applyWidgetActions()
+                GistSync.shared.start(library: library)
                 await EpisodeCountdown.refresh(library: library)
                 await CalendarSync.sync(library: library)
                 CloudSync.shared.start(library: library)
@@ -83,6 +84,7 @@ struct RootView: View {
     @ObservedObject private var room = WatchRoom.shared
     @State private var sharedLaunch: WatchTogether?
     @State private var sharedList: UserCollection?
+    @State private var pairRequest: PairRequest?
     /// Existing users (anything in the library) skip the introduction.
     @State private var onboarded = UserDefaults.standard.bool(forKey: "onboarding.done")
         || UserDefaults.standard.string(forKey: "screenshotSlug") != nil
@@ -104,6 +106,9 @@ struct RootView: View {
                     guard url.scheme == "anixq" else { return }
                     if url.host == "title", let slug = url.pathComponents.dropFirst().first {
                         deepLink = DeepLink(slug: slug)
+                    } else if url.host == "pair", let req = PairRequest(url: url) {
+                        // QR code shown by AnixQ on Android TV.
+                        pairRequest = req
                     } else if url.host == "list", let token = url.pathComponents.dropFirst().first,
                               let list = UserDataStore.decode(token) {
                         sharedList = list
@@ -175,6 +180,7 @@ struct RootView: View {
                     }
                 }
                 .sheet(item: $sharedList) { list in SharedCollectionView(collection: list).environmentObject(library) }
+                .sheet(item: $pairRequest) { PairTVView(request: $0) }
                 .fullScreenCover(item: $sharedLaunch) { a in
                     SharePlayLauncher(activity: a).environmentObject(library)
                 }

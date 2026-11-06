@@ -11,7 +11,10 @@ enum DubPreferences {
 
     static var favorites: [String] {
         get { UserDefaults.standard.stringArray(forKey: key) ?? [] }
-        set { UserDefaults.standard.set(Array(newValue.prefix(12)), forKey: key) }
+        set {
+            UserDefaults.standard.set(Array(newValue.prefix(12)), forKey: key)
+            UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: "dubs.at")
+        }
     }
 
     static var autoLearn: Bool {

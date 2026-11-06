@@ -66,11 +66,11 @@ final class MQTTClient: NSObject, URLSessionWebSocketDelegate {
         send(Self.packet(0x82, body))
     }
 
-    func publish(_ topic: String, _ payload: Data) {
+    func publish(_ topic: String, _ payload: Data, retain: Bool = false) {
         guard connected else { return }
         var body = Self.string(topic)
         body.append(payload)
-        send(Self.packet(0x30, body))
+        send(Self.packet(retain ? 0x31 : 0x30, body))
     }
 
     // MARK: Packets

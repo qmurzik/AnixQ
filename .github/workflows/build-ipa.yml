@@ -4,7 +4,7 @@ on:
   push:
     branches: [ "main" ]
     # Site-only changes don't produce an app release.
-    paths-ignore: [ "site/**", "scripts/build_site.py", ".github/workflows/pages.yml", "README.md" ]
+    paths-ignore: [ "site/**", "scripts/build_site.py", ".github/workflows/pages.yml", ".github/workflows/preview.yml", "README.md" ]
     tags: [ "v*" ]
   workflow_dispatch:
 

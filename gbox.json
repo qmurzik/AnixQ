@@ -6,7 +6,7 @@
   "sourceLinkTitle": "Сайт",
   "sourceLinkUrl": "https://qmurzik.github.io/AnixQ/",
   "sourceImage": "https://raw.githubusercontent.com/qmurzik/AnixQ/gbox-source/icon.png",
-  "sourceUpdateTime": "2026-11-05T22:32:08+0000",
+  "sourceUpdateTime": "2026-11-06T06:54:02+0000",
   "sourceDescription": "AnixQ — аниме с AnimeLib: каталог, плеер без рекламы, синхронизация с Shikimori.",
   "appCategories": [
     "Приложения"
@@ -15,13 +15,13 @@
     {
       "appType": "SELF_SIGN",
       "appCateIndex": 0,
-      "appUpdateTime": "2026-11-05T22:32:08+0000",
+      "appUpdateTime": "2026-11-06T06:54:02+0000",
       "appName": "AnixQ",
-      "appVersion": "1.0.55",
+      "appVersion": "1.0.56",
       "appImage": "https://raw.githubusercontent.com/qmurzik/AnixQ/gbox-source/icon.png",
-      "appPackage": "https://github.com/qmurzik/AnixQ/releases/download/v1.0.55/AnixQ.ipa",
-      "appSize": 3912592,
-      "appDescription": "• Отсчёт до серии на экране блокировки, Handoff, серии в Календаре, подборки со ссылкой, заметки и личная оценка"
+      "appPackage": "https://github.com/qmurzik/AnixQ/releases/download/v1.0.56/AnixQ.ipa",
+      "appSize": 3912587,
+      "appDescription": "• CI: скриншоты интерфейса и плеера с симулятора (ручной запуск)"
     }
   ]
 }

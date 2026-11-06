@@ -461,6 +461,7 @@ fun PlayerScreen(nav: Nav, route: PlayerRoute) {
     var seekAcc by remember { mutableDoubleStateOf(0.0) }
     var seekAt by remember { mutableLongStateOf(0L) }
     val root = remember { FocusRequester() }
+    var swallowUp by remember { mutableStateOf<Key?>(null) }
     val playBtn = remember { FocusRequester() }
     val skipBtn = remember { FocusRequester() }
 
@@ -535,6 +536,9 @@ fun PlayerScreen(nav: Nav, route: PlayerRoute) {
         Modifier.fillMaxSize().background(Color.Black)
             .onPreviewKeyEvent { ev ->
                 lastInput = System.currentTimeMillis()
+                // The release of a press we already handled must not reach the button that just got focus
+                // (OK = pause + show panel; its key-up would "click" Play and resume at once).
+                if (ev.type == KeyEventType.KeyUp && swallowUp != null && ev.key == swallowUp) { swallowUp = null; return@onPreviewKeyEvent true }
                 if (ev.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                 when (ev.key.nativeKeyCode) {
                     AKey.KEYCODE_MEDIA_PLAY_PAUSE, AKey.KEYCODE_MEDIA_PLAY, AKey.KEYCODE_MEDIA_PAUSE -> { m.toggle(); true }
@@ -548,6 +552,7 @@ fun PlayerScreen(nav: Nav, route: PlayerRoute) {
             .focusRequester(root)
             .onKeyEvent { ev ->
                 if (controls || panel != Panel.NONE || ev.type != KeyEventType.KeyDown) return@onKeyEvent false
+                if (ev.nativeKeyEvent.repeatCount == 0 && (ev.key == Key.DirectionCenter || ev.key == Key.Enter || ev.key == Key.NumPadEnter)) swallowUp = ev.key
                 val repeat = ev.nativeKeyEvent.repeatCount
                 when (ev.key) {
                     Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> {

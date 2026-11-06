@@ -531,7 +531,7 @@ final class WatchRoom: ObservableObject {
         if playing { target += max(0, Date().timeIntervalSince1970 - m.sentAt) * Double(m.rate ?? 1) }
         if abs(c.currentTime - target) > 2 { c.seek(to: target) }
         if playing && !c.isPlaying && !c.isBuffering { c.togglePlay() }
-        if !playing && (c.isPlaying || c.isBuffering) { c.togglePlay() }
+        if !playing && (c.isPlaying || c.isBuffering) { DebugLog.log("room: paused by \(m.name)"); c.togglePlay() }
     }
 }
 

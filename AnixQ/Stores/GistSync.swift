@@ -106,12 +106,19 @@ final class GistSync: ObservableObject {
     /// so a reset-on-every-change debounce never fired while watching).
     func changed() {
         guard isOn, pushTask == nil else { return }
+        // GitHub allows ~500 gist writes an hour: while watching, push at most every 30 s
+        // (pause, leaving the player and backgrounding still push at once via flush()).
+        let wait = max(4, 30 - Date().timeIntervalSince(lastPush), backoffUntil.timeIntervalSinceNow)
         pushTask = Task {
-            try? await Task.sleep(nanoseconds: 4_000_000_000)
+            try? await Task.sleep(nanoseconds: UInt64(wait * 1_000_000_000))
             pushTask = nil
             await sync()
         }
     }
+
+    private var lastPush = Date.distantPast
+    /// After GitHub refuses (403/429 rate limit) we stay quiet for a while instead of hammering it.
+    private var backoffUntil = Date.distantPast
 
     /// Push now — leaving the player or the app. Keeps running briefly in the background so the TV gets it.
     func flush() {
@@ -225,7 +232,7 @@ final class GistSync: ObservableObject {
 
     /// Pull → merge into the library → push the merged result if anything is new.
     func sync() async {
-        guard isOn, !busy, let library, let gist = gistId else { return }
+        guard isOn, !busy, let library, let gist = gistId, Date() >= backoffUntil else { return }
         busy = true
         defer { busy = false }
         do {
@@ -256,6 +263,7 @@ final class GistSync: ObservableObject {
                 doc.updated = Date().timeIntervalSince1970
                 let body: [String: Any] = ["files": [Self.fileName: ["content": String(decoding: try encode(doc), as: UTF8.self)]]]
                 _ = try await api("PATCH", "/gists/\(gist)", body: body)
+                lastPush = Date()
                 lastPushedHash = hash
                 UserDefaults.standard.set(hash, forKey: "github.lastHash")
                 etag = nil
@@ -263,8 +271,14 @@ final class GistSync: ObservableObject {
             lastSync = Date()
             status = "Синхронизировано"
         } catch {
-            status = "Нет связи с GitHub"
-            DebugLog.log("sync: \(error.localizedDescription)")
+            if case LibError.badStatus(let code) = error, code == 403 || code == 429 {
+                backoffUntil = Date().addingTimeInterval(120)
+                status = "GitHub просит подождать — продолжим через 2 минуты"
+                DebugLog.log("sync: GitHub rate limit (\(code)), pausing sync for 2 min")
+            } else {
+                status = "Нет связи с GitHub"
+                DebugLog.log("sync: \(error.localizedDescription)")
+            }
         }
     }
 

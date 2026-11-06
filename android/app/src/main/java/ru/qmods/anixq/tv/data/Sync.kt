@@ -67,8 +67,14 @@ object Sync {
     fun changed() {
         if (!isOn) return
         if (pushJob?.isActive == true) return
-        pushJob = scope.launch { delay(4_000); sync() }
+        // GitHub allows ~500 gist writes an hour: while watching push at most every 30 s (flush() is immediate).
+        val wait = maxOf(4_000L, 30_000L - (System.currentTimeMillis() - lastPushAt), backoffUntil - System.currentTimeMillis())
+        pushJob = scope.launch { delay(wait); sync() }
     }
+
+    private var lastPushAt = 0L
+    /** Rate-limited by GitHub (403/429): stay quiet for a while. */
+    @Volatile private var backoffUntil = 0L
 
     fun syncNow() { scope.launch { sync() } }
 
@@ -153,6 +159,7 @@ object Sync {
 
     suspend fun sync() = lock.withLock {
         val gist = Store.gistId ?: return@withLock
+        if (System.currentTimeMillis() < backoffUntil) return@withLock
         try {
             val (code, text, tag) = raw("GET", "/gists/$gist", etag = etag)
             if (code == 404) { Store.setGithub(Store.githubToken, null); findOrCreateGist(); return@withLock }
@@ -186,6 +193,7 @@ object Sync {
             if (hash != lastHash) {
                 doc.put("updated", System.currentTimeMillis() / 1000.0)
                 api("PATCH", "/gists/$gist", JSONObject().put("files", JSONObject().put(FILE, JSONObject().put("content", doc.toString()))))
+                lastPushAt = System.currentTimeMillis()
                 lastHash = hash
                 etag = null
             }
@@ -193,7 +201,11 @@ object Sync {
             lastPull = System.currentTimeMillis()
             status.value = "Синхронизировано"
         } catch (e: Exception) {
-            status.value = "Нет связи с GitHub"
+            if (e.message == "GitHub 403" || e.message == "GitHub 429") {
+                backoffUntil = System.currentTimeMillis() + 120_000
+                Store.dirty = true
+                status.value = "GitHub просит подождать — продолжим через 2 минуты"
+            } else status.value = "Нет связи с GitHub"
             Log.d("AnixQ", "sync: ${e.message}")
         }
     }

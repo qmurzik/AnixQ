@@ -127,6 +127,37 @@ final class PlayerController: ObservableObject {
             Task { @MainActor in self?.statusChanged(st) }
         }
         setupRemoteCommands()
+        rateObserver = NotificationCenter.default.addObserver(forName: AVPlayer.rateDidChangeNotification, object: player, queue: .main) { [weak self] n in
+            let r = n.userInfo?[AVPlayer.rateDidChangeReasonKey] as? AVPlayer.RateDidChangeReason
+            let text: String
+            switch r {
+            case .some(.audioSessionInterrupted): text = "прерывание звука"
+            case .some(.appBackgrounded): text = "приложение свернуто"
+            case .some(.setRateFailed): text = "ошибка воспроизведения"
+            case .some(.setRateCalled): text = "команда"
+            default: text = "неизвестно"
+            }
+            Task { @MainActor in self?.lastRateReason = text }
+        }
+        interruptionObserver = NotificationCenter.default.addObserver(forName: AVAudioSession.interruptionNotification, object: nil, queue: .main) { [weak self] n in
+            guard let raw = n.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt, let type = AVAudioSession.InterruptionType(rawValue: raw) else { return }
+            let opts = (n.userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt).map { AVAudioSession.InterruptionOptions(rawValue: $0) } ?? []
+            Task { @MainActor in
+                guard let self else { return }
+                if type == .began {
+                    self.wasPlayingBeforeInterruption = self.isPlaying || self.isBuffering
+                    DebugLog.log("player: audio interrupted")
+                } else {
+                    DebugLog.log("player: audio interruption ended (resume=\(opts.contains(.shouldResume)))")
+                    // A short interruption (another app's sound, Siri, a notification) shouldn't leave the episode paused.
+                    if self.wasPlayingBeforeInterruption && opts.contains(.shouldResume) {
+                        try? AVAudioSession.sharedInstance().setActive(true)
+                        self.player.playImmediately(atRate: self.rate)
+                    }
+                    self.wasPlayingBeforeInterruption = false
+                }
+            }
+        }
         if let r = saved.rate { rate = r }
         networkObserver = NotificationCenter.default.addObserver(forName: .anixqNetworkBack, object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor in self?.networkCameBack() }
@@ -134,6 +165,15 @@ final class PlayerController: ObservableObject {
     }
 
     private var networkObserver: NSObjectProtocol?
+    private var rateObserver: NSObjectProtocol?
+    private var interruptionObserver: NSObjectProtocol?
+    private var ownPauseAt = Date.distantPast
+    private var lastRateReason = "—"
+    private var wasPlayingBeforeInterruption = false
+    private var bufferedAhead: Double {
+        guard let r = player.currentItem?.loadedTimeRanges.last?.timeRangeValue else { return 0 }
+        return max(0, r.end.seconds - currentTime)
+    }
 
     // MARK: Per-title settings
 
@@ -544,6 +584,7 @@ final class PlayerController: ObservableObject {
             player.playImmediately(atRate: rate)
             isPlaying = true
         } else {
+            ownPauseAt = Date()
             player.pause()
             isPlaying = false
         }
@@ -631,6 +672,8 @@ final class PlayerController: ObservableObject {
     }
 
     func stop() {
+        ownPauseAt = Date()
+        [rateObserver, interruptionObserver].compactMap { $0 }.forEach(NotificationCenter.default.removeObserver)
         SharePlayManager.shared.detach(self)
         WatchRoom.shared.detach(self)
         if let failObserver { NotificationCenter.default.removeObserver(failObserver) }
@@ -645,6 +688,11 @@ final class PlayerController: ObservableObject {
     // MARK: Observers
 
     private func statusChanged(_ st: AVPlayer.TimeControlStatus) {
+        // Paused without anyone asking: note why, so a "random pause" can be traced in the debug log.
+        if st == .paused, isPlaying || isBuffering, Date().timeIntervalSince(ownPauseAt) > 1.5,
+           !(duration > 0 && currentTime >= duration - 1) {
+            DebugLog.log("player: paused by itself at \(Int(currentTime))s (reason: \(lastRateReason), buffered \(Int(bufferedAhead))s)")
+        }
         isPlaying = st == .playing
         let wasBuffering = isBuffering
         isBuffering = st == .waitingToPlayAtSpecifiedRate
@@ -676,6 +724,7 @@ final class PlayerController: ObservableObject {
         }
         if let at = sleepAt, Date() >= at {
             sleepAt = nil
+            ownPauseAt = Date()
             player.pause()
             DebugLog.log("player: sleep timer paused playback")
         }
@@ -754,7 +803,13 @@ final class PlayerController: ObservableObject {
     private func setupRemoteCommands() {
         let c = MPRemoteCommandCenter.shared()
         c.playCommand.addTarget { [weak self] _ in Task { @MainActor in self?.player.play() }; return .success }
-        c.pauseCommand.addTarget { [weak self] _ in Task { @MainActor in self?.player.pause() }; return .success }
+        c.pauseCommand.addTarget { [weak self] _ in
+            Task { @MainActor in
+                DebugLog.log("player: pause from Now Playing / headphones")
+                self?.ownPauseAt = Date(); self?.player.pause()
+            }
+            return .success
+        }
         c.togglePlayPauseCommand.addTarget { [weak self] _ in
             Task { @MainActor in self?.togglePlay() }
             return .success

@@ -169,12 +169,23 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
     @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
     fun setUpscaleMode(mode: Int) {
         upscale = mode; Store.upscale = mode
-        compare = false; Upscaler.split = 0f
+        compare = false; Upscaler.split = 0f; announced = ""; Upscaler.lastInfo = ""
         // A new effect chain needs the pipeline rebuilt: reload at the same moment.
         if (native && exo != null) load(index, keepPos = pos)
         say(when (mode) { 0 -> "Апскейлер выключен"; 1 -> "Резкость (RCAS) включена"; 2 -> "Апскейл + резкость включены"
             else -> "Нейросеть Anime4K включена" })
     }
+    /** The upscaler broke playback on this box: turn it off and restart from the same moment. */
+    @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+    fun upscaleFailed(why: String) {
+        android.util.Log.w("AnixQ", "upscaler off: $why")
+        upscale = 0; Store.upscale = 0; compare = false; Upscaler.split = 0f
+        say("Апскейлер не заработал на этой приставке и выключен ($why)")
+        load(index, keepPos = maxOf(pos, exo?.position ?: 0.0))
+    }
+
+    private var announced = ""
+
     @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
     fun toggleCompare() { compare = !compare; Upscaler.split = if (compare) 0.5f else 0f; say(if (compare) "Слева — без обработки, справа — с апскейлером" else "Сравнение выключено") }
     fun toggleSubtitles() { subtitlesOn = !subtitlesOn; Store.subtitles = subtitlesOn; exo?.setSubtitles(subtitlesOn); say(if (subtitlesOn) "Субтитры включены" else "Субтитры выключены") }
@@ -290,10 +301,9 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
         native = true
         val e = exo ?: ExoEngine(context) { err -> onNativeError(err) }.also { exo = it }
         currentUrl = Api.videoUrl(servers[0], href)
-        e.load(currentUrl!!, startAt, p.subtitles)
+        e.load(currentUrl!!, startAt, p.subtitles, upscale)
         ru.qmods.anixq.tv.data.Room.sendState()
         e.setSubtitles(subtitlesOn)
-        e.setUpscale(upscale)
         if (speed != 1f) e.exo.setPlaybackSpeed(speed)
     }
 
@@ -309,12 +319,13 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
 
     private fun onNativeError(err: String) {
         val p = player ?: return
+        if (upscale > 0) { upscaleFailed("ошибка видео: $err"); return }
         val href = quality?.let { p.hrefs[it] } ?: return
         val at = exo?.position ?: pos
         if (serverIdx + 1 < servers.size) {
             serverIdx += 1
             say("Зеркало ${serverIdx + 1}…")
-            exo?.load(Api.videoUrl(servers[serverIdx], href), at, p.subtitles)
+            exo?.load(Api.videoUrl(servers[serverIdx], href), at, p.subtitles, upscale)
             return
         }
         val k = players.firstOrNull { it.team.id == p.team.id && it.isKodik } ?: players.firstOrNull { it.isKodik }
@@ -335,6 +346,16 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
         }
         if (toast != null && System.currentTimeMillis() - toastAt > 2500) toast = null
         if (!native && kodik?.stuck == true && !kodikStuck) kodikStuck = true
+        // Proof it works: the GPU pipeline reports the real sizes once it processes frames.
+        if (native && upscale > 0) {
+            val info = Upscaler.lastInfo
+            if (info.isNotEmpty() && info != announced && exo?.firstFrame == true) { announced = info; say("Апскейлер работает: $info") }
+            // No picture 15 s after loading with the upscaler on: it's the upscaler — fall back.
+            val e2 = exo
+            if (e2 != null && !e2.firstFrame && e2.loadedAt > 0 && System.currentTimeMillis() - e2.loadedAt > 15_000 && message == null) {
+                upscaleFailed("видео не запускалось 15 с")
+            }
+        }
         if (upscale >= 3 && Anime4K.supported == false) {
             say("Нейросеть не поддерживается этой приставкой — включён обычный апскейлер")
             setUpscaleMode(2)

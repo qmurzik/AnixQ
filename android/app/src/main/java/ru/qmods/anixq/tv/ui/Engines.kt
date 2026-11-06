@@ -75,7 +75,19 @@ class ExoEngine(private val context: Context, private val onError: (String) -> U
      * 0 off · 1 sharpen (RCAS) · 2 Lanczos + RCAS ·
      * 3 Anime4K neural ×2 · 4 Anime4K restore + ×2 · 5 Anime4K M (bigger network).
      */
-    fun setUpscale(mode: Int) {
+    private var appliedMode = 0
+    @Volatile var firstFrame = false; private set
+    var loadedAt = 0L; private set
+
+    /** Effects must be in place before the media is prepared (setting them on a running player stalls it). */
+    private fun applyUpscale(mode: Int) {
+        if (mode == appliedMode) return
+        exo.stop()
+        setUpscale(mode)
+        appliedMode = mode
+    }
+
+    private fun setUpscale(mode: Int) {
         val effects = mutableListOf<androidx.media3.common.Effect>()
         when (mode) {
             1 -> effects += Upscaler.Sharpen()
@@ -101,6 +113,7 @@ class ExoEngine(private val context: Context, private val onError: (String) -> U
     init {
         exo.addListener(object : Player.Listener {
             override fun onPlayerError(error: PlaybackException) { onError(error.errorCodeName) }
+            override fun onRenderedFirstFrame() { firstFrame = true }
         })
         exo.addAnalyticsListener(object : androidx.media3.exoplayer.analytics.AnalyticsListener {
             override fun onDroppedVideoFrames(eventTime: androidx.media3.exoplayer.analytics.AnalyticsListener.EventTime, droppedFrames: Int, elapsedMs: Long) {
@@ -111,7 +124,10 @@ class ExoEngine(private val context: Context, private val onError: (String) -> U
         })
     }
 
-    fun load(url: String, startAt: Double, subtitles: List<ru.qmods.anixq.tv.data.Subtitle> = emptyList()) {
+    fun load(url: String, startAt: Double, subtitles: List<ru.qmods.anixq.tv.data.Subtitle> = emptyList(), upscale: Int = appliedMode) {
+        applyUpscale(upscale)
+        firstFrame = false
+        loadedAt = System.currentTimeMillis()
         val subs = subtitles.mapIndexed { i, s ->
             MediaItem.SubtitleConfiguration.Builder(android.net.Uri.parse(s.url))
                 .setMimeType(when (s.format) {

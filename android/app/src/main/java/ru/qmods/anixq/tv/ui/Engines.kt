@@ -88,14 +88,13 @@ class ExoEngine(private val context: Context, private val onError: (String) -> U
     }
 
     private fun setUpscale(mode: Int) {
-        val effects = mutableListOf<androidx.media3.common.Effect>()
-        when (mode) {
-            1 -> effects += Upscaler.Sharpen()
-            2 -> { effects += Upscaler.Scale(screenHeight); effects += Upscaler.Sharpen() }
-            3 -> effects += Anime4K.Effect("anime4k/Anime4K_Upscale_CNN_x2_S.glsl", screenHeight, compare = true)
-            4 -> { effects += Anime4K.Effect("anime4k/Anime4K_Restore_CNN_S.glsl", screenHeight)
-                   effects += Anime4K.Effect("anime4k/Anime4K_Upscale_CNN_x2_S.glsl", screenHeight, compare = true) }
-            5 -> effects += Anime4K.Effect("anime4k/Anime4K_Upscale_CNN_x2_M.glsl", screenHeight, compare = true)
+        val chain = upscaleMode(mode).chain
+        val effects = chain.mapIndexed { i, step ->
+            when (step) {
+                "rcas" -> Upscaler.Sharpen()
+                "lanczos" -> Upscaler.Scale(screenHeight)
+                else -> Anime4K.Effect("anime4k/Anime4K_$step.glsl", screenHeight, compare = i == chain.lastIndex)
+            }
         }
         if (mode == 0) Upscaler.lastInfo = ""
         runCatching { exo.setVideoEffects(effects) }.onFailure { android.util.Log.w("AnixQ", "upscaler: ${it.message}") }

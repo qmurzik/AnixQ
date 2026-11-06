@@ -21,20 +21,21 @@ import androidx.media3.effect.GlShaderProgram
  */
 @UnstableApi
 object Anime4K {
-    data class Pass(val binds: List<String>, val save: String, val width: String, val height: String, val whenExpr: String?, val body: String)
+    data class Pass(val binds: List<String>, val save: String, val width: String?, val height: String?, val whenExpr: String?, val body: String, val hook: String = "MAIN")
 
     /** Whether this box can render to half-float textures (needed for the network's negative values). */
     @Volatile var supported: Boolean? = null
 
     fun parse(text: String): List<Pass> {
         val passes = ArrayList<Pass>()
-        var binds = ArrayList<String>(); var save = "MAIN"; var w = "MAIN.w"; var h = "MAIN.h"; var whenE: String? = null
+        var binds = ArrayList<String>(); var save = "MAIN"; var w: String? = null; var h: String? = null; var whenE: String? = null; var hook = "MAIN"
         val body = StringBuilder(); var inPass = false
-        fun flush() { if (inPass) passes += Pass(binds, save, w, h, whenE, body.toString()) }
+        fun flush() { if (inPass && hook == "MAIN") passes += Pass(binds, save, w, h, whenE, body.toString(), hook) }
         for (line in text.lines()) {
             if (line.startsWith("//!DESC")) {
-                flush(); inPass = true; binds = ArrayList(); save = "MAIN"; w = "MAIN.w"; h = "MAIN.h"; whenE = null; body.setLength(0)
-            } else if (line.startsWith("//!BIND ")) binds += line.removePrefix("//!BIND ").trim()
+                flush(); inPass = true; binds = ArrayList(); save = "MAIN"; w = null; h = null; whenE = null; hook = "MAIN"; body.setLength(0)
+            } else if (line.startsWith("//!HOOK ")) hook = line.removePrefix("//!HOOK ").trim()
+            else if (line.startsWith("//!BIND ")) binds += line.removePrefix("//!BIND ").trim()
             else if (line.startsWith("//!SAVE ")) save = line.removePrefix("//!SAVE ").trim()
             else if (line.startsWith("//!WIDTH ")) w = line.removePrefix("//!WIDTH ").trim()
             else if (line.startsWith("//!HEIGHT ")) h = line.removePrefix("//!HEIGHT ").trim()
@@ -74,11 +75,12 @@ object Anime4K {
             append("#define ${b}_tex(pos) texture($b, pos)\n#define ${b}_texOff(off) texture($b, vUv + ${b}_pt * (off))\n")
         }
         append(p.body)
-        if (last && "MAIN" in p.binds) {
+        val src = listOf("MAIN", "HOOKED").firstOrNull { it in p.binds }
+        if (last && src != null) {
             // Comparison mode: left of uSplit shows the plain (bilinear) frame, with a white divider.
             append("\nuniform float uSplit;\nvoid main() {\n")
-            append("  if (uSplit > 0.0 && abs(vUv.x - uSplit) < 1.5 / float(textureSize(MAIN, 0).x * 2)) { fragColor = vec4(1.0); return; }\n")
-            append("  fragColor = vUv.x < uSplit ? texture(MAIN, vUv) : hook();\n}\n")
+            append("  if (uSplit > 0.0 && abs(vUv.x - uSplit) < 1.5 / float(textureSize($src, 0).x * 2)) { fragColor = vec4(1.0); return; }\n")
+            append("  fragColor = vUv.x < uSplit ? texture($src, vUv) : hook();\n}\n")
         } else append("\nvoid main() { fragColor = hook(); }\n")
     }
 
@@ -96,6 +98,7 @@ object Anime4K {
         private val sizes = HashMap<String, Pair<Int, Int>>()
         private val textures = HashMap<String, Int>()      // saved layer -> texture id
         private val fbos = HashMap<String, Int>()
+        private val passSize = ArrayList<Pair<Int, Int>>()
         private var enabled = true
         private var copy: GlProgram? = null
         private var outSize = Size(1, 1)
@@ -112,14 +115,16 @@ object Anime4K {
                 supported = ver.contains("OpenGL ES 3") && (ver.contains("ES 3.2") || ext.contains("GL_EXT_color_buffer_half_float") || ext.contains("GL_EXT_color_buffer_float"))
                 Log.i("AnixQ", "anime4k: $ver half-float=${supported}")
             }
+            sizes["HOOKED"] = inputWidth to inputHeight
             enabled = supported == true && passes.all { p -> p.whenExpr?.let { rpn(it, sizes) > 0.0 } ?: true }
             var finalSize = inputWidth to inputHeight
             if (enabled) {
+                passSize.clear()
                 for ((i, p) in passes.withIndex()) {
-                    val s = rpn(p.width, sizes).toInt() to rpn(p.height, sizes).toInt()
-                    val last = i == passes.lastIndex
-                    if (last) finalSize = s
-                    else { sizes[p.save] = s; allocate(p.save, s) }
+                    val s = (p.width?.let { rpn(it, sizes).toInt() } ?: inputWidth) to (p.height?.let { rpn(it, sizes).toInt() } ?: inputHeight)
+                    passSize += s
+                    if (i == passes.lastIndex) finalSize = s
+                    else { sizes[p.save] = s; allocate("#$i", s) }   // own texture per pass: a pass may read the layer it overwrites
                 }
             }
             outSize = Size(finalSize.first, finalSize.second)
@@ -161,22 +166,26 @@ object Anime4K {
             GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, inputTexId)
             GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_LINEAR)
             GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_LINEAR)
+            val current = HashMap<String, Int>()   // layer name -> texture holding its latest version
             for ((i, p) in passes.withIndex()) {
                 val last = i == passes.lastIndex
-                val target = if (last) outSize.width to outSize.height else sizes.getValue(p.save)
-                GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, if (last) out[0] else fbos.getValue(p.save))
+                val target = passSize[i]
+                GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, if (last) out[0] else fbos.getValue("#$i"))
                 GLES20.glViewport(0, 0, target.first, target.second)
                 val prog = programs[i]
                 prog.use()
                 p.binds.distinct().forEachIndexed { unit, b ->
-                    val tex = if (b == "MAIN") inputTexId else textures.getValue(b)
+                    // Unused bindings are optimised away by the compiler: only set what exists.
+                    if (prog.getUniformLocation(b) == -1) return@forEachIndexed
+                    val tex = if (b == "MAIN" || b == "HOOKED") inputTexId else current[b] ?: return@forEachIndexed
                     prog.setSamplerTexIdUniform(b, tex, unit)
-                    val s = sizes.getValue(b)
+                    val s = sizes[b] ?: (outSize.width to outSize.height)
                     prog.setFloatsUniformIfPresent("${b}_size", floatArrayOf(s.first.toFloat(), s.second.toFloat()))
                 }
                 if (last && compareCapable) prog.setFloatsUniformIfPresent("uSplit", floatArrayOf(Upscaler.split))
                 prog.bindAttributesAndUniforms()
                 GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4)
+                if (!last) current[p.save] = textures.getValue("#$i")
             }
         }
 

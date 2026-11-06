@@ -128,6 +128,11 @@ object Store {
         get() = prefs.getBoolean("subtitles", true)
         set(v) { prefs.edit().putBoolean("subtitles", v).apply() }
 
+    /** Video upscaler: 0 off, 1 sharpen, 2 upscale + sharpen. */
+    var upscale: Int
+        get() = prefs.getInt("upscale", 0)
+        set(v) { prefs.edit().putInt("upscale", v).apply() }
+
     var hoverPreview: Boolean
         get() = prefs.getBoolean("hoverPreview", !weakDevice)
         set(v) { prefs.edit().putBoolean("hoverPreview", v).apply(); bump() }

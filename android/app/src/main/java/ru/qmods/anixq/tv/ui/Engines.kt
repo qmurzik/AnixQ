@@ -35,7 +35,8 @@ interface Engine {
 }
 
 /** AnimeLib's own player: plain MP4 from their mirrors, no ads. */
-class ExoEngine(context: Context, private val onError: (String) -> Unit) : Engine {
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+class ExoEngine(private val context: Context, private val onError: (String) -> Unit) : Engine {
     val exo: ExoPlayer = ExoPlayer.Builder(context)
         .setMediaSourceFactory(DefaultMediaSourceFactory(
             OkHttpDataSource.Factory(Api.http).setDefaultRequestProperties(mapOf("Referer" to "${Api.SITE}/", "Origin" to Api.SITE))))
@@ -60,6 +61,29 @@ class ExoEngine(context: Context, private val onError: (String) -> Unit) : Engin
         subtitleView?.setApplyEmbeddedStyles(false)
     }
 
+    /** Screen height in pixels the upscaler targets (capped at 1080 on weak boxes, else up to 2160). */
+    private val screenHeight: Int by lazy {
+        val h = runCatching {
+            @Suppress("DEPRECATION")
+            val d = (context.getSystemService(Context.WINDOW_SERVICE) as android.view.WindowManager).defaultDisplay
+            maxOf(d.mode.physicalHeight, d.mode.physicalWidth.let { it * 9 / 16 }).coerceAtMost(d.mode.physicalHeight)
+        }.getOrDefault(1080)
+        h.coerceIn(720, if (ru.qmods.anixq.tv.data.Store.weakDevice) 1080 else 2160)
+    }
+
+    /** 0 = off, 1 = sharpen only, 2 = upscale + sharpen. */
+    fun setUpscale(mode: Int) {
+        val effects = mutableListOf<androidx.media3.common.Effect>()
+        if (mode == 2) effects += Upscaler.Scale(screenHeight)
+        if (mode >= 1) effects += Upscaler.Sharpen()
+        if (mode == 0) Upscaler.lastInfo = ""
+        runCatching { exo.setVideoEffects(effects) }.onFailure { android.util.Log.w("AnixQ", "upscaler: ${it.message}") }
+    }
+
+    /** Dropped frames in the last ~10 s — the upscaler turns itself off if the box can't keep up. */
+    @Volatile var recentDrops = 0; private set
+    private var dropWindowStart = 0L
+
     fun setSubtitles(on: Boolean) {
         exo.trackSelectionParameters = exo.trackSelectionParameters.buildUpon()
             .setTrackTypeDisabled(androidx.media3.common.C.TRACK_TYPE_TEXT, !on).setPreferredTextLanguage("ru").build()
@@ -68,6 +92,13 @@ class ExoEngine(context: Context, private val onError: (String) -> Unit) : Engin
     init {
         exo.addListener(object : Player.Listener {
             override fun onPlayerError(error: PlaybackException) { onError(error.errorCodeName) }
+        })
+        exo.addAnalyticsListener(object : androidx.media3.exoplayer.analytics.AnalyticsListener {
+            override fun onDroppedVideoFrames(eventTime: androidx.media3.exoplayer.analytics.AnalyticsListener.EventTime, droppedFrames: Int, elapsedMs: Long) {
+                val now = System.currentTimeMillis()
+                if (now - dropWindowStart > 10_000) { dropWindowStart = now; recentDrops = 0 }
+                recentDrops += droppedFrames
+            }
         })
     }
 

@@ -164,6 +164,18 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
 
     var speed by mutableStateOf(1f)
     var subtitlesOn by mutableStateOf(Store.subtitles)
+    var upscale by mutableIntStateOf(Store.upscale)
+    var compare by mutableStateOf(false)
+    @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+    fun setUpscaleMode(mode: Int) {
+        upscale = mode; Store.upscale = mode
+        compare = false; Upscaler.split = 0f
+        // A new effect chain needs the pipeline rebuilt: reload at the same moment.
+        if (native && exo != null) load(index, keepPos = pos)
+        say(when (mode) { 0 -> "Апскейлер выключен"; 1 -> "Резкость (RCAS) включена"; else -> "Апскейл + резкость включены" })
+    }
+    @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+    fun toggleCompare() { compare = !compare; Upscaler.split = if (compare) 0.5f else 0f; say(if (compare) "Слева — без обработки, справа — с апскейлером" else "Сравнение выключено") }
     fun toggleSubtitles() { subtitlesOn = !subtitlesOn; Store.subtitles = subtitlesOn; exo?.setSubtitles(subtitlesOn); say(if (subtitlesOn) "Субтитры включены" else "Субтитры выключены") }
     /** Sleep timer: pause at this wall-clock time (0 = off), or when the episode ends. */
     var sleepAt by mutableLongStateOf(0L)
@@ -280,6 +292,7 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
         e.load(currentUrl!!, startAt, p.subtitles)
         ru.qmods.anixq.tv.data.Room.sendState()
         e.setSubtitles(subtitlesOn)
+        e.setUpscale(upscale)
         if (speed != 1f) e.exo.setPlaybackSpeed(speed)
     }
 
@@ -321,6 +334,11 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
         }
         if (toast != null && System.currentTimeMillis() - toastAt > 2500) toast = null
         if (!native && kodik?.stuck == true && !kodikStuck) kodikStuck = true
+        // The box can't keep up with the upscaler: switch it off rather than stutter.
+        if (native && upscale > 0 && playing && (exo?.recentDrops ?: 0) > 45) {
+            say("Апскейлер выключен: приставке не хватает мощности (пропуск кадров)")
+            setUpscaleMode(0)
+        }
         if (sleepAt > 0 && System.currentTimeMillis() >= sleepAt) { sleepAt = 0; e.pause(); playing = false; saveProgress(force = true); say("Таймер сна: пауза") }
         if (sleepAfterEpisode && ended) { sleepAfterEpisode = false; saveProgress(force = true); say("Таймер сна: серия закончилась") }
         // Auto-skip the opening once per episode.
@@ -600,6 +618,8 @@ fun PlayerScreen(nav: Nav, route: PlayerRoute) {
         "more" -> ChoiceDialog("Ещё", listOfNotNull(
             if (m.native) Choice("Скорость", hint = speedLabel(m.speed)) else null,
             if (m.native && m.player?.subtitles?.isNotEmpty() == true) Choice("Субтитры", hint = if (m.subtitlesOn) "включены" else "выключены") else null,
+            if (m.native) Choice("Апскейлер", hint = listOf("выключен", "резкость", "апскейл + резкость")[m.upscale] +
+                (Upscaler.lastInfo.takeIf { m.upscale == 2 && it.isNotEmpty() }?.let { " · $it" } ?: "")) else null,
             Choice("Смотреть вместе", hint = if (ru.qmods.anixq.tv.data.Room.roomId.value != null) "комната открыта" else "друзья с телефона или браузера"),
             Choice("Таймер сна", hint = when {
                 m.sleepAfterEpisode -> "после этой серии"
@@ -608,13 +628,25 @@ fun PlayerScreen(nav: Nav, route: PlayerRoute) {
             }),
         ).let { opts -> opts }, { dialog = null }) { i ->
             val hasSubs = m.native && m.player?.subtitles?.isNotEmpty() == true
-            val keys = listOfNotNull(if (m.native) "speed" else null, if (hasSubs) "subs" else null, "room", "sleep")
+            val keys = listOfNotNull(if (m.native) "speed" else null, if (hasSubs) "subs" else null, if (m.native) "upscale" else null, "room", "sleep")
             when (val k = keys.getOrNull(i)) {
                 "subs" -> { dialog = null; m.toggleSubtitles() }
                 else -> dialog = k
             }
         }
         "room" -> RoomDialog(onClose = { dialog = null })
+        "upscale" -> {
+            val opts = listOf(
+                Choice("Выключен", m.upscale == 0, "как есть"),
+                Choice("Резкость", m.upscale == 1, "RCAS из AMD FSR: чётче линии, без шума"),
+                Choice("Апскейл + резкость", m.upscale == 2, "Lanczos до разрешения экрана + RCAS"),
+                Choice(if (m.compare) "Выключить сравнение" else "Сравнить: половина экрана без обработки", hint = "чтобы увидеть разницу"),
+            )
+            ChoiceDialog("Апскейлер", opts, { dialog = null }) { i ->
+                dialog = null
+                if (i == 3) { if (m.upscale == 0) m.setUpscaleMode(2); m.toggleCompare() } else if (i != m.upscale) m.setUpscaleMode(i)
+            }
+        }
         "speed" -> {
             val speeds = listOf(0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f)
             ChoiceDialog("Скорость", speeds.map { Choice(speedLabel(it), it == m.speed) }, { dialog = null }) { i -> dialog = null; m.applySpeed(speeds[i]) }

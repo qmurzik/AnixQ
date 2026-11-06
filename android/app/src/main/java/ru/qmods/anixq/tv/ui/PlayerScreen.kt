@@ -58,6 +58,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
@@ -99,7 +100,14 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
         .put("slug", title.slug).put("titleName", title.title).put("episodeId", episode?.id ?: 0)
         .put("episodeNumber", episode?.number ?: "").put("teamId", player?.team?.id ?: 0).put("team", player?.team?.name ?: "")
         .put("playing", playing).put("position", pos).put("rate", speed.toDouble())
-        .apply { currentUrl?.let { put(if (native) "stream" else "kodik", it) } }
+        .apply {
+            // Browser viewers: the direct stream, plus the same dub's Kodik link to fall back to
+            // (AnimeLib's video servers often refuse browsers).
+            if (native) currentUrl?.let { put("stream", it) }
+            val k = if (!native) currentUrl else players.firstOrNull { it.team.id == player?.team?.id && it.isKodik }?.kodikSrc?.let { Api.kodikUrl(it) }
+                ?: players.firstOrNull { it.isKodik }?.kodikSrc?.let { Api.kodikUrl(it) }
+            k?.let { put("kodik", it) }
+        }
 
     override fun roomApply(m: org.json.JSONObject) {
         if (m.optString("slug") != title.slug) { say("В комнате смотрят «${m.optString("titleName")}»"); return }
@@ -631,6 +639,9 @@ fun PlayerScreen(nav: Nav, route: PlayerRoute) {
                 Modifier.align(Alignment.BottomEnd).padding(48.dp), progress = if (countdown) count / if (m.ended) 3f else 10f else null)
         }
 
+        // Watch-together: friends' chat, reactions and polls over the picture.
+        RoomOverlay(Modifier.fillMaxSize())
+
         // Controls
         AnimatedVisibility(controls && panel == Panel.NONE, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.fillMaxSize()) {
             Controls(m, playBtn, skipBtn, onAny = { lastInput = System.currentTimeMillis() },
@@ -804,6 +815,55 @@ private fun SeekBar(m: PlayerModel, onAny: () -> Unit, onHide: () -> Unit) {
 }
 
 fun speedLabel(f: Float) = (if (f % 1f == 0f) "${f.toInt()}" else f.toString().trimEnd('0')).replace('.', ',') + "×"
+
+@Composable
+private fun RoomOverlay(modifier: Modifier) {
+    val id by ru.qmods.anixq.tv.data.Room.roomId.collectAsState()
+    if (id == null) return
+    val chat by ru.qmods.anixq.tv.data.Room.chat.collectAsState()
+    val reactions by ru.qmods.anixq.tv.data.Room.reactions.collectAsState()
+    val poll by ru.qmods.anixq.tv.data.Room.poll.collectAsState()
+    val people by ru.qmods.anixq.tv.data.Room.people.collectAsState()
+    var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(Unit) { while (true) { delay(500); now = System.currentTimeMillis() } }
+    Box(modifier) {
+        // People in the room
+        Text("👥 ${people.size + 1}", fontSize = 15.sp, color = Color.White, modifier = Modifier.align(Alignment.TopStart).padding(start = 48.dp, top = 96.dp)
+            .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(50)).padding(horizontal = 12.dp, vertical = 5.dp))
+        // Recent chat (each line stays ~10 s)
+        Column(Modifier.align(Alignment.BottomStart).padding(start = 48.dp, bottom = 150.dp).width(520.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            chat.filter { now - it.at < 10_000 }.takeLast(4).forEach { l ->
+                Row(Modifier.background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(12.dp)).padding(horizontal = 12.dp, vertical = 7.dp)) {
+                    Text(l.name + "  ", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = C.pink)
+                    Text(l.text, fontSize = 15.sp, color = Color.White)
+                }
+            }
+        }
+        // Reactions float up on the right
+        reactions.filter { now - it.second < 3500 }.forEachIndexed { i, (emoji, at) ->
+            val t = ((now - at) / 3500f).coerceIn(0f, 1f)
+            Text(emoji, fontSize = 44.sp, modifier = Modifier.align(Alignment.BottomEnd)
+                .padding(end = (60 + (i % 4) * 46).dp, bottom = (120 + t * 320).dp).alpha(1f - t))
+        }
+        // Poll
+        poll?.let { p ->
+            Column(Modifier.align(Alignment.TopEnd).padding(top = 96.dp, end = 48.dp).width(360.dp)
+                .background(Color.Black.copy(alpha = 0.7f), RoundedCornerShape(16.dp)).padding(16.dp)) {
+                Text(if (p.closed) "Итог опроса" else "Опрос", fontSize = 13.sp, color = C.pink, fontWeight = FontWeight.Bold)
+                Text(p.question, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(vertical = 6.dp))
+                val total = p.votes.size.coerceAtLeast(1)
+                p.options.forEachIndexed { i, o ->
+                    val n = p.votes.values.count { it == i }
+                    Text("$o — $n", fontSize = 15.sp, color = Color.White.copy(alpha = 0.9f))
+                    Box(Modifier.fillMaxWidth().height(4.dp).background(Color.White.copy(alpha = 0.15f))) {
+                        Box(Modifier.fillMaxWidth(n / total.toFloat()).height(4.dp).background(C.grad))
+                    }
+                    Spacer(Modifier.height(6.dp))
+                }
+            }
+        }
+    }
+}
 
 @Composable
 private fun RoomDialog(onClose: () -> Unit) {

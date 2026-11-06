@@ -35,7 +35,14 @@ object Room {
     @Volatile var applying = false; private set
     private val me = "tv-" + (100000..999999).random()
 
+    data class ChatLine(val name: String, val text: String, val at: Long = System.currentTimeMillis())
+    data class Poll(val id: String, val question: String, val options: List<String>, val votes: Map<String, Int> = emptyMap(), val closed: Boolean = false)
+
     val roomId = MutableStateFlow<String?>(null)
+    /** What friends write / send — shown over the TV picture. */
+    val chat = MutableStateFlow<List<ChatLine>>(emptyList())
+    val reactions = MutableStateFlow<List<Pair<String, Long>>>(emptyList())
+    val poll = MutableStateFlow<Poll?>(null)
     val people = MutableStateFlow<Map<String, Pair<String, Long>>>(emptyMap())
     @Volatile var player: RoomPlayer? = null
 
@@ -64,7 +71,7 @@ object Room {
         if (roomId.value == null) return
         if (!silently) send(JSONObject().put("type", "leave"))
         beat?.cancel(); ws?.close(1000, null); ws = null; connected = false
-        roomId.value = null; people.value = emptyMap()
+        roomId.value = null; people.value = emptyMap(); chat.value = emptyList(); reactions.value = emptyList(); poll.value = null
     }
 
     private fun connect() {
@@ -99,6 +106,22 @@ object Room {
     private fun received(m: JSONObject) {
         val from = m.optString("from")
         if (from == me || from.isEmpty()) return
+        val name = m.optString("name").ifBlank { "Друг" }
+        when (m.optString("type")) {
+            "chat" -> m.optString("text").takeIf { it.isNotBlank() }?.let { chat.value = (chat.value + ChatLine(name, it.take(200))).takeLast(30) }
+            "react" -> m.optString("emoji").takeIf { it.isNotBlank() }?.let {
+                val now = System.currentTimeMillis()
+                reactions.value = (reactions.value.filter { now - it.second < 4000 } + (it.take(4) to now)).takeLast(12)
+            }
+            "poll" -> {
+                val opts = m.optJSONArray("options")?.let { a -> (0 until a.length()).map { a.optString(it) } } ?: emptyList()
+                val id = m.optString("pollId")
+                val cur = poll.value
+                if (cur != null && cur.id == id && m.has("option")) poll.value = cur.copy(closed = true)
+                else if (id.isNotEmpty() && opts.isNotEmpty()) poll.value = Poll(id, m.optString("question"), opts)
+            }
+            "vote" -> poll.value?.let { p -> if (p.id == m.optString("pollId")) poll.value = p.copy(votes = p.votes + (from to m.optInt("option"))) }
+        }
         when (m.optString("type")) {
             "leave" -> { people.value = people.value - from; return }
             "join" -> { people.value = people.value + (from to (m.optString("name") to System.currentTimeMillis())); sendState(); return }

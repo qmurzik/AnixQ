@@ -9,14 +9,7 @@ on:
     - cron: "41 4 */4 * *"
   workflow_dispatch:
     inputs:
-      keepalive:
-    if: github.event_name == 'schedule'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/cache/restore@v4
-        with: { path: ~/anixq-tv-signing.p12, key: anixq-tv-signing-v1 }
-
-  screenshots:
+      screenshots:
         description: "Run the TV emulator and take screenshots"
         type: boolean
         default: true

@@ -142,6 +142,24 @@ object Api {
         else -> ""
     }
 
+    /** Other parts of the franchise (sequels, films, OVA) with how they relate. */
+    suspend fun related(slug: String): List<Pair<Title, String>> = try {
+        val a = data(request("/anime/$slug/relations")) as? JSONArray ?: JSONArray()
+        val seen = HashSet<Int>()
+        (0 until a.length()).mapNotNull { i ->
+            val r = a.optJSONObject(i) ?: return@mapNotNull null
+            val m = r.obj("media")?.takeIf { it.str("model") == "anime" } ?: return@mapNotNull null
+            val t = Title.fromApi(m)?.takeIf { seen.add(it.id) } ?: return@mapNotNull null
+            t to (r.obj("related_type")?.str("label") ?: "")
+        }
+    } catch (e: Exception) { emptyList() }
+
+    suspend fun similar(slug: String): List<Title> = try {
+        val a = data(request("/anime/$slug/similar")) as? JSONArray ?: JSONArray()
+        val seen = HashSet<Int>()
+        (0 until a.length()).mapNotNull { i -> a.optJSONObject(i)?.obj("media")?.let(Title::fromApi)?.takeIf { seen.add(it.id) } }
+    } catch (e: Exception) { emptyList() }
+
     suspend fun episodes(slug: String): List<Episode> {
         val a = data(request("/episodes", listOf("anime_id" to slug))) as? JSONArray ?: return emptyList()
         return (0 until a.length()).mapNotNull { i ->

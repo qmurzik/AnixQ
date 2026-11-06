@@ -48,6 +48,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.launch
 import ru.qmods.anixq.tv.data.Api
 import ru.qmods.anixq.tv.data.Bookmark
 import ru.qmods.anixq.tv.data.CatalogQuery
@@ -63,7 +64,8 @@ object HomeData {
     private var loadedAt = 0L
 
     suspend fun load(force: Boolean = false) {
-        if (!force && rows.value.isNotEmpty() && System.currentTimeMillis() - loadedAt < 15 * 60_000) return
+        if (rows.value.isEmpty()) rows.value = Store.loadHomeCache()   // instant start with last run's rows
+        if (!force && loadedAt > 0 && System.currentTimeMillis() - loadedAt < 15 * 60_000) return
         try {
             coroutineScope {
                 val specs = listOf(
@@ -74,7 +76,8 @@ object HomeData {
                     "Недавно добавлены" to CatalogQuery(sort = CatalogSort.NEWEST),
                 )
                 val parts = specs.map { (name, q) -> async { name to runCatching { Api.catalog(q, 1).first }.getOrDefault(emptyList()) } }
-                rows.value = parts.map { it.await() }.filter { it.second.isNotEmpty() }
+                val fresh = parts.map { it.await() }.filter { it.second.isNotEmpty() }
+                if (fresh.isNotEmpty()) { rows.value = fresh; Store.saveHomeCache(fresh) }
             }
             error.value = if (rows.value.isEmpty()) "Не удалось загрузить каталог. Проверьте интернет." else null
             loadedAt = System.currentTimeMillis()
@@ -91,6 +94,33 @@ object Spotlight {
     suspend fun get(slug: String): Detail? {
         if (cache.containsKey(slug)) return cache[slug]
         return runCatching { Api.detail(slug) }.getOrNull().also { cache[slug] = it }
+    }
+}
+
+/** Home genre tiles: popular genres, matched by name against AnimeLib's list. */
+object GenreTiles {
+    private val wanted = listOf("Экшен", "Романтика", "Комедия", "Фэнтези", "Исекай", "Повседневность", "Драма", "Сёнэн",
+        "Детектив", "Ужасы", "Спорт", "Меха", "Психологическое", "Школа")
+    val list = MutableStateFlow<List<Pair<Int, String>>>(emptyList())
+    suspend fun load() {
+        if (list.value.isNotEmpty()) return
+        val all = CatalogState.genres.ifEmpty { Api.genres().also { CatalogState.genres = it } }
+        list.value = wanted.mapNotNull { w -> all.firstOrNull { it.second.equals(w, true) } }
+    }
+    val colors = listOf(0xFFFF4D7A, 0xFF8B5CFF, 0xFF34C3FF, 0xFFFF9F43, 0xFF2ED47A, 0xFFFF5C5C, 0xFF7C83FD)
+}
+
+/** How many episodes come after the one you're on (to say "ещё 3 серии" / "ждём новую серию"). */
+object EpisodeCounts {
+    val after = MutableStateFlow<Map<Int, Int>>(emptyMap())
+    suspend fun refresh(entries: List<ru.qmods.anixq.tv.data.WatchEntry>) = coroutineScope {
+        entries.take(14).map { e ->
+            async {
+                val eps = runCatching { Api.episodes(e.title.slug) }.getOrNull() ?: return@async null
+                val i = eps.indexOfFirst { it.id == e.episodeId }.takeIf { it >= 0 } ?: eps.indexOfFirst { it.number == e.ep }
+                if (i < 0) null else e.title.id to (eps.size - i - 1)
+            }
+        }.mapNotNull { it.await() }.let { got -> after.value = after.value + got }
     }
 }
 
@@ -111,6 +141,11 @@ fun HomeScreen(nav: Nav) {
     val planned = remember(version) { Store.titles(Bookmark.PLANNED) }
     val fallback = cont.firstOrNull()?.title ?: rows.firstOrNull()?.second?.firstOrNull()
     val loggedIn = remember(version) { Store.libToken != null }
+    val counts by EpisodeCounts.after.collectAsState()
+    val genres by GenreTiles.list.collectAsState()
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    LaunchedEffect(Unit) { GenreTiles.load() }
+    LaunchedEffect(cont.map { it.title.id to it.episodeId }) { EpisodeCounts.refresh(cont) }
 
     Box(Modifier.fillMaxSize()) {
         Hero(spot, fallback)
@@ -129,8 +164,12 @@ fun HomeScreen(nav: Nav) {
                 if (cont.isNotEmpty()) item("continue") {
                     Shelf("Продолжить просмотр") {
                         items(cont, key = { "c" + it.title.id }) { e ->
-                            ContinueCard(e,
-                                onClick = { nav.play(e.title, e.episodeId, e.teamId, next = e.progress > 0.92, resume = true) },
+                            val left = counts[e.title.id]
+                            ContinueCard(e, left,
+                                onClick = {
+                                    if (e.progress > 0.92 && left == 0) nav.open(e.title)   // nothing new yet: show the title page
+                                    else nav.play(e.title, e.episodeId, e.teamId, next = e.progress > 0.92, resume = true)
+                                },
                                 onLongClick = { nav.open(e.title) },
                                 modifier = Modifier.memo("home", "c${e.title.id}", initial = e == cont.first()),
                                 onFocus = { spot.value = e.title })
@@ -142,6 +181,20 @@ fun HomeScreen(nav: Nav) {
                     item(name) {
                         TitleShelf(name, titles, "home", { spot.value = it },
                             initialKey = if (i == 0 && cont.isEmpty() && loggedIn) titles.first().id else null) { nav.open(it) }
+                    }
+                    if (i == 1) {
+                    if (genres.isNotEmpty()) item("genres") {
+                        Shelf("Жанры") {
+                            item("lucky") { GenreTile("Мне повезёт", "случайный хит", 0xFFFFC94D) { scope.launch {
+                                val page = (1..5).random()
+                                runCatching { Api.catalog(CatalogQuery(sort = CatalogSort.RATING), page).first }.getOrNull()?.randomOrNull()?.let { nav.open(it) }
+                            } } }
+                            items(genres.size) { i ->
+                                val (id, name) = genres[i]
+                                GenreTile(name, null, GenreTiles.colors[i % GenreTiles.colors.size]) { CatalogState.openWith(nav, CatalogQuery(genre = id)) }
+                            }
+                        }
+                    }
                     }
                 }
                 if (planned.isNotEmpty()) item("planned") { TitleShelf("Запланировано", planned, "home", { spot.value = it }) { nav.open(it) } }
@@ -194,6 +247,20 @@ private fun Hero(spot: MutableState<Title?>, fallback: Title?) {
                     Text(it.replace("\n\n", " ").trim(), fontSize = 15.sp, lineHeight = 21.sp, maxLines = 3, overflow = TextOverflow.Ellipsis,
                         color = C.text.copy(alpha = 0.78f), modifier = Modifier.padding(top = 10.dp))
                 }
+            }
+        }
+    }
+}
+
+
+@Composable
+private fun GenreTile(name: String, sub: String?, color: Long, onClick: () -> Unit) {
+    val c = androidx.compose.ui.graphics.Color(color)
+    Focusable(onClick = onClick, modifier = Modifier.width(190.dp).height(96.dp), container = c.copy(alpha = 0.22f), focusedContainer = c) {
+        Box(Modifier.fillMaxSize().background(Brush.linearGradient(listOf(c.copy(alpha = 0.55f), androidx.compose.ui.graphics.Color.Transparent))).padding(14.dp)) {
+            Column(Modifier.align(Alignment.BottomStart)) {
+                Text(name, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = androidx.compose.ui.graphics.Color.White)
+                sub?.let { Text(it, fontSize = 12.sp, color = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.8f)) }
             }
         }
     }

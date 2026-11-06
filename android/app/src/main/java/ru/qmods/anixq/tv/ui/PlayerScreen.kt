@@ -4,6 +4,7 @@ import android.content.Context
 import android.view.KeyEvent as AKey
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
@@ -36,6 +37,7 @@ import androidx.compose.material.icons.rounded.HighQuality
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.RecordVoiceOver
+import androidx.compose.material.icons.rounded.Replay
 import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material.icons.rounded.SkipPrevious
 import androidx.compose.material.icons.rounded.VideoLibrary
@@ -328,6 +330,8 @@ fun PlayerScreen(nav: Nav, route: PlayerRoute) {
             m.tick()
             if (seekAcc != 0.0 && System.currentTimeMillis() - seekAt > 1200) seekAcc = 0.0
             if (controls && panel == Panel.NONE && dialog == null && m.playing && System.currentTimeMillis() - lastInput > 5000) controls = false
+            // Paused and untouched: fold the panel into the calm pause screen.
+            if (controls && panel == Panel.NONE && dialog == null && !m.playing && m.message == null && System.currentTimeMillis() - lastInput > 9000) controls = false
             delay(250)
         }
     }
@@ -425,12 +429,9 @@ fun PlayerScreen(nav: Nav, route: PlayerRoute) {
                 .background(Color.Black.copy(alpha = 0.65f), RoundedCornerShape(50)).padding(horizontal = 20.dp, vertical = 10.dp))
         }
 
-        // Paused badge when controls are hidden
-        if (!controls && !m.playing && m.message == null && !showNext && panel == Panel.NONE && seekAcc == 0.0) {
-            Box(Modifier.align(Alignment.Center).size(96.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.5f)), contentAlignment = Alignment.Center) {
-                Icon(Icons.Rounded.PlayArrow, null, modifier = Modifier.size(60.dp), tint = Color.White)
-            }
-        }
+        // Pause screen: what you're watching, calmly, until you press OK.
+        AnimatedVisibility(!controls && !m.playing && m.message == null && !showNext && panel == Panel.NONE && seekAcc == 0.0 && m.dur > 0,
+            enter = fadeIn(tween(500)), exit = fadeOut(tween(150)), modifier = Modifier.fillMaxSize()) { PauseScreen(m) }
 
         // Skip opening — big and obvious, OK does it
         if (!controls && panel == Panel.NONE && inOpening && !Store.autoSkipOpening && seekAcc == 0.0) {
@@ -519,6 +520,7 @@ internal fun Controls(m: PlayerModel, playBtn: FocusRequester, skipBtn: FocusReq
                 if (m.hasNext) RoundButton(Icons.Rounded.SkipNext) { m.next() }
                 Spacer(Modifier.width(16.dp))
                 if (m.opening == null) PillButton("+85 с") { m.seekBy(85.0) }
+                if (m.pos > 60) PillButton("С начала", Icons.Rounded.Replay) { m.seekBy(-m.pos) }
                 PillButton("Серии", Icons.Rounded.VideoLibrary, onClick = onEpisodes)
                 if (m.players.map { it.team.id }.distinct().size > 1) PillButton("Озвучка", Icons.Rounded.RecordVoiceOver, onClick = onDub)
                 PillButton(m.quality ?: "Kodik", Icons.Rounded.HighQuality, onClick = onQuality)
@@ -567,6 +569,35 @@ private fun SeekBar(m: PlayerModel, onAny: () -> Unit, onHide: () -> Unit) {
         Text("${fmt(m.pos)} / ${fmt(m.dur)}", fontSize = 16.sp, color = Color.White)
     }
     if (focused) Text("← → перемотка · OK пауза", fontSize = 12.sp, color = C.muted, modifier = Modifier.padding(top = 4.dp))
+}
+
+@Composable
+internal fun PauseScreen(m: PlayerModel) {
+    val ep = m.episode
+    val summary = TitleCache.detail[m.title.slug]?.summary ?: Spotlight.cached(m.title.slug)?.summary
+    Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(0f to Color.Black.copy(alpha = 0.88f), 0.6f to Color.Black.copy(alpha = 0.55f), 1f to Color.Black.copy(alpha = 0.25f)))) {
+        Column(Modifier.align(Alignment.BottomStart).padding(start = 64.dp, bottom = 72.dp).width(640.dp)) {
+            Text("ПАУЗА", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = C.pink, letterSpacing = 3.sp)
+            Spacer(Modifier.height(10.dp))
+            Text(m.title.title, fontSize = 36.sp, lineHeight = 40.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Spacer(Modifier.height(8.dp))
+            Text(listOfNotNull(ep?.let { "Серия ${it.number}" }, ep?.displayTitle?.takeIf { !it.startsWith("Серия") }, m.player?.team?.name)
+                .joinToString("  ·  "), fontSize = 18.sp, color = Color.White.copy(alpha = 0.85f))
+            summary?.let {
+                Text(it.replace("\n\n", " ").trim(), fontSize = 16.sp, lineHeight = 23.sp, maxLines = 4, overflow = TextOverflow.Ellipsis,
+                    color = Color.White.copy(alpha = 0.7f), modifier = Modifier.padding(top = 16.dp))
+            }
+            Spacer(Modifier.height(22.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.fillMaxWidth(0.6f).height(4.dp).clip(RoundedCornerShape(50)).background(Color.White.copy(alpha = 0.25f))) {
+                    Box(Modifier.fillMaxWidth((m.pos / m.dur).toFloat().coerceIn(0f, 1f)).height(4.dp).background(C.grad))
+                }
+                Text("   ${fmt(m.pos)} / ${fmt(m.dur)}", fontSize = 15.sp, color = Color.White.copy(alpha = 0.8f))
+            }
+            Spacer(Modifier.height(14.dp))
+            Text("OK — продолжить   ·   ↑ — панель   ·   ↓ — серии", fontSize = 14.sp, color = Color.White.copy(alpha = 0.55f))
+        }
+    }
 }
 
 @Composable

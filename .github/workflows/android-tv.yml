@@ -68,8 +68,8 @@ jobs:
           # Rolling link that always points at the newest TV build.
           gh release view tv >/dev/null 2>&1 || gh release create tv --title "AnixQ TV (последняя)" --notes "Постоянная ссылка на последнюю сборку для Android TV." --latest=false
           # What the app on the TV checks for updates.
-          NOTES=$(git log -1 --format=%s | head -c 400)
-          python3 -c "import json,sys; json.dump({'code': int(sys.argv[1]), 'name': sys.argv[2], 'notes': sys.argv[3],
+          NOTES=$(git log -1 --format=%s)
+          python3 -c "import json,sys; json.dump({'code': int(sys.argv[1]), 'name': sys.argv[2], 'notes': sys.argv[3][:300],
             'apk': 'https://github.com/${{ github.repository }}/releases/download/tv-v'+sys.argv[2]+'/AnixQ-TV.apk'}, open('tv-version.json','w'), ensure_ascii=False)" \
             "${{ github.run_number }}" "$V" "$NOTES"
           gh release upload tv AnixQ-TV.apk tv-version.json --clobber

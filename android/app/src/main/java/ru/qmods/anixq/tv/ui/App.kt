@@ -197,7 +197,7 @@ private fun TabItem(t: Tab, nav: Nav, modifier: Modifier, iconOnly: Boolean = fa
     val selected = nav.tab == t
     Surface(
         onClick = { nav.tab = t },
-        modifier = modifier.padding(horizontal = 2.dp).onFocusChanged { if (it.isFocused && nav.tab != t) nav.tab = t },
+        modifier = modifier.padding(horizontal = 2.dp).tick().onFocusChanged { if (it.isFocused && nav.tab != t) nav.tab = t },
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(50)),
         colors = ClickableSurfaceDefaults.colors(
             containerColor = if (selected) Color.White.copy(alpha = 0.14f) else Color.Transparent,

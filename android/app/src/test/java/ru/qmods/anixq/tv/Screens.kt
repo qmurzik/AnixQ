@@ -150,6 +150,22 @@ class Screens {
             androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.align(androidx.compose.ui.Alignment.BottomCenter)) { ru.qmods.anixq.tv.ui.EpisodesPanel(m) {} } } }
     }
 
+    @Test fun library() {
+        titles.take(5).forEachIndexed { i, t -> Store.updateProgress(t, Episode(1000 + i, "${i + 3}", null, i), Team(1, "AniLibria", false), 1400.0, 1420.0)
+            Store.markWatched(t, Episode(1000 + i, "${i + 3}", null, i)) }
+        shot("library") { App(Nav().apply { tab = Tab.LIBRARY }) }
+    }
+
+    @Test fun playerPause() {
+        val m = playerModel(); m.pos = 640.0; m.playing = false
+        shot("player-pause") { androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.fillMaxSize()) { FakeVideo(); ru.qmods.anixq.tv.ui.PauseScreen(m) } }
+    }
+
+    @Test fun homeGenres() {
+        ru.qmods.anixq.tv.ui.GenreTiles.list.value = listOf(1 to "Экшен", 2 to "Романтика", 3 to "Комедия", 4 to "Фэнтези", 5 to "Исекай", 6 to "Драма")
+        shot("home-genres") { App(Nav()) }
+    }
+
     @Test fun catalog() = shot("catalog") { App(Nav().apply { tab = Tab.CATALOG }) }
     @Test fun search() = shot("search") { App(Nav().apply { tab = Tab.SEARCH }) }
     @Test fun settings() = shot("settings") { App(Nav().apply { tab = Tab.SETTINGS }) }

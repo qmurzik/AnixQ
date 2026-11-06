@@ -33,6 +33,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.composed
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
@@ -106,6 +107,18 @@ fun AnixTheme(content: @Composable () -> Unit) {
     }
 }
 
+/** The soft system "tick" when the cursor moves, like the TV's own menus. */
+private var lastTick = 0L
+fun Modifier.tick(): Modifier = composed {
+    val view = androidx.compose.ui.platform.LocalView.current
+    onFocusChanged {
+        if (it.isFocused && ru.qmods.anixq.tv.data.Store.navSounds) {
+            val now = System.currentTimeMillis()
+            if (now - lastTick > 70) { lastTick = now; view.playSoundEffect(android.view.SoundEffectConstants.NAVIGATION_DOWN) }
+        }
+    }
+}
+
 /** Any focusable thing: grows and gets a white frame when focused. */
 @Composable
 fun Focusable(
@@ -123,7 +136,7 @@ fun Focusable(
     Surface(
         onClick = onClick,
         onLongClick = onLongClick,
-        modifier = modifier,
+        modifier = modifier.tick(),
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(radius)),
         colors = ClickableSurfaceDefaults.colors(containerColor = container, contentColor = C.text,
             focusedContainerColor = focusedContainer, focusedContentColor = dark,
@@ -190,8 +203,9 @@ fun ProgressLine(value: Double, modifier: Modifier = Modifier, height: Dp = 4.dp
 
 /** "Continue watching": poster + where you stopped, one press resumes. */
 @Composable
-fun ContinueCard(e: WatchEntry, onClick: () -> Unit, onLongClick: () -> Unit, modifier: Modifier = Modifier, onFocus: () -> Unit = {}) {
+fun ContinueCard(e: WatchEntry, left: Int? = null, onClick: () -> Unit, onLongClick: () -> Unit, modifier: Modifier = Modifier, onFocus: () -> Unit = {}) {
     val done = e.progress > 0.92
+    val waiting = done && left == 0
     Focusable(onClick = onClick, onLongClick = onLongClick, scale = 1.06f,
         modifier = modifier.width(330.dp).height(124.dp).onFocusChanged { if (it.isFocused) onFocus() }) {
         Row(Modifier.fillMaxSize()) {
@@ -199,8 +213,17 @@ fun ContinueCard(e: WatchEntry, onClick: () -> Unit, onLongClick: () -> Unit, mo
             Column(Modifier.weight(1f).fillMaxHeight().padding(horizontal = 14.dp, vertical = 12.dp)) {
                 Text(e.title.title, fontSize = 16.sp, lineHeight = 19.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 Spacer(Modifier.weight(1f))
-                Text(if (done) "Дальше: серия ${nextNumber(e.ep)}" else "Серия ${e.ep}" + if (e.dur > 0) " · осталось ${((e.dur - e.pos) / 60).toInt().coerceAtLeast(1)} мин" else "",
-                    fontSize = 13.sp, color = if (done) C.pink else C.muted, maxLines = 1)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(when {
+                        waiting -> "Серия ${e.ep} · ждём новую"
+                        done -> "Дальше: серия ${nextNumber(e.ep)}"
+                        else -> "Серия ${e.ep}" + if (e.dur > 0) " · осталось ${((e.dur - e.pos) / 60).toInt().coerceAtLeast(1)} мин" else ""
+                    }, fontSize = 13.sp, color = if (done && !waiting) C.pink else C.muted, maxLines = 1, modifier = Modifier.weight(1f))
+                    val more = if (done) (left ?: 0) else (left ?: 0)
+                    if (more > 0) Text(if (done) "+$more" else "ещё $more", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White,
+                        modifier = Modifier.background(if (done) C.pink else Color.White.copy(alpha = 0.16f), RoundedCornerShape(5.dp))
+                            .padding(horizontal = 6.dp, vertical = 1.dp))
+                }
                 Spacer(Modifier.height(8.dp))
                 Box(Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(50))) { ProgressLine(if (done) 1.0 else e.progress) }
             }
@@ -235,7 +258,7 @@ fun PillButton(text: String, icon: ImageVector? = null, primary: Boolean = false
     var focused by remember { mutableStateOf(false) }
     Surface(
         onClick = onClick,
-        modifier = modifier.onFocusChanged { focused = it.isFocused },
+        modifier = modifier.tick().onFocusChanged { focused = it.isFocused },
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(50)),
         colors = ClickableSurfaceDefaults.colors(containerColor = if (primary) Color.Transparent else Color.White.copy(alpha = 0.1f),
             contentColor = Color.White, focusedContainerColor = Color.White, focusedContentColor = Color.Black,
@@ -256,7 +279,7 @@ fun PillButton(text: String, icon: ImageVector? = null, primary: Boolean = false
 fun Chip(text: String, selected: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
     Surface(
         onClick = onClick,
-        modifier = modifier,
+        modifier = modifier.tick(),
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(50)),
         colors = ClickableSurfaceDefaults.colors(
             containerColor = if (selected) Color.White.copy(alpha = 0.18f) else Color.Transparent, contentColor = if (selected) Color.White else C.muted,

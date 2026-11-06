@@ -82,6 +82,33 @@ object Store {
         bump()
     }
 
+    /** Home rows from the last run: shown instantly at start, refreshed in the background. */
+    fun loadHomeCache(): List<Pair<String, List<Title>>> = runCatching {
+        val a = JSONArray(prefs.getString("home.cache", "[]"))
+        (0 until a.length()).map { i ->
+            val r = a.getJSONObject(i); val t = r.getJSONArray("t")
+            r.getString("n") to (0 until t.length()).mapNotNull { Title.fromSync(t.getJSONObject(it)) }
+        }.filter { it.second.isNotEmpty() }
+    }.getOrDefault(emptyList())
+
+    fun saveHomeCache(rows: List<Pair<String, List<Title>>>) {
+        val a = JSONArray()
+        rows.forEach { (n, ts) -> a.put(JSONObject().put("n", n).put("t", JSONArray().apply { ts.forEach { put(it.toSync()) } })) }
+        scope.launch { prefs.edit().putString("home.cache", a.toString()).apply() }
+    }
+
+    var navSounds: Boolean
+        get() = prefs.getBoolean("navSounds", true)
+        set(v) { prefs.edit().putBoolean("navSounds", v).apply(); bump() }
+
+    /** Episodes watched to the end and hours spent, for the "Моё" header. */
+    fun stats(): Triple<Int, Int, Int> {
+        val eps = watched.values.sumOf { it.size }
+        val seconds = positions.values.sumOf { if (it.progress > 0.9) it.dur else it.pos }
+        val titles = watched.count { it.value.isNotEmpty() }
+        return Triple(eps, (seconds / 3600).toInt(), titles)
+    }
+
     fun init(context: Context) {
         prefs = context.getSharedPreferences("anixq", Context.MODE_PRIVATE)
         prefs.getString("library", null)?.let { runCatching { load(JSONObject(it)) } }

@@ -2,6 +2,10 @@ package ru.qmods.anixq.tv.ui
 
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
@@ -33,6 +37,7 @@ fun LibraryScreen(nav: Nav) {
     val version by Store.version.collectAsState()
     var section by rememberSaveable { mutableStateOf(-1) } // -1 = history
     val history = remember(version) { Store.continueList }
+    val counts by EpisodeCounts.after.collectAsState()
     val titles = remember(version, section) { if (section < 0) emptyList() else Store.titles(Bookmark.entries[section]) }
 
     LazyVerticalGrid(
@@ -41,7 +46,16 @@ fun LibraryScreen(nav: Nav) {
         horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(20.dp),
     ) {
         item(span = { GridItemSpan(maxLineSpan) }) {
-            ScreenTitle("Моё", "Закладки и история общие с iPhone")
+            val (eps, hours, ts) = remember(version) { Store.stats() }
+            Column {
+                ScreenTitle("Моё")
+                Row(horizontalArrangement = Arrangement.spacedBy(14.dp), modifier = Modifier.padding(bottom = 18.dp)) {
+                    StatTile("$eps", "серий досмотрено")
+                    StatTile("$hours ч", "просмотра")
+                    StatTile("$ts", "тайтлов")
+                    StatTile("${Store.bookmarks.size}", "в закладках")
+                }
+            }
         }
         item(span = { GridItemSpan(maxLineSpan) }) {
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {
@@ -54,7 +68,7 @@ fun LibraryScreen(nav: Nav) {
         }
         if (section < 0) {
             items(history, key = { "h" + it.title.id }) { e ->
-                ContinueCard(e, onClick = { nav.play(e.title, e.episodeId, e.teamId, next = e.progress > 0.92, resume = true) }, onLongClick = { nav.open(e.title) },
+                ContinueCard(e, counts[e.title.id], onClick = { nav.play(e.title, e.episodeId, e.teamId, next = e.progress > 0.92, resume = true) }, onLongClick = { nav.open(e.title) },
                     modifier = Modifier.memo("library", "h${e.title.id}"))
             }
         } else {
@@ -65,5 +79,15 @@ fun LibraryScreen(nav: Nav) {
                 Text(if (section < 0) "Здесь появится то, что вы смотрите — здесь и на iPhone" else "Пока пусто", color = C.muted, fontSize = 17.sp)
             }
         }
+    }
+}
+
+
+@Composable
+private fun StatTile(value: String, label: String) {
+    Column(Modifier.width(170.dp).background(C.card, androidx.compose.foundation.shape.RoundedCornerShape(14.dp)).padding(horizontal = 18.dp, vertical = 14.dp)) {
+        Text(value, fontSize = 28.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+            style = androidx.compose.ui.text.TextStyle(brush = C.grad))
+        Text(label, fontSize = 14.sp, color = C.muted)
     }
 }

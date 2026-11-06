@@ -40,12 +40,19 @@ private val statuses = listOf(null to "Все", 1 to "Онгоинги", 2 to "�
 private val types = listOf(null to "Любой тип", 16 to "TV", 17 to "Фильмы", 20 to "OVA", 21 to "ONA", 19 to "Спешлы", 18 to "Короткие")
 
 /** Loaded pages, kept while the app runs so returning from a title is instant. */
-private object CatalogState {
+internal object CatalogState {
     var query = CatalogQuery()
     val items = mutableStateListOf<Title>()
     var page = 0
     var more = true
     var genres: List<Pair<Int, String>> = emptyList()
+
+    /** Open the catalog already filtered (e.g. a genre tile on the home screen). */
+    fun openWith(nav: Nav, q: CatalogQuery) {
+        query = q; items.clear(); page = 0; more = true
+        Focus.reset("catalog")
+        nav.tab = Tab.CATALOG
+    }
 }
 
 @Composable

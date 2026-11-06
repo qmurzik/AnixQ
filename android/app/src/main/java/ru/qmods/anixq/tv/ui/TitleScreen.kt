@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -62,6 +63,8 @@ object TitleCache {
     val detail = HashMap<String, Detail>()
     val episodes = HashMap<String, List<Episode>>()
     val teams = HashMap<String, List<TeamOption>>()
+    val related = HashMap<String, List<Pair<Title, String>>>()
+    val similar = HashMap<String, List<Title>>()
 }
 
 /** Which episode the big button starts, and from where. */
@@ -95,12 +98,16 @@ fun TitleScreen(nav: Nav, start: Title) {
     var teams by remember { mutableStateOf(TitleCache.teams[start.slug] ?: emptyList()) }
     var teamId by remember { mutableStateOf(Store.lastEntry(start.id)?.teamId) }
     var error by remember { mutableStateOf<String?>(null) }
+    var related by remember { mutableStateOf(TitleCache.related[start.slug] ?: emptyList()) }
+    var similar by remember { mutableStateOf(TitleCache.similar[start.slug] ?: emptyList()) }
     var dialog by remember { mutableStateOf<String?>(null) }
     val title = detail?.title ?: start
     val sc = "title:${start.id}"
 
     LaunchedEffect(start.slug) {
         try {
+            launch { Api.related(start.slug).filter { it.first.id != start.id }.also { related = it; TitleCache.related[start.slug] = it } }
+            launch { Api.similar(start.slug).also { similar = it; TitleCache.similar[start.slug] = it } }
             launch { runCatching { Api.detail(start.slug) }.getOrNull()?.let { detail = it; TitleCache.detail[start.slug] = it } }
             val eps = Api.episodes(start.slug)
             episodes = eps; TitleCache.episodes[start.slug] = eps
@@ -132,7 +139,9 @@ fun TitleScreen(nav: Nav, start: Title) {
         Box(Modifier.fillMaxWidth().height(460.dp).background(Brush.verticalGradient(0.5f to Color.Transparent, 1f to C.bg)))
         Box(Modifier.fillMaxSize().padding(top = 459.dp).background(C.bg))
 
-        Column(Modifier.fillMaxSize().padding(top = 40.dp, bottom = 24.dp)) {
+        LazyColumn(Modifier.fillMaxSize()) {
+          item("head") {
+            Column(Modifier.fillParentMaxHeight().padding(top = 40.dp, bottom = 18.dp)) {
             Column(Modifier.padding(horizontal = 56.dp).width(680.dp)) {
                 Text(title.title, fontSize = 36.sp, fontWeight = FontWeight.Bold, lineHeight = 40.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 (title.name ?: title.engName)?.takeIf { it != title.title }?.let {
@@ -167,6 +176,18 @@ fun TitleScreen(nav: Nav, start: Title) {
             }
             Spacer(Modifier.weight(1f))
             episodes?.takeIf { it.isNotEmpty() }?.let { eps -> EpisodeStrip(eps, title, plan?.episode?.id, sc) { ep -> nav.play(title, ep.id, teamId) } }
+            }
+          }
+          if (related.isNotEmpty()) item("related") {
+            Shelf("Другие части") {
+                items(related, key = { "r" + it.first.id }) { (t, rel) ->
+                    PosterCard(t, onClick = { nav.open(t) }, badge = rel.takeIf { it.isNotBlank() }?.uppercase()?.take(14), modifier = Modifier.memo(sc, "r${t.id}"))
+                }
+            }
+          }
+          if (similar.isNotEmpty()) item("similar") {
+            TitleShelf("Похожие", similar, sc) { nav.open(it) }
+          }
         }
     }
 

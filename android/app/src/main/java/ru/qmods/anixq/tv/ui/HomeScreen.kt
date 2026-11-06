@@ -1,12 +1,19 @@
 package ru.qmods.anixq.tv.ui
 
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -16,35 +23,37 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.PhoneIphone
+import androidx.compose.material.icons.rounded.Login
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.tv.material3.Text
-import coil.compose.AsyncImage
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import ru.qmods.anixq.tv.data.Api
 import ru.qmods.anixq.tv.data.Bookmark
 import ru.qmods.anixq.tv.data.CatalogQuery
 import ru.qmods.anixq.tv.data.CatalogSort
+import ru.qmods.anixq.tv.data.Detail
 import ru.qmods.anixq.tv.data.Store
-import ru.qmods.anixq.tv.data.Sync
 import ru.qmods.anixq.tv.data.Title
 
 /** Home rows survive tab switches and returning from the player. */
@@ -75,39 +84,46 @@ object HomeData {
     }
 }
 
+/** Description + wide art for the title under the cursor (fetched once, kept for the session). */
+object Spotlight {
+    private val cache = HashMap<String, Detail?>()
+    fun cached(slug: String) = cache[slug]
+    suspend fun get(slug: String): Detail? {
+        if (cache.containsKey(slug)) return cache[slug]
+        return runCatching { Api.detail(slug) }.getOrNull().also { cache[slug] = it }
+    }
+}
+
+val HeroHeight = 250.dp
+
 @Composable
 fun HomeScreen(nav: Nav) {
     val version by Store.version.collectAsState()
     val rows by HomeData.rows.collectAsState()
     val error by HomeData.error.collectAsState()
-    val syncStatus by Sync.status.collectAsState()
-    var spot by remember { mutableStateOf<Title?>(null) }
+    // Written by cards, read only by the hero: moving the cursor doesn't redraw the rows.
+    val spot = remember { mutableStateOf<Title?>(null) }
     LaunchedEffect(Unit) { HomeData.load() }
+    LaunchedEffect(error) { if (error == null && rows.isEmpty()) HomeData.load(force = true) }
 
     val cont = remember(version) { Store.continueList }
-    val watching = remember(version) { Store.titles(Bookmark.WATCHING) }
+    val watching = remember(version) { Store.titles(Bookmark.WATCHING).filter { w -> cont.none { it.title.id == w.id } } }
     val planned = remember(version) { Store.titles(Bookmark.PLANNED) }
-    val shown = spot ?: cont.firstOrNull()?.title ?: rows.firstOrNull()?.second?.firstOrNull()
+    val fallback = cont.firstOrNull()?.title ?: rows.firstOrNull()?.second?.firstOrNull()
+    val loggedIn = remember(version) { Store.libToken != null }
 
     Box(Modifier.fillMaxSize()) {
-        // Backdrop of whatever is focused.
-        Crossfade(targetState = shown?.poster, label = "spot") { url ->
-            Box(Modifier.fillMaxSize()) {
-                if (url != null) AsyncImage(url, null, contentScale = ContentScale.Crop,
-                    modifier = Modifier.align(Alignment.TopEnd).fillMaxWidth(0.62f).height(380.dp).alpha(0.55f))
-                Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(0.3f to C.bg, 0.75f to C.bg.copy(alpha = 0.35f), 1f to Color.Transparent)))
-                Box(Modifier.fillMaxWidth().height(400.dp).background(Brush.verticalGradient(0.55f to Color.Transparent, 1f to C.bg)))
-            }
-        }
-        Column(Modifier.fillMaxSize()) {
-            Spot(shown, Modifier.height(200.dp))
-            val list = rememberLazyListState()
-            LazyColumn(state = list, modifier = Modifier.fillMaxSize(), contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 40.dp)) {
+        Hero(spot, fallback)
+        val list = rememberLazyListState()
+        Pivot {
+            LazyColumn(state = list, modifier = Modifier.fillMaxSize().padding(top = TopBarHeight + HeroHeight),
+                contentPadding = PaddingValues(bottom = 200.dp)) {
                 item("update") { UpdateBanner() }
-                if (Store.libToken == null) item("login") {
-                    Row(Modifier.padding(start = 48.dp, bottom = 22.dp), verticalAlignment = Alignment.CenterVertically) {
-                        PillButton("Войти в AnimeLib — плеер без рекламы", Icons.Rounded.PhoneIphone, primary = true,
+                if (!loggedIn) item("login") {
+                    Row(Modifier.padding(start = 56.dp, bottom = 18.dp), verticalAlignment = Alignment.CenterVertically) {
+                        PillButton("Войти в AnimeLib", Icons.Rounded.Login, primary = true,
                             modifier = Modifier.memo("home", "login", initial = cont.isEmpty())) { nav.push(LoginRoute) }
+                        Text("   плеер без рекламы и ваши закладки", fontSize = 14.sp, color = C.muted)
                     }
                 }
                 if (cont.isNotEmpty()) item("continue") {
@@ -117,48 +133,67 @@ fun HomeScreen(nav: Nav) {
                                 onClick = { nav.play(e.title, e.episodeId, e.teamId, next = e.progress > 0.92) },
                                 onLongClick = { nav.open(e.title) },
                                 modifier = Modifier.memo("home", "c${e.title.id}", initial = e == cont.first()),
-                                onFocus = { spot = e.title })
+                                onFocus = { spot.value = e.title })
                         }
                     }
                 }
-                if (watching.isNotEmpty()) item("watching") { TitleShelf("Смотрю", watching, "home", { spot = it }) { nav.open(it) } }
+                if (watching.isNotEmpty()) item("watching") { TitleShelf("Смотрю", watching, "home", { spot.value = it }) { nav.open(it) } }
                 rows.forEachIndexed { i, (name, titles) ->
                     item(name) {
-                        TitleShelf(name, titles, "home", { spot = it }, initialKey = if (i == 0 && cont.isEmpty() && Store.libToken != null) titles.first().id else null) { nav.open(it) }
+                        TitleShelf(name, titles, "home", { spot.value = it },
+                            initialKey = if (i == 0 && cont.isEmpty() && loggedIn) titles.first().id else null) { nav.open(it) }
                     }
                 }
-                if (planned.isNotEmpty()) item("planned") { TitleShelf("Запланировано", planned, "home", { spot = it }) { nav.open(it) } }
+                if (planned.isNotEmpty()) item("planned") { TitleShelf("Запланировано", planned, "home", { spot.value = it }) { nav.open(it) } }
                 if (rows.isEmpty()) item("state") {
-                    Box(Modifier.fillMaxWidth().height(200.dp), contentAlignment = Alignment.Center) {
+                    Box(Modifier.fillMaxWidth().height(160.dp), contentAlignment = Alignment.Center) {
                         if (error != null) PillButton(error!! + "  ·  Повторить", modifier = Modifier.memo("home", "retry", initial = true)) {
                             HomeData.error.value = null
                         } else Text("Загрузка…", color = C.muted, fontSize = 18.sp)
                     }
                 }
-                item("sync") {
-                    Text(if (Store.githubToken != null) "Синхронизация: $syncStatus" else "", color = C.muted, fontSize = 12.sp,
-                        modifier = Modifier.padding(start = 48.dp))
-                }
             }
         }
     }
-    LaunchedEffect(error) { if (error == null && rows.isEmpty()) HomeData.load(force = true) }
 }
 
+/** Backdrop + description of the focused title. Waits until the cursor settles so fast scrolling stays smooth. */
 @Composable
-private fun Spot(t: Title?, modifier: Modifier) {
-    Column(modifier.fillMaxWidth().padding(start = 48.dp, top = 34.dp, end = 48.dp), verticalArrangement = Arrangement.Top) {
-        Text("AnixQ", fontSize = 15.sp, fontWeight = FontWeight.Black, color = C.pink)
-        Spacer(Modifier.height(10.dp))
-        if (t != null) {
-            Text(t.title, fontSize = 34.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.width(640.dp), lineHeight = 38.sp)
-            Spacer(Modifier.height(6.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                if (t.isOngoing) Text("ОНГОИНГ", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White,
-                    modifier = Modifier.background(C.pink, androidx.compose.foundation.shape.RoundedCornerShape(5.dp)).padding(horizontal = 6.dp, vertical = 2.dp))
-                Text(t.meta, fontSize = 15.sp, color = C.muted)
-                t.age?.let { Text(it, fontSize = 15.sp, color = C.muted) }
+private fun Hero(spot: MutableState<Title?>, fallback: Title?) {
+    val target = spot.value ?: fallback
+    val shown by produceState(target, target?.id) { delay(if (value == null) 0 else 260); value = target }
+    val t = shown ?: return
+    val detail by produceState(Spotlight.cached(t.slug), t.slug) { value = Spotlight.get(t.slug) }
+    Box(Modifier.fillMaxSize()) {
+        Crossfade(targetState = t.id to detail?.background, animationSpec = tween(350), label = "backdrop") { (_, bg) ->
+            Box(Modifier.fillMaxSize()) {
+                if (bg != null) {
+                    Cover(bg, Modifier.align(Alignment.TopEnd).fillMaxWidth(0.78f).height(TopBarHeight + HeroHeight + 120.dp))
+                } else {
+                    Ambient(t.thumb, Modifier.fillMaxSize().alpha(0.55f))
+                    Cover(t.poster, Modifier.align(Alignment.TopEnd).padding(top = TopBarHeight + 6.dp, end = 64.dp).height(HeroHeight + 20.dp)
+                        .aspectRatio(2f / 3f).clip(RoundedCornerShape(14.dp)))
+                }
+                Box(Modifier.fillMaxSize().background(C.scrimLeft))
+                Box(Modifier.fillMaxWidth().height(TopBarHeight + HeroHeight + 130.dp)
+                    .background(Brush.verticalGradient(0.55f to androidx.compose.ui.graphics.Color.Transparent, 1f to C.bg)))
+                Box(Modifier.fillMaxSize().padding(top = TopBarHeight + HeroHeight + 129.dp).background(C.bg))
+            }
+        }
+        AnimatedContent(targetState = t, transitionSpec = { fadeIn(tween(220)) togetherWith fadeOut(tween(120)) }, label = "hero",
+            modifier = Modifier.padding(start = 56.dp, top = TopBarHeight + 14.dp).width(640.dp).height(HeroHeight - 14.dp)) { title ->
+            Column {
+                Text(title.title, fontSize = 34.sp, lineHeight = 38.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Spacer(Modifier.height(10.dp))
+                MetaLine(title)
+                val d = if (detail?.title?.id == title.id) detail else null
+                d?.genres?.takeIf { it.isNotEmpty() }?.let {
+                    Text(it.take(4).joinToString(" · "), fontSize = 14.sp, color = C.muted, modifier = Modifier.padding(top = 8.dp))
+                }
+                d?.summary?.let {
+                    Text(it.replace("\n\n", " ").trim(), fontSize = 15.sp, lineHeight = 21.sp, maxLines = 3, overflow = TextOverflow.Ellipsis,
+                        color = C.text.copy(alpha = 0.78f), modifier = Modifier.padding(top = 10.dp))
+                }
             }
         }
     }

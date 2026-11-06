@@ -43,6 +43,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Icon
+import androidx.tv.material3.LocalContentColor
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.ui.draw.clip
 import androidx.tv.material3.Text
 import coil.compose.AsyncImage
 import kotlinx.coroutines.launch
@@ -53,6 +56,13 @@ import ru.qmods.anixq.tv.data.Episode
 import ru.qmods.anixq.tv.data.Store
 import ru.qmods.anixq.tv.data.TeamOption
 import ru.qmods.anixq.tv.data.Title
+
+/** What a title page loaded, so going back to it (e.g. after the player) is instant. */
+object TitleCache {
+    val detail = HashMap<String, Detail>()
+    val episodes = HashMap<String, List<Episode>>()
+    val teams = HashMap<String, List<TeamOption>>()
+}
 
 /** Which episode the big button starts, and from where. */
 data class ResumePlan(val episode: Episode, val label: String, val sub: String?)
@@ -80,9 +90,9 @@ fun fmt(s: Double): String {
 @Composable
 fun TitleScreen(nav: Nav, start: Title) {
     val version by Store.version.collectAsState()
-    var detail by remember { mutableStateOf<Detail?>(null) }
-    var episodes by remember { mutableStateOf<List<Episode>?>(null) }
-    var teams by remember { mutableStateOf<List<TeamOption>>(emptyList()) }
+    var detail by remember { mutableStateOf(TitleCache.detail[start.slug] ?: Spotlight.cached(start.slug)) }
+    var episodes by remember { mutableStateOf(TitleCache.episodes[start.slug]) }
+    var teams by remember { mutableStateOf(TitleCache.teams[start.slug] ?: emptyList()) }
     var teamId by remember { mutableStateOf(Store.lastEntry(start.id)?.teamId) }
     var error by remember { mutableStateOf<String?>(null) }
     var dialog by remember { mutableStateOf<String?>(null) }
@@ -91,14 +101,14 @@ fun TitleScreen(nav: Nav, start: Title) {
 
     LaunchedEffect(start.slug) {
         try {
-            launch { runCatching { Api.detail(start.slug) }.getOrNull()?.let { detail = it } }
+            launch { runCatching { Api.detail(start.slug) }.getOrNull()?.let { detail = it; TitleCache.detail[start.slug] = it } }
             val eps = Api.episodes(start.slug)
-            episodes = eps
+            episodes = eps; TitleCache.episodes[start.slug] = eps
             val target = resumePlan(start, eps)?.episode ?: return@LaunchedEffect
             val players = Api.players(target.id)
             val opts = players.groupBy { it.team.id }.map { (_, ps) -> TeamOption(ps.first().team, ps.any { it.isNative }, ps.any { it.isKodik }) }
                 .sortedWith(compareBy({ !it.native }, { it.team.isSubtitles }))
-            teams = opts
+            teams = opts; TitleCache.teams[start.slug] = opts
             if (teamId == null || opts.none { it.team.id == teamId }) {
                 teamId = opts.firstOrNull { o -> Store.dubs.any { it.equals(o.team.name, true) } }?.team?.id ?: opts.firstOrNull()?.team?.id
             }
@@ -110,53 +120,53 @@ fun TitleScreen(nav: Nav, start: Title) {
     val team = teams.firstOrNull { it.team.id == teamId }
 
     Box(Modifier.fillMaxSize()) {
-        AsyncImage(detail?.background ?: title.poster, null, contentScale = ContentScale.Crop,
-            modifier = Modifier.align(Alignment.TopEnd).fillMaxWidth(if (detail?.background != null) 1f else 0.55f).height(460.dp).alpha(0.6f))
-        Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(0.25f to C.bg, 0.7f to C.bg.copy(alpha = 0.5f), 1f to Color.Transparent)))
-        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.35f to Color.Transparent, 0.75f to C.bg)))
+        // Backdrop: wide art when the site has it, otherwise a colour wash + the poster.
+        val bg = detail?.background
+        if (bg != null) Cover(bg, Modifier.align(Alignment.TopEnd).fillMaxWidth(0.8f).height(440.dp))
+        else {
+            Ambient(title.thumb, Modifier.fillMaxSize().alpha(0.5f))
+            Cover(title.poster, Modifier.align(Alignment.TopEnd).padding(top = 40.dp, end = 64.dp).height(340.dp).aspectRatio(2f / 3f)
+                .clip(RoundedCornerShape(14.dp)))
+        }
+        Box(Modifier.fillMaxSize().background(C.scrimLeft))
+        Box(Modifier.fillMaxWidth().height(460.dp).background(Brush.verticalGradient(0.5f to Color.Transparent, 1f to C.bg)))
+        Box(Modifier.fillMaxSize().padding(top = 459.dp).background(C.bg))
 
-        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(top = 44.dp, bottom = 40.dp)) {
-            item("head") {
-                Column(Modifier.padding(horizontal = 56.dp).width(720.dp)) {
-                    Text(title.title, fontSize = 38.sp, fontWeight = FontWeight.Bold, lineHeight = 42.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                    (title.name ?: title.engName)?.takeIf { it != title.title }?.let {
-                        Text(it, fontSize = 16.sp, color = C.muted, maxLines = 1, modifier = Modifier.padding(top = 4.dp))
-                    }
-                    Spacer(Modifier.height(12.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                        if (title.isOngoing) Text("ОНГОИНГ", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White,
-                            modifier = Modifier.background(C.pink, RoundedCornerShape(5.dp)).padding(horizontal = 6.dp, vertical = 2.dp))
-                        Text(listOfNotNull(title.meta.ifEmpty { null }, episodes?.let { "${it.size} эп." }, title.age).joinToString(" · "),
-                            fontSize = 16.sp, color = C.text.copy(alpha = 0.85f))
-                    }
-                    detail?.genres?.takeIf { it.isNotEmpty() }?.let {
-                        Text(it.take(6).joinToString(" · "), fontSize = 14.sp, color = C.muted, modifier = Modifier.padding(top = 6.dp))
-                    }
-                    detail?.summary?.let {
-                        Text(it, fontSize = 16.sp, lineHeight = 22.sp, maxLines = 4, overflow = TextOverflow.Ellipsis,
-                            color = C.text.copy(alpha = 0.85f), modifier = Modifier.padding(top = 14.dp))
-                    }
-                    Spacer(Modifier.height(24.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                        when {
-                            plan != null -> PillButton(plan.label, Icons.Rounded.PlayArrow, primary = true,
-                                modifier = Modifier.memo(sc, "play", initial = true)) { nav.play(title, plan.episode.id, teamId) }
-                            error != null -> PillButton("Повторить", modifier = Modifier.memo(sc, "retry", initial = true)) { nav.pop(); nav.open(start) }
-                            episodes?.isEmpty() == true -> Text("Серий пока нет", color = C.muted, fontSize = 17.sp)
-                            else -> Text("Загрузка серий…", color = C.muted, fontSize = 17.sp)
-                        }
-                        if (teams.size > 1) PillButton(team?.label ?: "Озвучка", Icons.Rounded.RecordVoiceOver,
-                            modifier = Modifier.memo(sc, "dub")) { dialog = "dub" }
-                        PillButton(bookmark?.title ?: "В закладки", if (bookmark != null) Icons.Rounded.BookmarkAdded else Icons.Rounded.BookmarkAdd,
-                            modifier = Modifier.memo(sc, "bm")) { dialog = "bookmark" }
-                    }
-                    plan?.sub?.let { Text(it, fontSize = 13.sp, color = C.muted, modifier = Modifier.padding(start = 20.dp, top = 8.dp)) }
-                    error?.let { Text(it, fontSize = 14.sp, color = C.pink, modifier = Modifier.padding(top = 8.dp)) }
+        Column(Modifier.fillMaxSize().padding(top = 40.dp, bottom = 24.dp)) {
+            Column(Modifier.padding(horizontal = 56.dp).width(680.dp)) {
+                Text(title.title, fontSize = 36.sp, fontWeight = FontWeight.Bold, lineHeight = 40.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                (title.name ?: title.engName)?.takeIf { it != title.title }?.let {
+                    Text(it, fontSize = 15.sp, color = C.muted, maxLines = 1, modifier = Modifier.padding(top = 4.dp))
                 }
+                Spacer(Modifier.height(12.dp))
+                MetaLine(title, episodes?.takeIf { it.isNotEmpty() }?.let { "${it.size} эп." })
+                detail?.genres?.takeIf { it.isNotEmpty() }?.let {
+                    Text(it.take(5).joinToString(" · "), fontSize = 14.sp, color = C.muted, modifier = Modifier.padding(top = 8.dp))
+                }
+                detail?.summary?.let {
+                    Text(it.replace("\n\n", " ").trim(), fontSize = 15.sp, lineHeight = 21.sp, maxLines = 4, overflow = TextOverflow.Ellipsis,
+                        color = C.text.copy(alpha = 0.8f), modifier = Modifier.padding(top = 12.dp))
+                }
+                Spacer(Modifier.height(22.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    when {
+                        plan != null -> PillButton(plan.label, Icons.Rounded.PlayArrow, primary = true,
+                            modifier = Modifier.memo(sc, "play", initial = true)) { nav.play(title, plan.episode.id, teamId) }
+                        error != null -> PillButton("Повторить", modifier = Modifier.memo(sc, "retry", initial = true)) { nav.pop(); nav.open(start) }
+                        episodes?.isEmpty() == true -> Text("Серий пока нет", color = C.muted, fontSize = 17.sp)
+                        else -> Text("Загрузка серий…", color = C.muted, fontSize = 17.sp)
+                    }
+                    if (teams.size > 1) PillButton(team?.team?.name ?: "Озвучка", Icons.Rounded.RecordVoiceOver,
+                        modifier = Modifier.memo(sc, "dub")) { dialog = "dub" }
+                    PillButton(bookmark?.title ?: "", if (bookmark != null) Icons.Rounded.BookmarkAdded else Icons.Rounded.BookmarkAdd,
+                        modifier = Modifier.memo(sc, "bm")) { dialog = "bookmark" }
+                }
+                Text(listOfNotNull(plan?.sub, team?.let { if (it.native) "без рекламы" else "плеер Kodik" }).joinToString("  ·  "),
+                    fontSize = 13.sp, color = C.muted, modifier = Modifier.padding(start = 4.dp, top = 8.dp))
+                error?.let { Text(it, fontSize = 14.sp, color = C.pink, modifier = Modifier.padding(top = 8.dp)) }
             }
-            episodes?.takeIf { it.isNotEmpty() }?.let { eps ->
-                item("eps") { EpisodeStrip(eps, title, plan?.episode?.id, sc) { ep -> nav.play(title, ep.id, teamId) } }
-            }
+            Spacer(Modifier.weight(1f))
+            episodes?.takeIf { it.isNotEmpty() }?.let { eps -> EpisodeStrip(eps, title, plan?.episode?.id, sc) { ep -> nav.play(title, ep.id, teamId) } }
         }
     }
 
@@ -185,9 +195,9 @@ private fun EpisodeStrip(eps: List<Episode>, title: Title, current: Int?, sc: St
     val version by Store.version.collectAsState()
     val list = rememberLazyListState(initialFirstVisibleItemIndex = (eps.indexOfFirst { it.id == current } - 1).coerceAtLeast(0))
     val scope = rememberCoroutineScope()
-    Column(Modifier.padding(top = 30.dp)) {
+    Column {
         Row(Modifier.padding(start = 56.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text("Серии", fontSize = 22.sp, fontWeight = FontWeight.Bold)
+            Text("Серии", fontSize = 19.sp, fontWeight = FontWeight.SemiBold)
             if (eps.size > 40) {
                 Spacer(Modifier.width(10.dp))
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -198,26 +208,26 @@ private fun EpisodeStrip(eps: List<Episode>, title: Title, current: Int?, sc: St
                 }
             }
         }
-        LazyRow(state = list, contentPadding = PaddingValues(horizontal = 56.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+        Pivot { LazyRow(state = list, contentPadding = PaddingValues(horizontal = 56.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
             itemsIndexed(eps, key = { _, e -> e.id }) { _, e ->
                 val prog = remember(version) { Store.progress(e.id) }
                 val watched = remember(version) { Store.isWatched(title.id, e.number) || prog > 0.92 }
-                Column(Modifier.width(220.dp)) {
-                    Focusable(onClick = { onPlay(e) }, modifier = Modifier.fillMaxWidth().height(124.dp).memo(sc, "e${e.id}"),
+                Column(Modifier.width(184.dp)) {
+                    Focusable(onClick = { onPlay(e) }, modifier = Modifier.fillMaxWidth().height(100.dp).memo(sc, "e${e.id}"),
                         container = if (e.id == current) C.pink.copy(alpha = 0.22f) else C.card) {
                         Box(Modifier.fillMaxSize()) {
-                            Text(e.number, fontSize = 44.sp, fontWeight = FontWeight.Black, color = Color.White.copy(alpha = if (watched) 0.35f else 0.9f),
-                                modifier = Modifier.align(Alignment.CenterStart).padding(start = 18.dp))
+                            Text(e.number, fontSize = 38.sp, fontWeight = FontWeight.Black, color = LocalContentColor.current.copy(alpha = if (watched) 0.35f else 0.92f),
+                                modifier = Modifier.align(Alignment.CenterStart).padding(start = 16.dp))
                             if (watched) Icon(Icons.Rounded.CheckCircle, null, tint = C.pink, modifier = Modifier.align(Alignment.TopEnd).padding(10.dp).size(22.dp))
                             if (e.id == current) Text("ДАЛЕЕ", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = C.pink,
                                 modifier = Modifier.align(Alignment.TopEnd).padding(12.dp))
                             if (prog > 0.01 && prog <= 0.92) ProgressLine(prog, Modifier.align(Alignment.BottomCenter))
                         }
                     }
-                    Text(e.displayTitle, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, color = C.muted,
+                    Text(e.displayTitle, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, color = C.muted,
                         modifier = Modifier.padding(top = 6.dp))
                 }
             }
-        }
+        } }
     }
 }

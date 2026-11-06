@@ -97,7 +97,7 @@ fun SearchScreen(nav: Nav) {
 
     Row(Modifier.fillMaxSize()) {
         // Keyboard
-        Column(Modifier.width(380.dp).fillMaxHeight().padding(start = 48.dp, top = 28.dp, end = 12.dp)) {
+        Column(Modifier.width(380.dp).fillMaxHeight().padding(start = 56.dp, top = TopBarHeight + 10.dp, end = 12.dp)) {
             Box(Modifier.fillMaxWidth().height(54.dp).background(Color.White.copy(alpha = 0.08f), RoundedCornerShape(14.dp)).padding(horizontal = 16.dp),
                 contentAlignment = Alignment.CenterStart) {
                 Text(if (text.isEmpty()) "Название…" else text + "▏", fontSize = 20.sp, maxLines = 1,
@@ -134,8 +134,8 @@ fun SearchScreen(nav: Nav) {
         // Results
         val shown = if (text.trim().length >= 2) results else popular
         LazyVerticalGrid(
-            columns = GridCells.Adaptive(140.dp), modifier = Modifier.weight(1f).fillMaxHeight(),
-            contentPadding = PaddingValues(start = 16.dp, end = 48.dp, top = 28.dp, bottom = 48.dp),
+            columns = GridCells.Adaptive(122.dp), modifier = Modifier.weight(1f).fillMaxHeight(),
+            contentPadding = PaddingValues(start = 16.dp, end = 56.dp, top = TopBarHeight + 10.dp, bottom = 48.dp),
             horizontalArrangement = Arrangement.spacedBy(18.dp), verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
             item(span = { GridItemSpan(maxLineSpan) }) {
@@ -148,7 +148,7 @@ fun SearchScreen(nav: Nav) {
                     }, fontSize = 20.sp, fontWeight = FontWeight.Bold,
                 )
             }
-            items(shown, key = { it.id }) { t -> PosterCard(t, onClick = { nav.open(t) }, width = 140.dp, modifier = Modifier.memo("search", "t${t.id}")) }
+            items(shown, key = { it.id }) { t -> PosterCard(t, onClick = { nav.open(t) }, width = null, modifier = Modifier.memo("search", "t${t.id}")) }
         }
     }
 }

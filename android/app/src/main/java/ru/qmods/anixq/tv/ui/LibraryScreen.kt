@@ -36,9 +36,9 @@ fun LibraryScreen(nav: Nav) {
     val titles = remember(version, section) { if (section < 0) emptyList() else Store.titles(Bookmark.entries[section]) }
 
     LazyVerticalGrid(
-        columns = GridCells.Adaptive(if (section < 0) 300.dp else 150.dp), modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(start = 48.dp, end = 48.dp, bottom = 48.dp),
-        horizontalArrangement = Arrangement.spacedBy(20.dp), verticalArrangement = Arrangement.spacedBy(22.dp),
+        columns = GridCells.Adaptive(if (section < 0) 330.dp else 128.dp), modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(start = 56.dp, end = 56.dp, bottom = 48.dp),
+        horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(20.dp),
     ) {
         item(span = { GridItemSpan(maxLineSpan) }) {
             ScreenTitle("Моё", "Закладки и история общие с iPhone")
@@ -58,7 +58,7 @@ fun LibraryScreen(nav: Nav) {
                     modifier = Modifier.memo("library", "h${e.title.id}"))
             }
         } else {
-            items(titles, key = { it.id }) { t -> PosterCard(t, onClick = { nav.open(t) }, modifier = Modifier.memo("library", "b${t.id}")) }
+            items(titles, key = { it.id }) { t -> PosterCard(t, onClick = { nav.open(t) }, width = null, modifier = Modifier.memo("library", "b${t.id}")) }
         }
         if ((section < 0 && history.isEmpty()) || (section >= 0 && titles.isEmpty())) item(span = { GridItemSpan(maxLineSpan) }) {
             Box(Modifier.fillMaxWidth().height(160.dp), contentAlignment = Alignment.Center) {

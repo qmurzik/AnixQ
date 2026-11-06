@@ -35,6 +35,8 @@ data class Title(
 ) {
     val title: String get() = rusName ?: name ?: engName ?: "Без названия"
     val poster: String? get() = cover ?: coverThumb
+    /** Small cover for cards: decodes ~4× faster on weak TV boxes. */
+    val thumb: String? get() = coverThumb ?: cover
     val isOngoing: Boolean get() = statusId == 1
     val meta: String get() = listOfNotNull(typeLabel, year?.toString(), rating?.let { "★ %.1f".format(it) }).joinToString(" · ")
 

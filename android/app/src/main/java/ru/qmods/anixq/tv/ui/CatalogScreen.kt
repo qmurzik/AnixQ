@@ -90,9 +90,9 @@ fun CatalogScreen(nav: Nav) {
     }
 
     LazyVerticalGrid(
-        columns = GridCells.Adaptive(150.dp), state = grid, modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(start = 48.dp, end = 48.dp, bottom = 48.dp),
-        horizontalArrangement = Arrangement.spacedBy(20.dp), verticalArrangement = Arrangement.spacedBy(22.dp),
+        columns = GridCells.Adaptive(128.dp), state = grid, modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(start = 56.dp, end = 56.dp, bottom = 48.dp),
+        horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(20.dp),
     ) {
         item(span = { GridItemSpan(maxLineSpan) }, key = "head") { ScreenTitle("Каталог") }
         item(span = { GridItemSpan(maxLineSpan) }, key = "filters") {
@@ -108,7 +108,7 @@ fun CatalogScreen(nav: Nav) {
             }
         }
         items(CatalogState.items, key = { it.id }) { t ->
-            PosterCard(t, onClick = { nav.open(t) }, modifier = Modifier.memo("catalog", t.id.toString(), initial = t == CatalogState.items.first()))
+            PosterCard(t, onClick = { nav.open(t) }, width = null, modifier = Modifier.memo("catalog", t.id.toString(), initial = t == CatalogState.items.first()))
         }
         item(span = { GridItemSpan(maxLineSpan) }, key = "foot") {
             Box(Modifier.fillMaxWidth().height(80.dp), contentAlignment = Alignment.Center) {

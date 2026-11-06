@@ -50,7 +50,7 @@ fun SettingsScreen(nav: Nav) {
     var dialog by remember { mutableStateOf<String?>(null) }
     remember(version) { 0 }
 
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 48.dp, end = 48.dp, bottom = 48.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 56.dp, end = 56.dp, bottom = 48.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         item { ScreenTitle("Настройки") }
 
         item {

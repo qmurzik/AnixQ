@@ -42,6 +42,7 @@ import androidx.compose.material.icons.rounded.VideoLibrary
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableDoubleStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -114,6 +115,7 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
     private var lastSaved = 0L
     private var lastRemote = 0L
     private var viewedSent = false
+    private var prefetched = false
     private var loadJob: Job? = null
 
     val engine: Engine? get() = if (native) exo else kodik
@@ -154,7 +156,7 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
         val sameEpisode = i == index && episodes.isNotEmpty() && keepPos != null
         index = i
         val ep = episodes[i]
-        if (!sameEpisode) { openingSkipped = false; nextDismissed = false; viewedSent = false; pos = 0.0; dur = 0.0; ended = false }
+        if (!sameEpisode) { openingSkipped = false; nextDismissed = false; viewedSent = false; prefetched = false; pos = 0.0; dur = 0.0; ended = false }
         message = if (sameEpisode) "Переключаем…" else "Серия ${ep.number}"
         failed = false
         buffering = true
@@ -232,6 +234,17 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
             viewedSent = true
             episode?.let { ep -> Store.markWatched(title, ep); scope.launch { Api.markViewed(ep.id, player?.playerId) } }
         }
+        // Warm up the next episode a few minutes before the end, so "next" starts instantly.
+        if (hasNext && !prefetched && dur > 0 && dur - pos < 180) {
+            prefetched = true
+            val next = episodes[index + 1]
+            scope.launch {
+                runCatching {
+                    val ps = Api.players(next.id)
+                    ps.firstOrNull { it.team.id == player?.team?.id && it.isNative }?.hrefs?.values?.firstOrNull()?.let { Api.rankServers(it) }
+                }
+            }
+        }
         saveProgress()
     }
 
@@ -294,6 +307,11 @@ fun PlayerScreen(nav: Nav, route: PlayerRoute) {
     val playBtn = remember { FocusRequester() }
     val skipBtn = remember { FocusRequester() }
 
+    // Booleans derived from the playback position: the screen redraws when they flip, not 4× a second.
+    val showNext by remember(m) { derivedStateOf { m.showNext } }
+    val inOpening by remember(m) { derivedStateOf { m.inOpening && !m.openingSkipped } }
+    val countdown by remember(m) { derivedStateOf { m.countdown } }
+
     LaunchedEffect(m) { m.start() }
     DisposableEffect(m) { onDispose { m.release() } }
     LaunchedEffect(m) {
@@ -306,7 +324,7 @@ fun PlayerScreen(nav: Nav, route: PlayerRoute) {
     }
     // Countdown to the next episode.
     var count by remember { mutableIntStateOf(10) }
-    val counting = m.showNext && m.countdown && dialog == null && panel == Panel.NONE
+    val counting = showNext && countdown && dialog == null && panel == Panel.NONE
     LaunchedEffect(counting, m.index) {
         count = if (m.ended) 3 else 10
         while (counting && count > 0) { delay(1000); count -= 1 }
@@ -315,7 +333,7 @@ fun PlayerScreen(nav: Nav, route: PlayerRoute) {
     LaunchedEffect(controls, panel, dialog) {
         delay(60)
         if (dialog != null || panel != Panel.NONE) return@LaunchedEffect
-        runCatching { if (controls) (if (m.inOpening && !m.openingSkipped) skipBtn else playBtn).requestFocus() else root.requestFocus() }
+        runCatching { if (controls) (if (inOpening) skipBtn else playBtn).requestFocus() else root.requestFocus() }
     }
 
     fun show() { controls = true; lastInput = System.currentTimeMillis() }
@@ -326,7 +344,7 @@ fun PlayerScreen(nav: Nav, route: PlayerRoute) {
             dialog != null -> dialog = null
             panel != Panel.NONE -> panel = Panel.NONE
             controls -> controls = false
-            m.showNext && !m.nextDismissed -> m.nextDismissed = true
+            showNext && !m.nextDismissed -> m.nextDismissed = true
             else -> exit()
         }
     }
@@ -353,8 +371,8 @@ fun PlayerScreen(nav: Nav, route: PlayerRoute) {
                     Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> {
                         when {
                             m.failed -> m.load(m.index)
-                            m.showNext -> m.next()
-                            m.inOpening && !m.openingSkipped -> m.skipOpening()
+                            showNext -> m.next()
+                            inOpening -> m.skipOpening()
                             else -> { m.toggle(); if (!m.playing) show() }
                         }
                         true
@@ -389,14 +407,8 @@ fun PlayerScreen(nav: Nav, route: PlayerRoute) {
             }
         }
 
-        // Seek feedback (no controls needed)
-        if (seekAcc != 0.0) {
-            Column(Modifier.align(Alignment.Center).background(Color.Black.copy(alpha = 0.55f), RoundedCornerShape(18.dp)).padding(horizontal = 28.dp, vertical = 16.dp),
-                horizontalAlignment = Alignment.CenterHorizontally) {
-                Text((if (seekAcc > 0) "+" else "−") + "${kotlin.math.abs(seekAcc).toInt()} с", fontSize = 30.sp, fontWeight = FontWeight.Bold)
-                Text("${fmt(m.pos)} / ${fmt(m.dur)}", fontSize = 15.sp, color = Color.White.copy(alpha = 0.8f))
-            }
-        }
+        // Seek feedback without the full panel: slim bar + time at the bottom, like a TV box player.
+        if (seekAcc != 0.0 && !controls) SeekPreview(m, seekAcc, Modifier.align(Alignment.BottomCenter))
 
         // Toast
         m.toast?.let {
@@ -405,22 +417,23 @@ fun PlayerScreen(nav: Nav, route: PlayerRoute) {
         }
 
         // Paused badge when controls are hidden
-        if (!controls && !m.playing && m.message == null && !m.showNext && panel == Panel.NONE) {
+        if (!controls && !m.playing && m.message == null && !showNext && panel == Panel.NONE && seekAcc == 0.0) {
             Box(Modifier.align(Alignment.Center).size(96.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.5f)), contentAlignment = Alignment.Center) {
                 Icon(Icons.Rounded.PlayArrow, null, modifier = Modifier.size(60.dp), tint = Color.White)
             }
         }
 
         // Skip opening — big and obvious, OK does it
-        if (!controls && panel == Panel.NONE && m.inOpening && !m.openingSkipped && !Store.autoSkipOpening) {
-            ActionCard("Пропустить опенинг", "OK", Modifier.align(Alignment.BottomEnd).padding(48.dp))
+        if (!controls && panel == Panel.NONE && inOpening && !Store.autoSkipOpening && seekAcc == 0.0) {
+            ActionCard("Пропустить опенинг", "нажмите OK", Modifier.align(Alignment.BottomEnd).padding(48.dp))
         }
 
         // Next episode
-        if (!controls && panel == Panel.NONE && m.showNext) {
+        if (!controls && panel == Panel.NONE && showNext && seekAcc == 0.0) {
             val ep = m.episodes.getOrNull(m.index + 1)
-            ActionCard("Следующая серия ${ep?.number ?: ""}", if (m.countdown && m.playing || m.ended) "через $count с · OK — сейчас" else "OK — смотреть",
-                Modifier.align(Alignment.BottomEnd).padding(48.dp), progress = if (m.countdown) count / if (m.ended) 3f else 10f else null)
+            ActionCard("Серия ${ep?.number ?: ""}" + (ep?.displayTitle?.takeIf { !it.startsWith("Серия") }?.let { " · $it" } ?: ""),
+                if (countdown) "через $count с  ·  OK — сейчас" else "OK — смотреть следующую",
+                Modifier.align(Alignment.BottomEnd).padding(48.dp), progress = if (countdown) count / if (m.ended) 3f else 10f else null)
         }
 
         // Controls
@@ -466,13 +479,15 @@ fun PlayerScreen(nav: Nav, route: PlayerRoute) {
 }
 
 @Composable
-private fun Controls(m: PlayerModel, playBtn: FocusRequester, skipBtn: FocusRequester, onAny: () -> Unit,
+internal fun Controls(m: PlayerModel, playBtn: FocusRequester, skipBtn: FocusRequester, onAny: () -> Unit,
                      onEpisodes: () -> Unit, onDub: () -> Unit, onQuality: () -> Unit) {
     Box(Modifier.fillMaxSize()) {
-        Box(Modifier.fillMaxWidth().height(160.dp).background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.75f), Color.Transparent))))
-        Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(300.dp)
-            .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.9f)))))
-        Column(Modifier.padding(start = 48.dp, top = 30.dp, end = 48.dp)) {
+        Box(Modifier.fillMaxWidth().height(170.dp).background(Brush.verticalGradient(0f to Color.Black.copy(alpha = 0.8f), 1f to Color.Black.copy(alpha = 0f))))
+        Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(320.dp)
+            .background(Brush.verticalGradient(0f to Color.Black.copy(alpha = 0f), 0.55f to Color.Black.copy(alpha = 0.7f), 1f to Color.Black.copy(alpha = 0.92f))))
+        Text(java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(java.util.Date()), fontSize = 20.sp,
+            color = Color.White.copy(alpha = 0.85f), modifier = Modifier.align(Alignment.TopEnd).padding(top = 32.dp, end = 48.dp))
+        Column(Modifier.padding(start = 48.dp, top = 30.dp, end = 160.dp)) {
             Text(m.title.title, fontSize = 26.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
             val ep = m.episode
             Text(listOfNotNull(ep?.let { "Серия ${it.number}" + (it.displayTitle.takeIf { t -> !t.startsWith("Серия") }?.let { t -> " · $t" } ?: "") },
@@ -545,6 +560,24 @@ private fun SeekBar(m: PlayerModel, onAny: () -> Unit) {
 }
 
 @Composable
+internal fun SeekPreview(m: PlayerModel, delta: Double, modifier: Modifier) {
+    Column(modifier.fillMaxWidth().background(Brush.verticalGradient(0f to Color.Black.copy(alpha = 0f), 0.5f to Color.Black.copy(alpha = 0.6f), 1f to Color.Black.copy(alpha = 0.88f)))
+        .padding(start = 48.dp, end = 48.dp, top = 60.dp, bottom = 34.dp)) {
+        Row(verticalAlignment = Alignment.Bottom) {
+            Text(fmt(m.pos), fontSize = 30.sp, fontWeight = FontWeight.Bold)
+            Text("  /  ${fmt(m.dur)}", fontSize = 18.sp, color = Color.White.copy(alpha = 0.7f), modifier = Modifier.padding(bottom = 4.dp))
+            Spacer(Modifier.weight(1f))
+            Text((if (delta > 0) "+" else "−") + "${kotlin.math.abs(delta).toInt()} с", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = C.pink)
+        }
+        Spacer(Modifier.height(10.dp))
+        val frac = if (m.dur > 0) (m.pos / m.dur).toFloat().coerceIn(0f, 1f) else 0f
+        Box(Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(50)).background(Color.White.copy(alpha = 0.25f))) {
+            Box(Modifier.fillMaxWidth(frac).height(6.dp).background(C.grad))
+        }
+    }
+}
+
+@Composable
 private fun RoundButton(icon: androidx.compose.ui.graphics.vector.ImageVector, big: Boolean = false, modifier: Modifier = Modifier, onClick: () -> Unit) {
     val s = if (big) 64.dp else 50.dp
     Focusable(onClick = onClick, modifier = modifier.size(s), radius = s / 2, scale = 1.12f,
@@ -556,7 +589,7 @@ private fun RoundButton(icon: androidx.compose.ui.graphics.vector.ImageVector, b
 }
 
 @Composable
-private fun ActionCard(title: String, sub: String, modifier: Modifier, progress: Float? = null) {
+internal fun ActionCard(title: String, sub: String, modifier: Modifier, progress: Float? = null) {
     Column(modifier.width(340.dp).clip(RoundedCornerShape(16.dp)).background(Color.White)
         .border(2.dp, Color.White, RoundedCornerShape(16.dp))) {
         Row(Modifier.padding(horizontal = 22.dp, vertical = 16.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -571,7 +604,7 @@ private fun ActionCard(title: String, sub: String, modifier: Modifier, progress:
 }
 
 @Composable
-private fun EpisodesPanel(m: PlayerModel, onPick: (Int) -> Unit) {
+internal fun EpisodesPanel(m: PlayerModel, onPick: (Int) -> Unit) {
     val list = rememberLazyListState(initialFirstVisibleItemIndex = (m.index - 1).coerceAtLeast(0))
     Column(Modifier.fillMaxWidth().background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.95f))))
         .padding(top = 60.dp, bottom = 36.dp)) {

@@ -48,12 +48,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
-import androidx.tv.material3.DrawerValue
+import androidx.tv.material3.ClickableSurfaceDefaults
+import androidx.tv.material3.Surface
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.runtime.collectAsState
+import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.foundation.focusGroup
 import androidx.tv.material3.Icon
-import androidx.tv.material3.NavigationDrawer
-import androidx.tv.material3.NavigationDrawerItem
 import androidx.tv.material3.Text
-import androidx.tv.material3.rememberDrawerState
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.EncodeHintType
 import com.google.zxing.qrcode.QRCodeWriter
@@ -112,10 +115,10 @@ object Focus {
 
 fun Modifier.memo(scope: String, key: String, initial: Boolean = false): Modifier = composed {
     val fr = remember { FocusRequester() }
-    LaunchedEffect(scope, key) {
-        if (Focus.shouldTake(scope, key, initial)) {
-            repeat(5) { delay(40); if (runCatching { fr.requestFocus() }.isSuccess) return@LaunchedEffect }
-        }
+    // Decide once per item; only the one item that should take focus starts an effect (cheap for long rows).
+    val take = remember(scope, key) { Focus.shouldTake(scope, key, initial) }
+    if (take) LaunchedEffect(Unit) {
+        repeat(6) { delay(50); if (runCatching { fr.requestFocus() }.isSuccess) return@LaunchedEffect }
     }
     focusRequester(fr).onFocusChanged { if (it.isFocused) Focus.focused(scope, key) }
 }
@@ -128,41 +131,74 @@ fun App(nav: Nav) {
     Box(Modifier.fillMaxSize().background(C.bg)) {
         when (top) {
             null -> {
-                val drawer = rememberDrawerState(DrawerValue.Closed)
                 BackHandler(enabled = nav.tab != Tab.HOME) { nav.tab = Tab.HOME }
-                NavigationDrawer(
-                    drawerState = drawer,
-                    drawerContent = { value ->
-                        Column(Modifier.fillMaxHeight().background(C.bg.copy(alpha = 0.92f)).padding(12.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterVertically)) {
-                            Tab.entries.forEach { t ->
-                                NavigationDrawerItem(
-                                    selected = nav.tab == t,
-                                    onClick = { nav.tab = t },
-                                    leadingContent = { Icon(t.icon, contentDescription = null) },
-                                ) { Text(t.label) }
-                            }
-                        }
-                    },
-                ) {
-                    Box(Modifier.fillMaxSize()) {
-                        holder.SaveableStateProvider(nav.tab.name) {
-                            when (nav.tab) {
-                                Tab.HOME -> HomeScreen(nav)
-                                Tab.CATALOG -> CatalogScreen(nav)
-                                Tab.SEARCH -> SearchScreen(nav)
-                                Tab.LIBRARY -> LibraryScreen(nav)
-                                Tab.SETTINGS -> SettingsScreen(nav)
-                            }
-                        }
+                // Each tab draws its own backdrop and leaves room for the bar on top.
+                holder.SaveableStateProvider(nav.tab.name) {
+                    when (nav.tab) {
+                        Tab.HOME -> HomeScreen(nav)
+                        Tab.CATALOG -> CatalogScreen(nav)
+                        Tab.SEARCH -> SearchScreen(nav)
+                        Tab.LIBRARY -> LibraryScreen(nav)
+                        Tab.SETTINGS -> SettingsScreen(nav)
                     }
                 }
+                TopBar(nav)
             }
             is TitleRoute -> holder.SaveableStateProvider(top.scope + nav.stack.size) { TitleScreen(nav, top.title) }
             is PlayerRoute -> PlayerScreen(nav, top)
             LoginRoute -> LoginScreen(nav)
         }
     }
+}
+
+val TopBarHeight = 64.dp
+
+/** Google-TV-like tabs on top; moving across them switches the screen. */
+@OptIn(ExperimentalComposeUiApi::class)
+@Composable
+private fun TopBar(nav: Nav) {
+    val update by ru.qmods.anixq.tv.data.Updater.state.collectAsState()
+    val requesters = remember { Tab.entries.associateWith { FocusRequester() } }
+    // Coming up from the content always lands on the current tab (never jumps to Settings by accident).
+    Row(Modifier.fillMaxWidth().height(TopBarHeight).background(Brush.verticalGradient(listOf(C.bg.copy(alpha = 0.9f), Color.Transparent)))
+        .padding(horizontal = 48.dp).focusProperties { enter = { requesters.getValue(nav.tab) } }.focusGroup(),
+        verticalAlignment = Alignment.CenterVertically) {
+        Text("AnixQ", fontSize = 21.sp, fontWeight = FontWeight.Black, color = C.pink, modifier = Modifier.padding(end = 28.dp))
+        Tab.entries.filter { it != Tab.SETTINGS }.forEach { t -> TabItem(t, nav, Modifier.focusRequester(requesters.getValue(t))) }
+        Spacer(Modifier.weight(1f))
+        if (ru.qmods.anixq.tv.data.Updater.available != null && update !is ru.qmods.anixq.tv.data.UpdateState.Installing)
+            Text("Есть обновление", fontSize = 13.sp, color = C.pink, modifier = Modifier.padding(end = 14.dp))
+        Clock()
+        Spacer(Modifier.width(14.dp))
+        TabItem(Tab.SETTINGS, nav, Modifier.focusRequester(requesters.getValue(Tab.SETTINGS)), iconOnly = true)
+    }
+}
+
+@Composable
+private fun TabItem(t: Tab, nav: Nav, modifier: Modifier, iconOnly: Boolean = false) {
+    val selected = nav.tab == t
+    Surface(
+        onClick = { nav.tab = t },
+        modifier = modifier.padding(horizontal = 2.dp).onFocusChanged { if (it.isFocused && nav.tab != t) nav.tab = t },
+        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(50)),
+        colors = ClickableSurfaceDefaults.colors(
+            containerColor = if (selected) Color.White.copy(alpha = 0.14f) else Color.Transparent,
+            contentColor = if (selected) Color.White else C.muted,
+            focusedContainerColor = Color.White, focusedContentColor = Color.Black),
+        scale = ClickableSurfaceDefaults.scale(focusedScale = 1.05f),
+    ) {
+        Row(Modifier.padding(horizontal = if (iconOnly) 9.dp else 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            if (iconOnly) Icon(t.icon, contentDescription = t.label, modifier = Modifier.size(20.dp))
+            else Text(t.label, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+        }
+    }
+}
+
+@Composable
+private fun Clock() {
+    var now by remember { mutableStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(Unit) { while (true) { delay(15_000); now = System.currentTimeMillis() } }
+    Text(java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(java.util.Date(now)), fontSize = 16.sp, color = C.muted)
 }
 
 // MARK: Shared dialogs
@@ -210,8 +246,8 @@ fun QrCode(text: String, modifier: Modifier = Modifier) {
 
 @Composable
 fun ScreenTitle(text: String, sub: String? = null) {
-    Column(Modifier.padding(start = 48.dp, top = 28.dp, bottom = 16.dp)) {
-        Text(text, fontSize = 30.sp, fontWeight = FontWeight.Bold)
+    Column(Modifier.padding(top = TopBarHeight + 8.dp, bottom = 14.dp)) {
+        Text(text, fontSize = 28.sp, fontWeight = FontWeight.Bold)
         sub?.let { Spacer(Modifier.height(4.dp)); Text(it, fontSize = 15.sp, color = C.muted) }
     }
 }

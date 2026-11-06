@@ -126,6 +126,8 @@ struct MetaChip: View {
     let text: String
     var icon: String? = nil
     var tint: Color? = nil
+    /// Over artwork: dark glassy backing so it stays readable in light mode too.
+    var onImage = true
 
     var body: some View {
         HStack(spacing: 4) {
@@ -133,7 +135,9 @@ struct MetaChip: View {
             Text(text).font(.caption.weight(.semibold)).lineLimit(1)
         }
         .padding(.horizontal, 9).padding(.vertical, 5)
-        .foregroundStyle(tint ?? .primary)
-        .background((tint ?? Color.primary).opacity(0.14), in: Capsule())
+        .foregroundStyle(tint ?? (onImage ? .white : .primary))
+        .background(onImage ? AnyShapeStyle(Color.black.opacity(0.42)) : AnyShapeStyle((tint ?? Color.primary).opacity(0.14)),
+                    in: Capsule())
+        .overlay(Capsule().stroke(Color.white.opacity(onImage ? 0.12 : 0), lineWidth: 0.5))
     }
 }

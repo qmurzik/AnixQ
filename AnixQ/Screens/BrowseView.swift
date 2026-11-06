@@ -218,14 +218,16 @@ struct SearchView: View {
                 Section("Жанры") {
                     LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
                         ForEach(genres) { g in
-                            NavigationLink(value: GenreRoute(genre: g)) {
-                                Text(g.name)
-                                    .font(.subheadline.weight(.semibold))
-                                    .frame(maxWidth: .infinity, minHeight: 54)
-                                    .background(gradient(for: g.id), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                                    .foregroundStyle(.white)
+                            // A visible tile with an invisible link on top: no list chevrons.
+                            let tile = Text(g.name)
+                                .font(.subheadline.weight(.semibold))
+                                .frame(maxWidth: .infinity, minHeight: 54)
+                                .background(gradient(for: g.id), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                .foregroundStyle(.white)
+                            ZStack {
+                                tile
+                                NavigationLink(value: GenreRoute(genre: g)) { tile }.opacity(0)
                             }
-                            .buttonStyle(PressableStyle())
                         }
                     }
                     .listRowInsets(EdgeInsets(top: 10, leading: 12, bottom: 10, trailing: 12))

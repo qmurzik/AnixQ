@@ -322,8 +322,8 @@ struct HeroCarousel: View {
                 Text(item.title.title)
                     .font(.system(size: 32, weight: .heavy, design: .rounded))
                     .multilineTextAlignment(.center)
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.8)
+                    .lineLimit(3)
+                    .minimumScaleFactor(0.7)
                     .shadow(color: .black.opacity(0.45), radius: 12)
                     .padding(.horizontal, 24)
                 HStack(spacing: 6) {

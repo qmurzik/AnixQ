@@ -276,10 +276,6 @@ struct TitleView: View {
                     metaChips.padding(.horizontal)
                     ScrollView(.horizontal, showsIndicators: false) { metaChips.padding(.horizontal) }
                 }
-                if let g = model.detail?.genres.prefix(4).map(\.name), !g.isEmpty {
-                    Text(g.joined(separator: " · ")).font(.footnote.weight(.medium)).foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center).padding(.horizontal)
-                }
                 playButtons.padding(.horizontal).padding(.top, 6).frame(maxWidth: 560)
             }
             .padding(.bottom, 8)

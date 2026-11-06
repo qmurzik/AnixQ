@@ -580,16 +580,16 @@ struct PlayerScreenV2: View {
     private func webChrome(isLand: Bool) -> some View {
         VStack {
             HStack(spacing: 8) {
-                chip(isLand ? "Свернуть" : "Закрыть", isLand ? "chevron.down" : "xmark") {
-                    if isLand { OrientationController.set(.portrait) } else { dismiss() }
-                }
                 if isLand {
+                    Spacer()
+                    chip("Свернуть", "chevron.down") { OrientationController.set(.portrait) }
                     chip("Серия \(c.episode.number)", "rectangle.stack") { panel = .episodes }
                     chip(c.team.team.name, "waveform") { panel = .teams }
+                    chip("", "arrow.clockwise") { webLoading = true; webReload += 1 }
+                } else {
+                    Spacer()
+                    chip("", "arrow.up.left.and.arrow.down.right") { OrientationController.set(.landscape) }
                 }
-                chip("", "arrow.clockwise") { webLoading = true; webReload += 1 }
-                Spacer()
-                if !isLand { chip("", "arrow.up.left.and.arrow.down.right") { OrientationController.set(.landscape) } }
             }
             .padding(10)
             Spacer()
@@ -602,6 +602,16 @@ struct PlayerScreenV2: View {
         ScrollViewReader { proxy in
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
+                    if !c.isNative {
+                        HStack(spacing: 8) {
+                            wideButton("Закрыть", "chevron.down", prominent: false) { dismiss() }
+                            wideButton("Обновить", "arrow.clockwise", prominent: false) { webLoading = true; webReload += 1 }
+                        }
+                        .padding(.horizontal)
+                        Label("Плеер Kodik: в начале может быть реклама. Озвучки без рекламы отмечены в списке «Озвучка».",
+                              systemImage: "info.circle")
+                            .font(.caption).foregroundStyle(.white.opacity(0.55)).padding(.horizontal)
+                    }
                     VStack(alignment: .leading, spacing: 6) {
                         Text(c.title.title).font(.title3.bold()).lineLimit(2)
                         HStack(spacing: 6) {
@@ -673,8 +683,7 @@ struct PlayerScreenV2: View {
                 .padding(.vertical, 16)
                 .foregroundStyle(.white)
             }
-            .onAppear { proxy.scrollTo(max(0, c.index - 1), anchor: .top) }
-            .onChange(of: c.index) { i in withAnimation { proxy.scrollTo(max(0, i - 1), anchor: .top) } }
+
         }
     }
 

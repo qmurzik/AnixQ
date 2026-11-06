@@ -3,6 +3,13 @@ import SwiftUI
 struct LibraryView: View {
     @EnvironmentObject private var library: LibraryStore
     @EnvironmentObject private var downloads: DownloadManager
+
+    private var downloadsSubtitle: String {
+        let done = downloads.items.values.filter { $0.state == .done }.count
+        let active = downloads.activeCount
+        if active > 0 { return "Качается: \(active)" }
+        return done > 0 ? "Серий: \(done)" : "Смотрите офлайн"
+    }
     @State private var showSettings = false
     @State private var showLibLogin = false
     @ObservedObject private var lock = AppLock.shared
@@ -51,30 +58,24 @@ struct LibraryView: View {
             }
 
             Section {
-                NavigationLink(value: SmartRoute()) {
-                    Label("Для меня", systemImage: "sparkles")
+                LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible())], spacing: 10) {
+                    LibraryTile(title: "Для меня", subtitle: "Сегодня и советы", icon: "sparkles", colors: [.pink, .purple], value: SmartRoute())
+                    LibraryTile(title: "Загрузки", subtitle: downloadsSubtitle, icon: "arrow.down.circle.fill", colors: [.blue, .cyan],
+                                value: LibraryRoute.downloads)
+                    LibraryTile(title: "Статистика", subtitle: "Итоги и достижения", icon: "chart.bar.fill", colors: [.orange, .yellow],
+                                value: LibraryRoute.stats)
+                    LibraryTile(title: "Друзья", subtitle: "Лента Shikimori", icon: "person.2.fill", colors: [.green, .teal],
+                                value: LibraryRoute.friends)
                 }
-                NavigationLink(value: LibraryRoute.stats) {
-                    Label("Статистика", systemImage: "chart.bar.xaxis")
-                }
-                NavigationLink(value: LibraryRoute.friends) {
-                    Label("Друзья на Shikimori", systemImage: "person.2")
-                }
-                NavigationLink(value: LibraryRoute.downloads) {
-                    HStack {
-                        Label("Загрузки", systemImage: "arrow.down.circle")
-                        Spacer()
-                        let count = downloads.items.values.filter { $0.state == .done }.count
-                        if count > 0 { Text("\(count)").foregroundStyle(.secondary) }
-                    }
-                }
+                .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
+                .listRowBackground(Color.clear)
             }
 
             Section("Закладки") {
                 ForEach(BookmarkStatus.allCases) { s in
                     NavigationLink(value: LibraryRoute.folder(s)) {
                         HStack {
-                            Label(s.title, systemImage: s.icon)
+                            Label { Text(s.title) } icon: { ColoredIcon(name: s.icon, color: s.color) }
                             Spacer()
                             if lock.isLocked(s) {
                                 Image(systemName: "lock.fill").foregroundStyle(.secondary)
@@ -630,6 +631,65 @@ struct LockGate<Content: View>: View {
             LockedFolderView(folder: folder).navigationTitle(folder.title)
         } else {
             content()
+        }
+    }
+}
+
+/// Big colourful entry tile at the top of the library.
+struct LibraryTile<V: Hashable>: View {
+    let title: String
+    let subtitle: String
+    let icon: String
+    let colors: [Color]
+    let value: V
+
+    var body: some View {
+        let label = VStack(alignment: .leading, spacing: 10) {
+            Image(systemName: icon).font(.system(size: 18, weight: .bold)).foregroundStyle(.white)
+                .frame(width: 38, height: 38)
+                .background(LinearGradient(colors: colors, startPoint: .topLeading, endPoint: .bottomTrailing),
+                            in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title).font(.headline).foregroundStyle(.primary)
+                Text(subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(14)
+        .background(LinearGradient(colors: [colors[0].opacity(0.16), colors[colors.count - 1].opacity(0.05)],
+                                   startPoint: .topLeading, endPoint: .bottomTrailing),
+                    in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .background(Theme.card, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        // Invisible link on top keeps list rows free of chevrons.
+        ZStack {
+            label
+            NavigationLink(value: value) { label }.opacity(0)
+        }
+    }
+}
+
+/// Settings-style icon: white symbol on a coloured rounded square.
+struct ColoredIcon: View {
+    let name: String
+    let color: Color
+
+    var body: some View {
+        Image(systemName: name).font(.system(size: 13, weight: .semibold)).foregroundStyle(.white)
+            .frame(width: 28, height: 28)
+            .background(color.gradient, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+    }
+}
+
+extension BookmarkStatus {
+    var color: Color {
+        switch self {
+        case .watching: return .green
+        case .planned: return .blue
+        case .dropped: return .red
+        case .completed: return .purple
+        case .favorite: return .pink
+        case .rewatching: return .teal
+        case .onHold: return .orange
         }
     }
 }

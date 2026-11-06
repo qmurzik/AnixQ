@@ -434,7 +434,9 @@ enum LibAPI {
     }
 
     static func kodikURL(_ src: String) -> URL? {
-        URL(string: src.hasPrefix("//") ? "https:" + src : src)
+        let full = src.hasPrefix("//") ? "https:" + src : src
+        // Kodik's own dub dropdown duplicates ours and sits under our buttons.
+        return URL(string: full + (full.contains("?") ? "&" : "?") + "translations=false")
     }
 
     // MARK: Viewing progress (account)

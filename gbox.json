@@ -6,7 +6,7 @@
   "sourceLinkTitle": "Сайт",
   "sourceLinkUrl": "https://qmurzik.github.io/AnixQ/",
   "sourceImage": "https://raw.githubusercontent.com/qmurzik/AnixQ/gbox-source/icon.png",
-  "sourceUpdateTime": "2026-11-06T12:56:22+0000",
+  "sourceUpdateTime": "2026-11-06T14:51:16+0000",
   "sourceDescription": "AnixQ — аниме с AnimeLib: каталог, плеер без рекламы, синхронизация с Shikimori.",
   "appCategories": [
     "Приложения"
@@ -15,13 +15,13 @@
     {
       "appType": "SELF_SIGN",
       "appCateIndex": 0,
-      "appUpdateTime": "2026-11-06T12:56:22+0000",
+      "appUpdateTime": "2026-11-06T14:51:16+0000",
       "appName": "AnixQ",
-      "appVersion": "1.0.66",
+      "appVersion": "1.0.67",
       "appImage": "https://raw.githubusercontent.com/qmurzik/AnixQ/gbox-source/icon.png",
-      "appPackage": "https://github.com/qmurzik/AnixQ/releases/download/v1.0.66/AnixQ.ipa",
-      "appSize": 4739220,
-      "appDescription": "• Пульт с iPhone через интернет и «Смотреть на ТВ», пропуск опенингов почти везде (AniSkip), «Продолжить» на главном экране Android TV, голосовой поиск, субтитры, совместный просмотр, отметки Shikimori, профили"
+      "appPackage": "https://github.com/qmurzik/AnixQ/releases/download/v1.0.67/AnixQ.ipa",
+      "appSize": 4750015,
+      "appDescription": "• Синхронизация: не чаще раза в 30 с во время просмотра (лимит GitHub), пауза после отказа; iOS-плеер: продолжает после короткого прерывания звука, в журнале видно, откуда взялась пауза"
     }
   ]
 }

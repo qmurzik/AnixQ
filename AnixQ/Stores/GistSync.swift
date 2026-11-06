@@ -126,7 +126,8 @@ final class GistSync: ObservableObject {
 
     /// Push now — leaving the player or the app. Keeps running briefly in the background so the TV gets it.
     func flush() {
-        guard isOn else { return }
+        // Shade / Control Center / app switcher also land here: at most one extra gist write a minute.
+        guard isOn, Date().timeIntervalSince(lastPush) > 60 else { return }
         pushTask?.cancel(); pushTask = nil
         var bg = UIBackgroundTaskIdentifier.invalid
         bg = UIApplication.shared.beginBackgroundTask(withName: "anixq.sync") { UIApplication.shared.endBackgroundTask(bg) }

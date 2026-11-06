@@ -85,7 +85,11 @@ object Sync {
     fun stopLoop() { loop?.cancel(); loop = null; pushJob?.cancel(); etag = null; lastHash = ""; status.value = "Выключено" }
 
     /** Push right away (leaving the player, app going to background). */
-    fun flush() { if (isOn) { pushJob?.cancel(); scope.launch { sync() } } }
+    fun flush() {
+        // At most one extra gist write a minute (the live channel already carries the exact position).
+        if (!isOn || System.currentTimeMillis() - lastPushAt < 60_000) return
+        pushJob?.cancel(); scope.launch { sync() }
+    }
 
     /** Make sure we have the other devices' latest position before starting playback (≤ 3 s wait). */
     suspend fun pullFresh() {

@@ -403,7 +403,7 @@ struct PlayerScreen: View {
                     iconButton(c.hasPrevious ? "backward.end.fill" : "gobackward.10", size: 22) {
                         c.hasPrevious && c.currentTime < 5 ? c.previous() : c.seek(by: -10)
                     }
-                    iconButton(c.isPlaying ? "pause.fill" : "play.fill", size: 40) { c.togglePlay() }
+                    iconButton(c.isPlaying || c.isBuffering ? "pause.fill" : "play.fill", size: 40) { c.togglePlay() }
                     iconButton("goforward.10", size: 22) { c.seek(by: 10) }
                 }
             }

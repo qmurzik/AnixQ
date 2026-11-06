@@ -207,6 +207,14 @@ struct PlayerScreenV2: View {
                     .font(.footnote.weight(.medium)).foregroundStyle(.white.opacity(0.7))
             }
             .allowsHitTesting(false)
+        } else if c.isNative && c.isBuffering {
+            // Mid-episode loading: the video is waiting for data, not paused — show it, so "play" isn't pressed by mistake.
+            VStack(spacing: 10) {
+                ProgressView().tint(.white).scaleEffect(1.2)
+                Text("Подгружаем…").font(.caption.weight(.medium)).foregroundStyle(.white.opacity(0.75))
+            }
+            .padding(16).background(.black.opacity(0.35), in: RoundedRectangle(cornerRadius: 14))
+            .allowsHitTesting(false)
         }
         if let text = c.subtitleText {
             VStack {
@@ -371,7 +379,7 @@ struct PlayerScreenV2: View {
             .padding(.trailing, isLand ? max(24, insets.trailing + 8) : 10)
             .padding(.top, isLand ? max(14, insets.top) : 6)
             .padding(.bottom, isLand ? max(14, insets.bottom + 4) : 4)
-            if !c.isLoading { centerButtons(isLand: isLand) }
+            if !c.isLoading && !(c.isNative && c.isBuffering) { centerButtons(isLand: isLand) }
         }
         .foregroundStyle(.white)
     }
@@ -381,7 +389,7 @@ struct PlayerScreenV2: View {
             roundButton(c.hasPrevious && c.currentTime < 5 ? "backward.end.fill" : "gobackward.10", size: isLand ? 24 : 18, bg: isLand ? 58 : 42) {
                 c.hasPrevious && c.currentTime < 5 ? c.previous() : c.seek(by: -10)
             }
-            roundButton(c.isPlaying ? "pause.fill" : "play.fill", size: isLand ? 34 : 26, bg: isLand ? 78 : 58) { c.togglePlay() }
+            roundButton(c.isPlaying || c.isBuffering ? "pause.fill" : "play.fill", size: isLand ? 34 : 26, bg: isLand ? 78 : 58) { c.togglePlay() }
             roundButton(c.nearEnd && c.hasNext ? "forward.end.fill" : "goforward.10", size: isLand ? 24 : 18, bg: isLand ? 58 : 42) {
                 c.nearEnd && c.hasNext ? c.next() : c.seek(by: 10)
             }

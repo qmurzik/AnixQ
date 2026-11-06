@@ -438,7 +438,8 @@ final class PlayerController: ObservableObject {
 
     private func attach(_ item: AVPlayerItem, at time: Double?) {
         if VideoEnhancer.enabled && !audioOnly { Task { await VideoEnhancer.apply(to: item) } }
-        item.preferredForwardBufferDuration = 0
+        // Keep up to a minute ahead: short Wi-Fi / mobile dips no longer reach the screen.
+        item.preferredForwardBufferDuration = 60
         if let endObserver { NotificationCenter.default.removeObserver(endObserver) }
         endObserver = NotificationCenter.default.addObserver(forName: .AVPlayerItemDidPlayToEndTime, object: item,
                                                              queue: .main) { [weak self] _ in
@@ -698,8 +699,12 @@ final class PlayerController: ObservableObject {
         isBuffering = st == .waitingToPlayAtSpecifiedRate
         if isBuffering && !wasBuffering {
             bufferingSince = Date()
+            if currentTime > 2 { DebugLog.log("player: buffering at \(Int(currentTime))s (had \(Int(bufferedAhead))s ahead)") }
             noteStall()
         } else if !isBuffering {
+            if let since = bufferingSince, currentTime > 2 {
+                DebugLog.log(String(format: "player: resumed after %.1fs of buffering", Date().timeIntervalSince(since)))
+            }
             bufferingSince = nil
         }
         if st == .playing, Date().timeIntervalSince(startedAt) < 120, currentTime < 2 {

@@ -689,6 +689,8 @@ final class PlayerController: ObservableObject {
     // MARK: Observers
 
     private func statusChanged(_ st: AVPlayer.TimeControlStatus) {
+        // Any pause (button, headphones, app sent to background) sends the exact moment to the TV at once.
+        if st == .paused, isPlaying { saveProgress(force: true) }
         // Paused without anyone asking: note why, so a "random pause" can be traced in the debug log.
         if st == .paused, isPlaying || isBuffering, Date().timeIntervalSince(ownPauseAt) > 1.5,
            !(duration > 0 && currentTime >= duration - 1) {

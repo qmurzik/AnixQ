@@ -450,6 +450,19 @@ fun PlayerScreen(nav: Nav, route: PlayerRoute) {
     val countdown by remember(m) { derivedStateOf { m.countdown } }
 
     LaunchedEffect(m) { m.start() }
+    // TV switched off / Home pressed mid-episode: pause and send the exact position right away
+    // (otherwise the phone could be up to one 10-second save behind).
+    val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
+    DisposableEffect(lifecycle, m) {
+        val obs = androidx.lifecycle.LifecycleEventObserver { _, e ->
+            if (e == androidx.lifecycle.Lifecycle.Event.ON_STOP) {
+                if (m.playing) m.toggle() else m.saveProgress(force = true)
+                ru.qmods.anixq.tv.data.Sync.flush()
+            }
+        }
+        lifecycle.addObserver(obs)
+        onDispose { lifecycle.removeObserver(obs) }
+    }
     DisposableEffect(m) {
         ru.qmods.anixq.tv.data.Remote.target = m
         ru.qmods.anixq.tv.data.Room.player = m

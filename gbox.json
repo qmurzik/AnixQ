@@ -6,7 +6,7 @@
   "sourceLinkTitle": "Сайт",
   "sourceLinkUrl": "https://qmurzik.github.io/AnixQ/",
   "sourceImage": "https://raw.githubusercontent.com/qmurzik/AnixQ/gbox-source/icon.png",
-  "sourceUpdateTime": "2026-11-06T15:10:55+0000",
+  "sourceUpdateTime": "2026-11-06T17:38:38+0000",
   "sourceDescription": "AnixQ — аниме с AnimeLib: каталог, плеер без рекламы, синхронизация с Shikimori.",
   "appCategories": [
     "Приложения"
@@ -15,13 +15,13 @@
     {
       "appType": "SELF_SIGN",
       "appCateIndex": 0,
-      "appUpdateTime": "2026-11-06T15:10:55+0000",
+      "appUpdateTime": "2026-11-06T17:38:38+0000",
       "appName": "AnixQ",
-      "appVersion": "1.0.68",
+      "appVersion": "1.0.70",
       "appImage": "https://raw.githubusercontent.com/qmurzik/AnixQ/gbox-source/icon.png",
-      "appPackage": "https://github.com/qmurzik/AnixQ/releases/download/v1.0.68/AnixQ.ipa",
-      "appSize": 4749335,
-      "appDescription": "• iOS: в журнале видны команды паузы с наушников и Пункта управления"
+      "appPackage": "https://github.com/qmurzik/AnixQ/releases/download/v1.0.70/AnixQ.ipa",
+      "appSize": 4758862,
+      "appDescription": "• Синхронизация: прогресс мгновенно через живой зашифрованный канал между iPhone и ТВ, GitHub — только копия раз в 10 минут, ожидание по требованию GitHub"
     }
   ]
 }

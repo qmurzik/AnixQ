@@ -87,7 +87,7 @@ private const val UI_SCALE = 0.8f
 /** TV-style scrolling: the focused row/card snaps to a fixed spot near the start instead of the edge chasing the cursor. */
 @OptIn(ExperimentalFoundationApi::class)
 private object PivotSpec : BringIntoViewSpec {
-    override val scrollAnimationSpec = tween<Float>(durationMillis = 200)
+    override val scrollAnimationSpec = tween<Float>(durationMillis = 160)
     override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float = offset - containerSize * 0.046f
 }
 
@@ -163,12 +163,13 @@ fun Cover(url: String?, modifier: Modifier = Modifier, contentScale: ContentScal
  * looks like a blur, costs nothing, works on every Android version.
  */
 @Composable
-fun Ambient(url: String?, modifier: Modifier = Modifier) {
+fun Ambient(url: String?, modifier: Modifier = Modifier, alpha: Float = 1f) {
     val o = url?.let { CoverOverride.load?.invoke(it) }
-    if (o != null) { androidx.compose.foundation.Image(o, null, modifier, contentScale = ContentScale.Crop, alpha = 0.6f); return }
+    if (o != null) { androidx.compose.foundation.Image(o, null, modifier, contentScale = ContentScale.Crop, alpha = 0.6f * alpha); return }
     val context = LocalContext.current
-    val req = remember(url) { url?.let { ImageRequest.Builder(context).data(it).size(16, 24).crossfade(400).build() } }
-    AsyncImage(model = req, contentDescription = null, contentScale = ContentScale.Crop, modifier = modifier)
+    // alpha is applied while drawing (no off-screen layer — those are expensive on TV GPUs).
+    val req = remember(url) { url?.let { ImageRequest.Builder(context).data(it).size(16, 24).crossfade(false).build() } }
+    AsyncImage(model = req, contentDescription = null, contentScale = ContentScale.Crop, modifier = modifier, alpha = alpha)
 }
 
 @Composable

@@ -129,7 +129,7 @@ object Store {
         set(v) { prefs.edit().putBoolean("subtitles", v).apply() }
 
     var hoverPreview: Boolean
-        get() = prefs.getBoolean("hoverPreview", true)
+        get() = prefs.getBoolean("hoverPreview", !weakDevice)
         set(v) { prefs.edit().putBoolean("hoverPreview", v).apply(); bump() }
 
     var screensaver: Boolean
@@ -151,7 +151,15 @@ object Store {
     private var loadedName: String? = null
 
     /** Load a profile's data ([name] = its SharedPreferences file). Re-calling with the same name is a no-op. */
+    /** Low-memory boxes: background video previews off by default (they can still be enabled in Settings). */
+    var weakDevice = false; private set
+
     fun init(context: Context, name: String? = null) {
+        runCatching {
+            val am = context.getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager
+            val mi = android.app.ActivityManager.MemoryInfo().also { am.getMemoryInfo(it) }
+            weakDevice = am.isLowRamDevice || mi.totalMem < 3L * 1024 * 1024 * 1024
+        }
         if (name == null && loadedName != null) return
         val n = name ?: run { Profiles.init(context); Profiles.prefsName(Profiles.current.value!!) }
         if (n == loadedName) return
@@ -210,12 +218,18 @@ object Store {
 
     fun clearHistory() { history.clear(); changed() }
 
+    /** Local changes not yet pushed to the gist (true at start so the first sync pushes once). */
+    @Volatile var dirty = true
+
     private fun changed() {
         bump()
+        dirty = true
         saveJob?.cancel()
         saveJob = scope.launch {
-            delay(500)
-            prefs.edit().putString("library", exportSync().toString()).apply()
+            delay(1500)
+            // Build on the main thread (where the data changes), write on IO: no concurrent-modification crashes.
+            val text = kotlinx.coroutines.withContext(Dispatchers.Main) { exportSync().toString() }
+            prefs.edit().putString("library", text).apply()
         }
         Sync.changed()
     }
@@ -317,7 +331,8 @@ object Store {
         }
         if (changed && !initial) {
             bump()
-            prefs.edit().putString("library", exportSync().toString()).apply()
+            val text = exportSync().toString()
+            scope.launch { prefs.edit().putString("library", text).apply() }
         }
         return changed
     }

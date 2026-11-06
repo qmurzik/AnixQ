@@ -36,6 +36,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.text.font.FontWeight
@@ -234,13 +235,15 @@ private fun Hero(spot: MutableState<Title?>, fallback: Title?) {
     val shown by produceState(target, target?.id) { delay(if (value == null) 0 else 260); value = target }
     val t = shown ?: return
     val detail by produceState(Spotlight.cached(t.slug), t.slug) { value = Spotlight.get(t.slug) }
-    Box(Modifier.fillMaxSize()) {
-        Crossfade(targetState = t.id to detail?.background, animationSpec = tween(350), label = "backdrop") { (_, bg) ->
+    val area = TopBarHeight + HeroHeight + 130.dp
+    // Everything is drawn only over the hero area; below it the plain background shows (less overdraw).
+    Box(Modifier.fillMaxWidth().height(area)) {
+        Crossfade(targetState = t.id to detail?.background, animationSpec = tween(300), label = "backdrop") { (_, bg) ->
             Box(Modifier.fillMaxSize()) {
                 if (bg != null) {
-                    Cover(bg, Modifier.align(Alignment.TopEnd).fillMaxWidth(0.78f).height(TopBarHeight + HeroHeight + 120.dp))
+                    Cover(bg, Modifier.align(Alignment.TopEnd).fillMaxWidth(0.78f).fillMaxHeight())
                 } else {
-                    Ambient(t.thumb, Modifier.fillMaxSize().alpha(0.55f))
+                    Ambient(t.thumb, Modifier.fillMaxSize(), alpha = 0.55f)
                     Cover(t.poster, Modifier.align(Alignment.TopEnd).padding(top = TopBarHeight + 6.dp, end = 64.dp).height(HeroHeight + 20.dp)
                         .aspectRatio(2f / 3f).clip(RoundedCornerShape(14.dp)))
                 }
@@ -248,10 +251,12 @@ private fun Hero(spot: MutableState<Title?>, fallback: Title?) {
         }
         // A muted clip of the show fades in when the cursor rests on it.
         HoverVideo(t, Modifier.align(Alignment.TopEnd).fillMaxWidth(0.78f).aspectRatio(16f / 9f))
-        Box(Modifier.fillMaxSize().background(C.scrimLeft))
-        Box(Modifier.fillMaxWidth().height(TopBarHeight + HeroHeight + 130.dp)
-            .background(Brush.verticalGradient(0.55f to androidx.compose.ui.graphics.Color.Transparent, 1f to C.bg)))
-        Box(Modifier.fillMaxSize().padding(top = TopBarHeight + HeroHeight + 129.dp).background(C.bg))
+        Box(Modifier.fillMaxSize().drawBehind {
+            drawRect(C.scrimLeft)
+            drawRect(Brush.verticalGradient(0.55f to androidx.compose.ui.graphics.Color.Transparent, 1f to C.bg))
+        })
+    }
+    Box(Modifier.fillMaxSize()) {
         AnimatedContent(targetState = t, transitionSpec = { fadeIn(tween(220)) togetherWith fadeOut(tween(120)) }, label = "hero",
             modifier = Modifier.padding(start = 56.dp, top = TopBarHeight + 14.dp).width(640.dp).height(HeroHeight - 14.dp)) { title ->
             Column {

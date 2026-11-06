@@ -36,6 +36,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -134,13 +135,15 @@ fun TitleScreen(nav: Nav, start: Title) {
         val bg = detail?.background
         if (bg != null) Cover(bg, Modifier.align(Alignment.TopEnd).fillMaxWidth(0.8f).height(440.dp))
         else {
-            Ambient(title.thumb, Modifier.fillMaxSize().alpha(0.5f))
+            Ambient(title.thumb, Modifier.fillMaxWidth().height(460.dp), alpha = 0.5f)
             Cover(title.poster, Modifier.align(Alignment.TopEnd).padding(top = 40.dp, end = 64.dp).height(340.dp).aspectRatio(2f / 3f)
                 .clip(RoundedCornerShape(14.dp)))
         }
         HoverVideo(title, Modifier.align(Alignment.TopEnd).fillMaxWidth(0.8f).aspectRatio(16f / 9f), waitMs = 2500, playMs = 60_000)
-        Box(Modifier.fillMaxSize().background(C.scrimLeft))
-        Box(Modifier.fillMaxWidth().height(460.dp).background(Brush.verticalGradient(0.5f to Color.Transparent, 1f to C.bg)))
+        Box(Modifier.fillMaxWidth().height(460.dp).drawBehind {
+            drawRect(C.scrimLeft)
+            drawRect(Brush.verticalGradient(0.5f to Color.Transparent, 1f to C.bg))
+        })
         Box(Modifier.fillMaxSize().padding(top = 459.dp).background(C.bg))
 
         LazyColumn(Modifier.fillMaxSize()) {

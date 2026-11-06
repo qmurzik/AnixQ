@@ -21,7 +21,8 @@ object Images {
         }
         .memoryCache { MemoryCache.Builder(context).maxSizePercent(0.2).build() }
         .diskCache { DiskCache.Builder().directory(context.cacheDir.resolve("covers")).maxSizeBytes(150L * 1024 * 1024).build() }
-        .crossfade(true)
+        // No per-poster fade-in: dozens of animated layers while scrolling made weak boxes stutter.
+        .crossfade(false)
         .respectCacheHeaders(false)
         .build()
 }

@@ -162,8 +162,10 @@ object Sync {
                 if (file?.optBoolean("truncated") == true) file.str("raw_url")?.let { u ->
                     content = Api.http.newCall(Request.Builder().url(u).build()).execute().use { it.body?.string().orEmpty() }
                 }
-                if (content.isNotBlank()) withContext(Dispatchers.Main) {
-                    if (Store.importSync(JSONObject(content))) {
+                // Parse the (possibly large) document off the main thread; only the merge runs there.
+                val parsed = content.takeIf { it.isNotBlank() }?.let { runCatching { JSONObject(it) }.getOrNull() }
+                if (parsed != null) withContext(Dispatchers.Main) {
+                    if (Store.importSync(parsed)) {
                         // Show what you watched on the phone in the TV home screen's "Continue" row too.
                         Store.continueList.take(4).forEach { e ->
                             WatchNext.update(e.title, Episode(e.episodeId, e.ep, e.epName, 0), e.teamId, e.pos, e.dur, hasNext = true)
@@ -174,7 +176,12 @@ object Sync {
             }
             // First sync on this TV: create the phone-remote channel if the gist has none yet.
             withContext(Dispatchers.Main) { if (Store.remoteChannel.isEmpty()) Store.ensureRemote(); Remote.ensureConnected() }
-            val doc = withContext(Dispatchers.Main) { Store.exportSync() }
+            // Nothing changed here since the last push: skip building the whole document (it ran every 10 s on the UI thread).
+            if (!Store.dirty && lastHash.isNotEmpty()) {
+                lastSync.value = System.currentTimeMillis(); lastPull = System.currentTimeMillis(); status.value = "Синхронизировано"
+                return@withLock
+            }
+            val doc = withContext(Dispatchers.Main) { Store.dirty = false; Store.exportSync() }
             val hash = sha(doc.toString())
             if (hash != lastHash) {
                 doc.put("updated", System.currentTimeMillis() / 1000.0)

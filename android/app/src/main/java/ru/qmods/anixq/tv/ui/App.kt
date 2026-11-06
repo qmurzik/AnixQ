@@ -214,8 +214,7 @@ internal fun Screensaver() {
         val t = titles.getOrNull(if (titles.isEmpty()) 0 else i % titles.size)
         androidx.compose.animation.Crossfade(t, animationSpec = androidx.compose.animation.core.tween(1500), label = "saver") { cur ->
             if (cur != null) Box(Modifier.fillMaxSize()) {
-                Ambient(cur.thumb, Modifier.fillMaxSize())
-                Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.45f)))
+                Ambient(cur.thumb, Modifier.fillMaxSize(), alpha = 0.55f)
                 Cover(cur.poster, Modifier.align(Alignment.CenterEnd).padding(end = 110.dp).height(440.dp).aspectRatio(2f / 3f)
                     .clip(RoundedCornerShape(16.dp)))
                 Column(Modifier.align(Alignment.BottomStart).padding(start = 72.dp, bottom = 70.dp).width(620.dp)) {

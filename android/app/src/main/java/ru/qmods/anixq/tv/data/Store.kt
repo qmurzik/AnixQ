@@ -97,6 +97,15 @@ object Store {
         scope.launch { prefs.edit().putString("home.cache", a.toString()).apply() }
     }
 
+    /** Last searches, newest first (kept between launches). */
+    var recentSearches: List<String>
+        get() = prefs.getString("search.recent", "")!!.split("\n").filter { it.isNotBlank() }
+        set(v) { prefs.edit().putString("search.recent", v.take(8).joinToString("\n")).apply() }
+
+    var screensaver: Boolean
+        get() = prefs.getBoolean("screensaver", true)
+        set(v) { prefs.edit().putBoolean("screensaver", v).apply(); bump() }
+
     var navSounds: Boolean
         get() = prefs.getBoolean("navSounds", true)
         set(v) { prefs.edit().putBoolean("navSounds", v).apply(); bump() }

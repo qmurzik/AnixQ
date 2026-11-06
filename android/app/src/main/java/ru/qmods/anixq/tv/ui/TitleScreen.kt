@@ -101,6 +101,7 @@ fun TitleScreen(nav: Nav, start: Title) {
     var related by remember { mutableStateOf(TitleCache.related[start.slug] ?: emptyList()) }
     var similar by remember { mutableStateOf(TitleCache.similar[start.slug] ?: emptyList()) }
     var dialog by remember { mutableStateOf<String?>(null) }
+    var menuEp by remember { mutableStateOf<Episode?>(null) }
     val title = detail?.title ?: start
     val sc = "title:${start.id}"
 
@@ -116,6 +117,8 @@ fun TitleScreen(nav: Nav, start: Title) {
             val opts = players.groupBy { it.team.id }.map { (_, ps) -> TeamOption(ps.first().team, ps.any { it.isNative }, ps.any { it.isKodik }) }
                 .sortedWith(compareBy({ !it.native }, { it.team.isSubtitles }))
             teams = opts; TitleCache.teams[start.slug] = opts
+            // Warm the video mirrors now, so pressing "Смотреть" starts in a moment.
+            launch { players.firstOrNull { it.isNative }?.hrefs?.values?.firstOrNull()?.let { runCatching { Api.rankServers(it) } } }
             if (teamId == null || opts.none { it.team.id == teamId }) {
                 teamId = opts.firstOrNull { o -> Store.dubs.any { it.equals(o.team.name, true) } }?.team?.id ?: opts.firstOrNull()?.team?.id
             }
@@ -175,7 +178,7 @@ fun TitleScreen(nav: Nav, start: Title) {
                 error?.let { Text(it, fontSize = 14.sp, color = C.pink, modifier = Modifier.padding(top = 8.dp)) }
             }
             Spacer(Modifier.weight(1f))
-            episodes?.takeIf { it.isNotEmpty() }?.let { eps -> EpisodeStrip(eps, title, plan?.episode?.id, sc) { ep -> nav.play(title, ep.id, teamId) } }
+            episodes?.takeIf { it.isNotEmpty() }?.let { eps -> EpisodeStrip(eps, title, plan?.episode?.id, sc, onMenu = { menuEp = it; dialog = "ep" }) { ep -> nav.play(title, ep.id, teamId) } }
             }
           }
           if (related.isNotEmpty()) item("related") {
@@ -200,6 +203,23 @@ fun TitleScreen(nav: Nav, start: Title) {
             teamId = teams[i].team.id
             Store.setDubs(listOf(name) + Store.dubs.filter { !it.equals(name, true) })
         }
+        "ep" -> menuEp?.let { ep ->
+            val watched = Store.isWatched(title.id, ep.number) || Store.progress(ep.id) > 0.92
+            val resume = Store.resume(ep.id)
+            val opts = listOfNotNull(
+                Choice(if (resume != null) "Продолжить с ${fmt(resume)}" else "Смотреть"),
+                if (resume != null || watched) Choice("Смотреть с начала") else null,
+                if (!watched) Choice("Отметить просмотренной") else null,
+            )
+            ChoiceDialog(ep.displayTitle.let { if (it.startsWith("Серия")) it else "Серия ${ep.number} · $it" }, opts, { dialog = null }) { i ->
+                dialog = null
+                when (opts[i].label) {
+                    "Смотреть с начала" -> nav.push(PlayerRoute(title, ep.id, teamId, fromStart = true))
+                    "Отметить просмотренной" -> Store.markWatched(title, ep)
+                    else -> nav.play(title, ep.id, teamId)
+                }
+            }
+        }
         "bookmark" -> {
             val opts = Bookmark.entries
             ChoiceDialog("Закладка", opts.map { Choice(it.title, it == bookmark) } + listOfNotNull(if (bookmark != null) Choice("Убрать из закладок") else null),
@@ -212,7 +232,7 @@ fun TitleScreen(nav: Nav, start: Title) {
 }
 
 @Composable
-private fun EpisodeStrip(eps: List<Episode>, title: Title, current: Int?, sc: String, onPlay: (Episode) -> Unit) {
+private fun EpisodeStrip(eps: List<Episode>, title: Title, current: Int?, sc: String, onMenu: (Episode) -> Unit = {}, onPlay: (Episode) -> Unit) {
     val version by Store.version.collectAsState()
     val list = rememberLazyListState(initialFirstVisibleItemIndex = (eps.indexOfFirst { it.id == current } - 1).coerceAtLeast(0))
     val scope = rememberCoroutineScope()
@@ -234,7 +254,7 @@ private fun EpisodeStrip(eps: List<Episode>, title: Title, current: Int?, sc: St
                 val prog = remember(version) { Store.progress(e.id) }
                 val watched = remember(version) { Store.isWatched(title.id, e.number) || prog > 0.92 }
                 Column(Modifier.width(184.dp)) {
-                    Focusable(onClick = { onPlay(e) }, modifier = Modifier.fillMaxWidth().height(100.dp).memo(sc, "e${e.id}"),
+                    Focusable(onClick = { onPlay(e) }, onLongClick = { onMenu(e) }, modifier = Modifier.fillMaxWidth().height(100.dp).memo(sc, "e${e.id}"),
                         container = if (e.id == current) C.pink.copy(alpha = 0.22f) else C.card) {
                         Box(Modifier.fillMaxSize()) {
                             Text(e.number, fontSize = 38.sp, fontWeight = FontWeight.Black, color = LocalContentColor.current.copy(alpha = if (watched) 0.35f else 0.92f),

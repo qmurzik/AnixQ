@@ -36,6 +36,9 @@ import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import ru.qmods.anixq.tv.data.Store
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -80,7 +83,8 @@ sealed interface Route { val scope: String }
 data class TitleRoute(val title: Title) : Route { override val scope get() = "title:${title.id}" }
 /** episodeId null = first episode; [next] = the one after [episodeId]. */
 data class PlayerRoute(val title: Title, val episodeId: Int?, val teamId: Int? = null, val next: Boolean = false,
-                       /** "Continue": re-read the newest synced position before starting. */ val resume: Boolean = false) : Route {
+                       /** "Continue": re-read the newest synced position before starting. */ val resume: Boolean = false,
+                       /** Ignore the saved position (episode menu → "С начала"). */ val fromStart: Boolean = false) : Route {
     override val scope get() = "player"
 }
 
@@ -140,7 +144,18 @@ fun App(nav: Nav) {
     val holder = rememberSaveableStateHolder()
     val top = nav.stack.lastOrNull()
     BackHandler(enabled = top != null && top !is PlayerRoute && top != LoginRoute) { nav.pop() }
+    var lastKey by remember { mutableStateOf(System.currentTimeMillis()) }
+    var saver by remember { mutableStateOf(false) }
+    LaunchedEffect(top) {
+        while (true) {
+            delay(5_000)
+            if (nav.stack.lastOrNull() == null && Store.screensaver && System.currentTimeMillis() - lastKey > 180_000) saver = true
+        }
+    }
     Box(Modifier.fillMaxSize().background(C.bg).onPreviewKeyEvent { e ->
+        lastKey = System.currentTimeMillis()
+        // Any key just wakes up from the screensaver.
+        if (saver) { if (e.type == KeyEventType.KeyUp) saver = false; return@onPreviewKeyEvent true }
         // The remote's Menu / Settings button opens Settings from anywhere outside the player.
         if (e.type == KeyEventType.KeyDown && (e.key == Key.Menu || e.key.nativeKeyCode == android.view.KeyEvent.KEYCODE_SETTINGS) && top !is PlayerRoute) {
             nav.stack.clear(); nav.tab = Tab.SETTINGS; true
@@ -164,6 +179,37 @@ fun App(nav: Nav) {
             is TitleRoute -> holder.SaveableStateProvider(top.scope + nav.stack.size) { TitleScreen(nav, top.title) }
             is PlayerRoute -> PlayerScreen(nav, top)
             LoginRoute -> LoginScreen(nav)
+        }
+        androidx.compose.animation.AnimatedVisibility(saver, enter = androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(1200)),
+            exit = androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(300))) { Screensaver() }
+    }
+}
+
+/** Slow slideshow of the catalogue with a big clock — nicer than the TV going grey. */
+@Composable
+internal fun Screensaver() {
+    val titles = remember { HomeData.rows.value.flatMap { it.second }.distinctBy { it.id }.shuffled().take(30) }
+    var i by remember { mutableStateOf(0) }
+    var now by remember { mutableStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(Unit) { while (true) { delay(9_000); i += 1; now = System.currentTimeMillis() } }
+    Box(Modifier.fillMaxSize().background(Color.Black)) {
+        val t = titles.getOrNull(if (titles.isEmpty()) 0 else i % titles.size)
+        androidx.compose.animation.Crossfade(t, animationSpec = androidx.compose.animation.core.tween(1500), label = "saver") { cur ->
+            if (cur != null) Box(Modifier.fillMaxSize()) {
+                Ambient(cur.thumb, Modifier.fillMaxSize())
+                Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.45f)))
+                Cover(cur.poster, Modifier.align(Alignment.CenterEnd).padding(end = 110.dp).height(440.dp).aspectRatio(2f / 3f)
+                    .clip(RoundedCornerShape(16.dp)))
+                Column(Modifier.align(Alignment.BottomStart).padding(start = 72.dp, bottom = 70.dp).width(620.dp)) {
+                    Text(java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(java.util.Date(now)),
+                        fontSize = 84.sp, fontWeight = FontWeight.Light, color = Color.White)
+                    Text(java.text.SimpleDateFormat("EEEE, d MMMM", java.util.Locale("ru")).format(java.util.Date(now)),
+                        fontSize = 20.sp, color = Color.White.copy(alpha = 0.75f))
+                    Spacer(Modifier.height(28.dp))
+                    Text(cur.title, fontSize = 26.sp, fontWeight = FontWeight.SemiBold, color = Color.White, maxLines = 2)
+                    Text(cur.meta, fontSize = 16.sp, color = Color.White.copy(alpha = 0.7f))
+                }
+            }
         }
     }
 }

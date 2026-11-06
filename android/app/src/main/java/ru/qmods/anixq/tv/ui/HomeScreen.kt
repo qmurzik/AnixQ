@@ -110,6 +110,20 @@ object GenreTiles {
     val colors = listOf(0xFFFF4D7A, 0xFF8B5CFF, 0xFF34C3FF, 0xFFFF9F43, 0xFF2ED47A, 0xFFFF5C5C, 0xFF7C83FD)
 }
 
+/** "Похоже на «X»": similar titles for the two shows you watched last, minus what you already know. */
+object ForYou {
+    val rows = MutableStateFlow<List<Pair<String, List<Title>>>>(emptyList())
+    private var basedOn: List<Int> = emptyList()
+    suspend fun refresh(history: List<ru.qmods.anixq.tv.data.WatchEntry>) = coroutineScope {
+        val seeds = history.map { it.title }.distinctBy { it.id }.take(2)
+        if (seeds.map { it.id } == basedOn) return@coroutineScope
+        val known = (history.map { it.title.id } + Store.bookmarks.values.map { it.title.id }).toHashSet()
+        val got = seeds.map { t -> async { t to Api.similar(t.slug).filter { it.id !in known } } }.map { it.await() }
+            .filter { it.second.size >= 3 }.map { (t, list) -> "Похоже на «${t.title.take(40)}»" to list }
+        if (got.isNotEmpty()) { rows.value = got; basedOn = seeds.map { it.id } }
+    }
+}
+
 /** How many episodes come after the one you're on (to say "ещё 3 серии" / "ждём новую серию"). */
 object EpisodeCounts {
     val after = MutableStateFlow<Map<Int, Int>>(emptyMap())
@@ -143,6 +157,8 @@ fun HomeScreen(nav: Nav) {
     val loggedIn = remember(version) { Store.libToken != null }
     val counts by EpisodeCounts.after.collectAsState()
     val genres by GenreTiles.list.collectAsState()
+    val forYou by ForYou.rows.collectAsState()
+    LaunchedEffect(cont.take(2).map { it.title.id }) { if (cont.isNotEmpty()) ForYou.refresh(cont) }
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     LaunchedEffect(Unit) { GenreTiles.load() }
     LaunchedEffect(cont.map { it.title.id to it.episodeId }) { EpisodeCounts.refresh(cont) }
@@ -176,6 +192,7 @@ fun HomeScreen(nav: Nav) {
                         }
                     }
                 }
+                forYou.forEach { (name, titles) -> item("fy-$name") { TitleShelf(name, titles, "home", { spot.value = it }) { nav.open(it) } } }
                 if (watching.isNotEmpty()) item("watching") { TitleShelf("Смотрю", watching, "home", { spot.value = it }) { nav.open(it) } }
                 rows.forEachIndexed { i, (name, titles) ->
                     item(name) {

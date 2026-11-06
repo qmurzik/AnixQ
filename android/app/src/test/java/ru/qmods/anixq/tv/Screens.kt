@@ -166,6 +166,14 @@ class Screens {
         shot("home-genres") { App(Nav()) }
     }
 
+    @Test fun saver() = shot("saver") { ru.qmods.anixq.tv.ui.Screensaver() }
+
+    @Test fun playerMore() {
+        val m = playerModel(); m.pos = 512.0; m.sleepAt = System.currentTimeMillis() + 30 * 60_000
+        shot("player-more") { androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.fillMaxSize()) { FakeVideo()
+            ru.qmods.anixq.tv.ui.Controls(m, androidx.compose.ui.focus.FocusRequester(), androidx.compose.ui.focus.FocusRequester(), {}, {}, {}, {}) } }
+    }
+
     @Test fun catalog() = shot("catalog") { App(Nav().apply { tab = Tab.CATALOG }) }
     @Test fun search() = shot("search") { App(Nav().apply { tab = Tab.SEARCH }) }
     @Test fun settings() = shot("settings") { App(Nav().apply { tab = Tab.SETTINGS }) }

@@ -50,13 +50,15 @@ import ru.qmods.anixq.tv.data.Api
 import ru.qmods.anixq.tv.data.CatalogQuery
 import ru.qmods.anixq.tv.data.CatalogSort
 import ru.qmods.anixq.tv.data.Title
+import ru.qmods.anixq.tv.data.Store
 
 private val ru = listOf("абвгде", "ёжзийк", "лмнопр", "стуфхц", "чшщъыь", "эюя123", "456789")
 private val en = listOf("abcdef", "ghijkl", "mnopqr", "stuvwx", "yz1234", "567890")
 
 private object SearchState {
     var popular: List<Title> = emptyList()
-    val recent = ArrayList<String>()
+    val recent: ArrayList<String> by lazy { ArrayList(Store.recentSearches) }
+    fun remember(q: String) { recent.remove(q); recent.add(0, q); while (recent.size > 8) recent.removeAt(8); Store.recentSearches = recent }
 }
 
 @Composable
@@ -92,7 +94,7 @@ fun SearchScreen(nav: Nav) {
         busy = true
         results = runCatching { Api.search(q) }.getOrDefault(emptyList())
         busy = false
-        if (results.isNotEmpty()) { SearchState.recent.remove(q); SearchState.recent.add(0, q); while (SearchState.recent.size > 6) SearchState.recent.removeAt(6) }
+        if (results.isNotEmpty()) SearchState.remember(q)
     }
 
     Row(Modifier.fillMaxSize()) {

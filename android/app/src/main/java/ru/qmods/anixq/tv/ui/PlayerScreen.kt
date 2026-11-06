@@ -34,6 +34,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.FastForward
 import androidx.compose.material.icons.rounded.FastRewind
 import androidx.compose.material.icons.rounded.HighQuality
+import androidx.compose.material.icons.rounded.MoreHoriz
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.RecordVoiceOver
@@ -108,6 +109,13 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
     var buffering by mutableStateOf(true)
     var ended by mutableStateOf(false)
 
+    var speed by mutableStateOf(1f)
+    /** Sleep timer: pause at this wall-clock time (0 = off), or when the episode ends. */
+    var sleepAt by mutableLongStateOf(0L)
+    var sleepAfterEpisode by mutableStateOf(false)
+
+    fun applySpeed(f: Float) { speed = f; exo?.exo?.setPlaybackSpeed(f); say(if (f == 1f) "Обычная скорость" else "Скорость ${speedLabel(f)}") }
+
     var openingSkipped by mutableStateOf(false)
     var nextDismissed by mutableStateOf(false)
     var toast by mutableStateOf<String?>(null)
@@ -119,6 +127,7 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
     private var lastRemote = 0L
     private var viewedSent = false
     private var prefetched = false
+    private var startedOnce = false
     private var loadJob: Job? = null
 
     val engine: Engine? get() = if (native) exo else kodik
@@ -135,7 +144,7 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
     val showNext get() = hasNext && !nextDismissed && dur > 0 &&
         (ended || inEnding || (ending == null && remaining <= 90) || remaining <= 15)
     /** The card counts down by itself only when we're sure it's the end. */
-    val countdown get() = Store.autoNext && (ended || inEnding || remaining <= 12)
+    val countdown get() = Store.autoNext && !sleepAfterEpisode && (ended || inEnding || remaining <= 12)
 
     fun say(s: String) { toast = s; toastAt = System.currentTimeMillis() }
 
@@ -184,7 +193,8 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
                 player = chosen
                 val local = Store.resume(ep.id)
                 val remote = chosen.serverTimecode?.takeIf { it > 5 && (route.episodeId != ep.id || local == null) }
-                val startAt = keepPos ?: local ?: remote ?: 0.0
+                val startAt = keepPos ?: (if (route.fromStart && !startedOnce) 0.0 else null) ?: local ?: remote ?: 0.0
+                startedOnce = true
                 if (chosen.isNative) startNative(chosen, startAt, qualityKey) else startKodik(chosen, startAt)
                 if (startAt > 5 && keepPos == null) say("Продолжаем с ${fmt(startAt)}")
                 message = null
@@ -206,6 +216,7 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
         native = true
         val e = exo ?: ExoEngine(context) { err -> onNativeError(err) }.also { exo = it }
         e.load(Api.videoUrl(servers[0], href), startAt)
+        if (speed != 1f) e.exo.setPlaybackSpeed(speed)
     }
 
     private fun startKodik(p: Player, startAt: Double) {
@@ -236,6 +247,8 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
         val e = engine ?: return
         pos = e.position; dur = e.duration; playing = e.isPlaying; buffering = e.isBuffering; ended = e.ended
         if (toast != null && System.currentTimeMillis() - toastAt > 2500) toast = null
+        if (sleepAt > 0 && System.currentTimeMillis() >= sleepAt) { sleepAt = 0; e.pause(); playing = false; saveProgress(force = true); say("Таймер сна: пауза") }
+        if (sleepAfterEpisode && ended) { sleepAfterEpisode = false; saveProgress(force = true); say("Таймер сна: серия закончилась") }
         // Auto-skip the opening once per episode.
         val op = opening
         if (Store.autoSkipOpening && op != null && !openingSkipped && pos >= op.from && pos < op.to - 3) skipOpening(auto = true)
@@ -450,7 +463,7 @@ fun PlayerScreen(nav: Nav, route: PlayerRoute) {
         AnimatedVisibility(controls && panel == Panel.NONE, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.fillMaxSize()) {
             Controls(m, playBtn, skipBtn, onAny = { lastInput = System.currentTimeMillis() },
                 onEpisodes = { panel = Panel.EPISODES }, onDub = { dialog = "dub" }, onQuality = { dialog = "quality" },
-                onHide = { controls = false })
+                onHide = { controls = false }, onMore = { dialog = "more" })
         }
 
         // Episodes
@@ -473,6 +486,28 @@ fun PlayerScreen(nav: Nav, route: PlayerRoute) {
                 m.load(m.index, teamId = t.id, keepPos = m.pos)
             }
         }
+        "more" -> ChoiceDialog("Ещё", listOfNotNull(
+            if (m.native) Choice("Скорость", hint = speedLabel(m.speed)) else null,
+            Choice("Таймер сна", hint = when {
+                m.sleepAfterEpisode -> "после этой серии"
+                m.sleepAt > 0 -> "через ${((m.sleepAt - System.currentTimeMillis()) / 60_000).coerceAtLeast(1)} мин"
+                else -> "выключен"
+            }),
+        ), { dialog = null }) { i -> dialog = if (m.native && i == 0) "speed" else "sleep" }
+        "speed" -> {
+            val speeds = listOf(0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f)
+            ChoiceDialog("Скорость", speeds.map { Choice(speedLabel(it), it == m.speed) }, { dialog = null }) { i -> dialog = null; m.applySpeed(speeds[i]) }
+        }
+        "sleep" -> {
+            val opts = listOf("Выключить" to 0, "Через 15 минут" to 15, "Через 30 минут" to 30, "Через 1 час" to 60, "После этой серии" to -1)
+            ChoiceDialog("Таймер сна", opts.map { Choice(it.first) }, { dialog = null }) { i ->
+                dialog = null
+                val mins = opts[i].second
+                m.sleepAfterEpisode = mins == -1
+                m.sleepAt = if (mins > 0) System.currentTimeMillis() + mins * 60_000L else 0
+                m.say(when { mins > 0 -> "Пауза через $mins мин"; mins == -1 -> "Остановимся после этой серии"; else -> "Таймер выключен" })
+            }
+        }
         "quality" -> {
             val p = m.player
             val keys = p?.hrefs?.keys?.sortedByDescending { it.removeSuffix("p").toIntOrNull() ?: 0 } ?: emptyList()
@@ -491,7 +526,7 @@ fun PlayerScreen(nav: Nav, route: PlayerRoute) {
 
 @Composable
 internal fun Controls(m: PlayerModel, playBtn: FocusRequester, skipBtn: FocusRequester, onAny: () -> Unit,
-                     onEpisodes: () -> Unit, onDub: () -> Unit, onQuality: () -> Unit, onHide: () -> Unit = {}) {
+                     onEpisodes: () -> Unit, onDub: () -> Unit, onQuality: () -> Unit, onHide: () -> Unit = {}, onMore: () -> Unit = {}) {
     Box(Modifier.fillMaxSize()) {
         Box(Modifier.fillMaxWidth().height(170.dp).background(Brush.verticalGradient(0f to Color.Black.copy(alpha = 0.8f), 1f to Color.Black.copy(alpha = 0f))))
         Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(320.dp)
@@ -524,6 +559,8 @@ internal fun Controls(m: PlayerModel, playBtn: FocusRequester, skipBtn: FocusReq
                 PillButton("Серии", Icons.Rounded.VideoLibrary, onClick = onEpisodes)
                 if (m.players.map { it.team.id }.distinct().size > 1) PillButton("Озвучка", Icons.Rounded.RecordVoiceOver, onClick = onDub)
                 PillButton(m.quality ?: "Kodik", Icons.Rounded.HighQuality, onClick = onQuality)
+                PillButton(if (m.sleepAt > 0 || m.sleepAfterEpisode) "Таймер" else if (m.speed != 1f) speedLabel(m.speed) else "",
+                    Icons.Rounded.MoreHoriz, onClick = onMore)
             }
         }
     }
@@ -570,6 +607,8 @@ private fun SeekBar(m: PlayerModel, onAny: () -> Unit, onHide: () -> Unit) {
     }
     if (focused) Text("← → перемотка · OK пауза", fontSize = 12.sp, color = C.muted, modifier = Modifier.padding(top = 4.dp))
 }
+
+fun speedLabel(f: Float) = (if (f % 1f == 0f) "${f.toInt()}" else f.toString().trimEnd('0')).replace('.', ',') + "×"
 
 @Composable
 internal fun PauseScreen(m: PlayerModel) {

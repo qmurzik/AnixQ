@@ -172,7 +172,8 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
         compare = false; Upscaler.split = 0f
         // A new effect chain needs the pipeline rebuilt: reload at the same moment.
         if (native && exo != null) load(index, keepPos = pos)
-        say(when (mode) { 0 -> "Апскейлер выключен"; 1 -> "Резкость (RCAS) включена"; else -> "Апскейл + резкость включены" })
+        say(when (mode) { 0 -> "Апскейлер выключен"; 1 -> "Резкость (RCAS) включена"; 2 -> "Апскейл + резкость включены"
+            else -> "Нейросеть Anime4K включена" })
     }
     @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
     fun toggleCompare() { compare = !compare; Upscaler.split = if (compare) 0.5f else 0f; say(if (compare) "Слева — без обработки, справа — с апскейлером" else "Сравнение выключено") }
@@ -334,6 +335,10 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
         }
         if (toast != null && System.currentTimeMillis() - toastAt > 2500) toast = null
         if (!native && kodik?.stuck == true && !kodikStuck) kodikStuck = true
+        if (upscale >= 3 && Anime4K.supported == false) {
+            say("Нейросеть не поддерживается этой приставкой — включён обычный апскейлер")
+            setUpscaleMode(2)
+        }
         // The box can't keep up with the upscaler: switch it off rather than stutter.
         if (native && upscale > 0 && playing && (exo?.recentDrops ?: 0) > 45) {
             say("Апскейлер выключен: приставке не хватает мощности (пропуск кадров)")
@@ -618,7 +623,7 @@ fun PlayerScreen(nav: Nav, route: PlayerRoute) {
         "more" -> ChoiceDialog("Ещё", listOfNotNull(
             if (m.native) Choice("Скорость", hint = speedLabel(m.speed)) else null,
             if (m.native && m.player?.subtitles?.isNotEmpty() == true) Choice("Субтитры", hint = if (m.subtitlesOn) "включены" else "выключены") else null,
-            if (m.native) Choice("Апскейлер", hint = listOf("выключен", "резкость", "апскейл + резкость")[m.upscale] +
+            if (m.native) Choice("Апскейлер", hint = UPSCALE_NAMES.getOrElse(m.upscale) { "" } +
                 (Upscaler.lastInfo.takeIf { m.upscale == 2 && it.isNotEmpty() }?.let { " · $it" } ?: "")) else null,
             Choice("Смотреть вместе", hint = if (ru.qmods.anixq.tv.data.Room.roomId.value != null) "комната открыта" else "друзья с телефона или браузера"),
             Choice("Таймер сна", hint = when {
@@ -636,15 +641,21 @@ fun PlayerScreen(nav: Nav, route: PlayerRoute) {
         }
         "room" -> RoomDialog(onClose = { dialog = null })
         "upscale" -> {
-            val opts = listOf(
-                Choice("Выключен", m.upscale == 0, "как есть"),
-                Choice("Резкость", m.upscale == 1, "RCAS из AMD FSR: чётче линии, без шума"),
-                Choice("Апскейл + резкость", m.upscale == 2, "Lanczos до разрешения экрана + RCAS"),
-                Choice(if (m.compare) "Выключить сравнение" else "Сравнить: половина экрана без обработки", hint = "чтобы увидеть разницу"),
+            val strong = !ru.qmods.anixq.tv.data.Store.weakDevice
+            val modes = listOfNotNull(
+                0 to "как есть",
+                3 to "нейросеть ×2, обученная на аниме — лучшее качество",
+                4 to "нейросеть: убирает артефакты сжатия и размытие, потом ×2",
+                if (strong) 5 to "нейросеть побольше — ещё точнее, нужна мощная приставка" else null,
+                2 to "Lanczos до разрешения экрана + резкость RCAS (лёгкий)",
+                1 to "только резкость RCAS (самый лёгкий)",
             )
+            val opts = modes.map { (k, hint) -> Choice(UPSCALE_NAMES[k], m.upscale == k, hint) } +
+                Choice(if (m.compare) "Выключить сравнение" else "Сравнить: левая половина без обработки", hint = "чтобы увидеть разницу")
             ChoiceDialog("Апскейлер", opts, { dialog = null }) { i ->
                 dialog = null
-                if (i == 3) { if (m.upscale == 0) m.setUpscaleMode(2); m.toggleCompare() } else if (i != m.upscale) m.setUpscaleMode(i)
+                if (i == modes.size) { if (m.upscale == 0) m.setUpscaleMode(3); m.toggleCompare() }
+                else modes[i].first.let { if (it != m.upscale) m.setUpscaleMode(it) }
             }
         }
         "speed" -> {
@@ -760,6 +771,8 @@ private fun SeekBar(m: PlayerModel, onAny: () -> Unit, onHide: () -> Unit) {
     }
     if (focused) Text("← → перемотка · OK пауза", fontSize = 12.sp, color = C.muted, modifier = Modifier.padding(top = 4.dp))
 }
+
+val UPSCALE_NAMES = listOf("Выключен", "Резкость", "Апскейл + резкость", "Anime4K", "Anime4K + восстановление", "Anime4K максимум")
 
 fun speedLabel(f: Float) = (if (f % 1f == 0f) "${f.toInt()}" else f.toString().trimEnd('0')).replace('.', ',') + "×"
 

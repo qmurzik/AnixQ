@@ -71,11 +71,20 @@ class ExoEngine(private val context: Context, private val onError: (String) -> U
         h.coerceIn(720, if (ru.qmods.anixq.tv.data.Store.weakDevice) 1080 else 2160)
     }
 
-    /** 0 = off, 1 = sharpen only, 2 = upscale + sharpen. */
+    /**
+     * 0 off · 1 sharpen (RCAS) · 2 Lanczos + RCAS ·
+     * 3 Anime4K neural ×2 · 4 Anime4K restore + ×2 · 5 Anime4K M (bigger network).
+     */
     fun setUpscale(mode: Int) {
         val effects = mutableListOf<androidx.media3.common.Effect>()
-        if (mode == 2) effects += Upscaler.Scale(screenHeight)
-        if (mode >= 1) effects += Upscaler.Sharpen()
+        when (mode) {
+            1 -> effects += Upscaler.Sharpen()
+            2 -> { effects += Upscaler.Scale(screenHeight); effects += Upscaler.Sharpen() }
+            3 -> effects += Anime4K.Effect("anime4k/Anime4K_Upscale_CNN_x2_S.glsl", screenHeight, compare = true)
+            4 -> { effects += Anime4K.Effect("anime4k/Anime4K_Restore_CNN_S.glsl", screenHeight)
+                   effects += Anime4K.Effect("anime4k/Anime4K_Upscale_CNN_x2_S.glsl", screenHeight, compare = true) }
+            5 -> effects += Anime4K.Effect("anime4k/Anime4K_Upscale_CNN_x2_M.glsl", screenHeight, compare = true)
+        }
         if (mode == 0) Upscaler.lastInfo = ""
         runCatching { exo.setVideoEffects(effects) }.onFailure { android.util.Log.w("AnixQ", "upscaler: ${it.message}") }
     }

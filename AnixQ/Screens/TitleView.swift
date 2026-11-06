@@ -265,11 +265,21 @@ struct TitleView: View {
                     PosterImage(url: t.coverURL, radius: 12).frame(width: 130).shadow(radius: 16)
                 }
                 Text(t.title)
-                    .font(.system(size: 28, weight: .bold))
+                    .font(.system(size: 30, weight: .heavy, design: .rounded))
                     .multilineTextAlignment(.center)
+                    .lineLimit(3)
+                    .minimumScaleFactor(0.8)
+                    .shadow(color: .black.opacity(0.35), radius: 10)
                     .padding(.horizontal)
-                Text(metaLine).font(.footnote.weight(.medium)).foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center).padding(.horizontal)
+                // Score, type, year, episodes, age as chips; genres underneath.
+                ViewThatFits(in: .horizontal) {
+                    metaChips.padding(.horizontal)
+                    ScrollView(.horizontal, showsIndicators: false) { metaChips.padding(.horizontal) }
+                }
+                if let g = model.detail?.genres.prefix(4).map(\.name), !g.isEmpty {
+                    Text(g.joined(separator: " · ")).font(.footnote.weight(.medium)).foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center).padding(.horizontal)
+                }
                 playButtons.padding(.horizontal).padding(.top, 6).frame(maxWidth: 560)
             }
             .padding(.bottom, 8)
@@ -278,6 +288,17 @@ struct TitleView: View {
         .background(GeometryReader { g in
             Color.clear.preference(key: HeaderOffsetKey.self, value: g.frame(in: .named("titleScroll")).minY)
         })
+    }
+
+    private var metaChips: some View {
+        HStack(spacing: 6) {
+            if let s = t.score { MetaChip(text: String(format: "%.1f", s), icon: "star.fill", tint: .yellow) }
+            if let type = t.typeLabel { MetaChip(text: type) }
+            if let y = t.year { MetaChip(text: String(y)) }
+            if !model.episodes.isEmpty { MetaChip(text: "\(model.episodes.count) эп.", icon: "film.stack") }
+            if t.isOngoing { MetaChip(text: "Онгоинг", icon: "dot.radiowaves.left.and.right", tint: .green) }
+            if let a = t.age { MetaChip(text: a) }
+        }
     }
 
     private var metaLine: String {

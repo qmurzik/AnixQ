@@ -141,13 +141,13 @@ struct ScoreBadge: View {
 
     var body: some View {
         HStack(spacing: 2) {
-            Image(systemName: "star.fill").font(.system(size: 9, weight: .bold))
-            Text(String(format: "%.1f", score)).font(.system(size: 11, weight: .bold, design: .rounded))
+            Image(systemName: "star.fill").font(.system(size: 8, weight: .heavy))
+            Text(String(format: "%.1f", score)).font(.system(size: 11, weight: .heavy, design: .rounded))
         }
         .padding(.horizontal, 6)
         .padding(.vertical, 3)
-        .surface(Capsule(), level: .chip)
-        .foregroundStyle(Theme.scoreColor(score))
+        .background(Theme.scoreColor(score).opacity(0.92), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+        .foregroundStyle(.black.opacity(0.85))
     }
 }
 
@@ -180,7 +180,13 @@ private struct PrimaryButtonBackground: ViewModifier {
     func body(content: Content) -> some View {
         switch style {
         case .classic:
-            content.background(AppStyle.dyn(.white, .black), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            content
+                .background(LinearGradient(colors: [Theme.accent, Color(red: 0.55, green: 0.32, blue: 1)],
+                                           startPoint: .leading, endPoint: .trailing),
+                            in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(LinearGradient(colors: [.white.opacity(0.35), .clear], startPoint: .top, endPoint: .bottom), lineWidth: 1))
+                .shadow(color: Theme.accent.opacity(0.45), radius: 14, y: 6)
         case .oled:
             content.background(.white, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         case .material:

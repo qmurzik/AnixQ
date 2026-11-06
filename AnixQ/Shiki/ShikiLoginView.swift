@@ -98,8 +98,13 @@ private struct ShikiSiteWebView: UIViewRepresentable {
         func start(_ web: WKWebView) {
             timer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: true) { [weak self, weak web] _ in
                 guard let self, let web, !self.done, web.url?.host?.contains("shikimori") == true else { return }
-                web.callAsyncJavaScript(self.probe, arguments: [:], in: nil, in: .page) { result in
-                    guard case .success(let value) = result, let text = value as? String,
+                // Plain evaluateJavaScript (available on every iOS): the async probe stores its answer
+                // in a page variable that the next tick reads.
+                let kick = "(function(){ if (!window.__aqBusy) { window.__aqBusy = 1; (async function(){ \(self.probe) })()"
+                    + ".then(function(v){ window.__aqWho = v; window.__aqBusy = 0; })"
+                    + ".catch(function(){ window.__aqBusy = 0; }); } return window.__aqWho || null; })()"
+                web.evaluateJavaScript(kick) { value, _ in
+                    guard let text = value as? String,
                           let data = text.data(using: .utf8),
                           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                           let id = json["id"] as? Int, !self.done else { return }

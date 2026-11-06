@@ -63,8 +63,11 @@ enum AppStyle: String, CaseIterable, Identifiable {
     var palette: Palette {
         switch self {
         case .classic:
-            return Palette(background: Color(.systemBackground), card: Color(.secondarySystemBackground),
-                           cardHighlight: Color(.tertiarySystemBackground), stroke: Color.primary.opacity(0.08))
+            // Dark: deep blue-black with richer cards instead of flat grey.
+            return Palette(background: Self.dyn(Color(red: 0.035, green: 0.035, blue: 0.055), Color(.systemBackground)),
+                           card: Self.dyn(Color(red: 0.10, green: 0.10, blue: 0.135), Color(.secondarySystemBackground)),
+                           cardHighlight: Self.dyn(Color(red: 0.15, green: 0.15, blue: 0.19), Color(.tertiarySystemBackground)),
+                           stroke: Self.dyn(Color.white.opacity(0.07), Color.black.opacity(0.07)))
         case .glass:
             return Palette(background: Self.dyn(Color(red: 0.03, green: 0.03, blue: 0.045), Color(red: 0.94, green: 0.94, blue: 0.96)),
                            card: Self.dyn(Color.white.opacity(0.055), Color.white.opacity(0.72)),
@@ -111,7 +114,7 @@ enum AppStyle: String, CaseIterable, Identifiable {
 
     var primaryButtonText: Color {
         switch self {
-        case .classic: return Self.dyn(.black, .white)
+        case .classic: return .white
         case .oled: return .black
         case .glass: return .white
         case .material: return Self.tones.onPrimary

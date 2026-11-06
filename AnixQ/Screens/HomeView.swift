@@ -174,6 +174,8 @@ struct HomeView: View {
                         .transition(.move(edge: .top).combined(with: .opacity))
                 }
 
+                DiscoverStrip()
+
                 if !library.history.isEmpty {
                     VStack(alignment: .leading, spacing: 10) {
                         SectionTitle("Продолжить просмотр")
@@ -236,8 +238,8 @@ struct HomeView: View {
                       seeAll: CatalogRoute(title: "Новые серии", query: CatalogQuery(sort: .updated)))
                 Shelf(title: "Онгоинги", titles: model.ongoing,
                       seeAll: CatalogRoute(title: "Онгоинги", query: CatalogQuery(status: .ongoing, sort: .popular)))
-                Shelf(title: "Популярное", titles: model.popular,
-                      seeAll: CatalogRoute(title: "Популярное", query: CatalogQuery(sort: .popular)))
+                TopTenShelf(title: "Топ-10 сейчас", titles: model.popular,
+                            seeAll: CatalogRoute(title: "Популярное", query: CatalogQuery(sort: .popular)))
                 Shelf(title: "Лучшее по рейтингу", titles: model.top,
                       seeAll: CatalogRoute(title: "Лучшее по рейтингу", query: CatalogQuery(sort: .rating)))
                 Shelf(title: "Новинки каталога", titles: model.newest,
@@ -280,8 +282,19 @@ struct HeroCarousel: View {
                 slide(item).tag(i)
             }
         }
-        .tabViewStyle(.page(indexDisplayMode: .always))
+        .tabViewStyle(.page(indexDisplayMode: .never))
         .frame(height: Layout.heroHeight)
+        .overlay(alignment: .bottom) {
+            // Capsule page indicator.
+            HStack(spacing: 5) {
+                ForEach(items.indices, id: \.self) { i in
+                    Capsule().fill(i == index ? Color.primary : Color.primary.opacity(0.3))
+                        .frame(width: i == index ? 18 : 6, height: 6)
+                }
+            }
+            .animation(.spring(response: 0.3), value: index)
+            .padding(.bottom, 14)
+        }
         .onReceive(timer) { _ in
             guard items.count > 1 else { return }
             withAnimation(.easeInOut(duration: 0.6)) { index = (index + 1) % items.count }
@@ -301,14 +314,23 @@ struct HeroCarousel: View {
             ], startPoint: .top, endPoint: .bottom)
 
             VStack(spacing: 12) {
+                Text("ОНГОИНГ НЕДЕЛИ")
+                    .font(.system(size: 11, weight: .heavy)).kerning(1.6)
+                    .padding(.horizontal, 10).padding(.vertical, 4)
+                    .background(Theme.accent.opacity(0.9), in: Capsule())
+                    .foregroundStyle(.white)
                 Text(item.title.title)
-                    .font(.system(size: 30, weight: .bold))
+                    .font(.system(size: 32, weight: .heavy, design: .rounded))
                     .multilineTextAlignment(.center)
                     .lineLimit(2)
-                    .shadow(color: .black.opacity(0.4), radius: 10)
-                Text(item.title.metaLine)
-                    .font(.footnote.weight(.medium))
-                    .foregroundStyle(.secondary)
+                    .minimumScaleFactor(0.8)
+                    .shadow(color: .black.opacity(0.45), radius: 12)
+                    .padding(.horizontal, 24)
+                HStack(spacing: 6) {
+                    if let s = item.title.score { MetaChip(text: String(format: "%.1f", s), icon: "star.fill", tint: .yellow) }
+                    if let type = item.title.typeLabel { MetaChip(text: type) }
+                    if let y = item.title.year { MetaChip(text: String(y)) }
+                }
                 HStack(spacing: 10) {
                     NavigationLink(value: item.title) {
                         Label("Смотреть", systemImage: "play.fill")
@@ -323,8 +345,9 @@ struct HeroCarousel: View {
                 }
                 .padding(.horizontal, 40)
                 .frame(maxWidth: 520)
+                .padding(.top, 4)
             }
-            .padding(.bottom, 44)
+            .padding(.bottom, 40)
         }
         .clipped()
     }

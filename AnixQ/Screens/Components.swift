@@ -96,7 +96,8 @@ struct PosterCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             PosterImage(url: title.coverURL)
-                .overlay(alignment: .topTrailing) {
+                .shadow(color: .black.opacity(0.25), radius: 6, y: 3)
+                .overlay(alignment: .topLeading) {
                     if let s = title.score { ScoreBadge(score: s).padding(6) }
                 }
                 .overlay(alignment: .bottomLeading) {
@@ -151,11 +152,7 @@ struct Shelf: View {
         if !titles.isEmpty {
             VStack(alignment: .leading, spacing: 10) {
                 SectionTitle(title: title) {
-                    if let seeAll {
-                        NavigationLink(value: seeAll) {
-                            Text("См. все").font(.subheadline)
-                        }
-                    }
+                    if let seeAll { SeeAllLink(route: seeAll) }
                 }
                 ScrollView(.horizontal, showsIndicators: false) {
                     LazyHStack(alignment: .top, spacing: 12) {
@@ -197,6 +194,13 @@ struct ContinueCard: View {
             ZStack(alignment: .bottomLeading) {
                 RemoteImage(url: entry.title.coverURL)
                 LinearGradient(colors: [.clear, .black.opacity(0.75)], startPoint: .center, endPoint: .bottom)
+                Image(systemName: "play.fill")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(width: 42, height: 42)
+                    .background(.ultraThinMaterial, in: Circle())
+                    .environment(\.colorScheme, .dark)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 VStack(alignment: .leading, spacing: 6) {
                     HStack(spacing: 6) {
                         Image(systemName: entry.progress > 0.92 ? "forward.end.fill" : "play.fill").font(.caption)
@@ -212,10 +216,14 @@ struct ContinueCard: View {
                         }
                     }
                     .foregroundStyle(.white)
-                    ProgressView(value: entry.progress)
-                        .tint(.white)
-                        .background(Color.white.opacity(0.25))
-                        .scaleEffect(x: 1, y: 0.7, anchor: .center)
+                    Capsule().fill(Color.white.opacity(0.25)).frame(height: 4)
+                        .overlay(alignment: .leading) {
+                            GeometryReader { g in
+                                Capsule().fill(LinearGradient(colors: [Theme.accent, Color(red: 1, green: 0.55, blue: 0.75)],
+                                                              startPoint: .leading, endPoint: .trailing))
+                                    .frame(width: g.size.width * entry.progress)
+                            }
+                        }
                 }
                 .padding(10)
             }

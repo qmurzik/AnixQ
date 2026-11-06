@@ -59,6 +59,9 @@ jobs:
             [ -f "$bin" ] && file "$bin" | grep -q Mach-O || continue
             python3 scripts/weaken_dylibs.py "$bin" libswiftWebKit libswift_WebKit_SwiftUI
             codesign -f -s - "$bin" 2>/dev/null || true
+            # Any symbol still bound strongly to an iOS 26-only library would crash older iOS at launch.
+            BAD=$(nm -m "$bin" 2>/dev/null | grep -E "\(from libswift_?WebKit" | grep -v "weak" || true)
+            if [ -n "$BAD" ]; then echo "::error::iOS 26-only WebKit symbols in $bin:"; echo "$BAD"; exit 1; fi
           done
 
       - name: Add loose alternate icons

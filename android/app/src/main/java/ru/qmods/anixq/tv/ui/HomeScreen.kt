@@ -244,12 +244,14 @@ private fun Hero(spot: MutableState<Title?>, fallback: Title?) {
                     Cover(t.poster, Modifier.align(Alignment.TopEnd).padding(top = TopBarHeight + 6.dp, end = 64.dp).height(HeroHeight + 20.dp)
                         .aspectRatio(2f / 3f).clip(RoundedCornerShape(14.dp)))
                 }
-                Box(Modifier.fillMaxSize().background(C.scrimLeft))
-                Box(Modifier.fillMaxWidth().height(TopBarHeight + HeroHeight + 130.dp)
-                    .background(Brush.verticalGradient(0.55f to androidx.compose.ui.graphics.Color.Transparent, 1f to C.bg)))
-                Box(Modifier.fillMaxSize().padding(top = TopBarHeight + HeroHeight + 129.dp).background(C.bg))
             }
         }
+        // A muted clip of the show fades in when the cursor rests on it.
+        HoverVideo(t, Modifier.align(Alignment.TopEnd).fillMaxWidth(0.78f).aspectRatio(16f / 9f))
+        Box(Modifier.fillMaxSize().background(C.scrimLeft))
+        Box(Modifier.fillMaxWidth().height(TopBarHeight + HeroHeight + 130.dp)
+            .background(Brush.verticalGradient(0.55f to androidx.compose.ui.graphics.Color.Transparent, 1f to C.bg)))
+        Box(Modifier.fillMaxSize().padding(top = TopBarHeight + HeroHeight + 129.dp).background(C.bg))
         AnimatedContent(targetState = t, transitionSpec = { fadeIn(tween(220)) togetherWith fadeOut(tween(120)) }, label = "hero",
             modifier = Modifier.padding(start = 56.dp, top = TopBarHeight + 14.dp).width(640.dp).height(HeroHeight - 14.dp)) { title ->
             Column {

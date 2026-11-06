@@ -90,6 +90,7 @@ fun SettingsScreen(nav: Nav) {
                 Toggle("Автоматически пропускать опенинг", Store.autoSkipOpening) { Store.autoSkipOpening = it }
                 Toggle("Сразу включать следующую серию", Store.autoNext) { Store.autoNext = it }
                 Toggle("Звуки навигации пультом", Store.navSounds) { Store.navSounds = it }
+                Toggle("Видео-превью, когда задерживаешься на тайтле", Store.hoverPreview) { Store.hoverPreview = it }
                 Toggle("Заставка через 3 минуты без нажатий", Store.screensaver) { Store.screensaver = it }
                 Spacer(Modifier.height(6.dp))
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {

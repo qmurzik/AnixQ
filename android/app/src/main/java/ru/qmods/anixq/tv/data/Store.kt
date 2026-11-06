@@ -128,6 +128,10 @@ object Store {
         get() = prefs.getBoolean("subtitles", true)
         set(v) { prefs.edit().putBoolean("subtitles", v).apply() }
 
+    var hoverPreview: Boolean
+        get() = prefs.getBoolean("hoverPreview", true)
+        set(v) { prefs.edit().putBoolean("hoverPreview", v).apply(); bump() }
+
     var screensaver: Boolean
         get() = prefs.getBoolean("screensaver", true)
         set(v) { prefs.edit().putBoolean("screensaver", v).apply(); bump() }

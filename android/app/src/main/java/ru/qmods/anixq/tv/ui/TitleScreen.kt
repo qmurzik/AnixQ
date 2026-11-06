@@ -138,6 +138,7 @@ fun TitleScreen(nav: Nav, start: Title) {
             Cover(title.poster, Modifier.align(Alignment.TopEnd).padding(top = 40.dp, end = 64.dp).height(340.dp).aspectRatio(2f / 3f)
                 .clip(RoundedCornerShape(14.dp)))
         }
+        HoverVideo(title, Modifier.align(Alignment.TopEnd).fillMaxWidth(0.8f).aspectRatio(16f / 9f), waitMs = 2500, playMs = 60_000)
         Box(Modifier.fillMaxSize().background(C.scrimLeft))
         Box(Modifier.fillMaxWidth().height(460.dp).background(Brush.verticalGradient(0.5f to Color.Transparent, 1f to C.bg)))
         Box(Modifier.fillMaxSize().padding(top = 459.dp).background(C.bg))

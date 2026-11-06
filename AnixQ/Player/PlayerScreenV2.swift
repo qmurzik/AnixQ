@@ -42,6 +42,8 @@ struct PlayerScreenV2: View {
     let background: URL?
 
     @State private var land = false
+    /// Safe-area insets of the screen, used to keep landscape controls off the notch and home indicator.
+    @State private var insets = EdgeInsets()
     @State private var showControls = true
     @State private var locked = false
     @State private var panel: PlayerPanel?
@@ -103,12 +105,16 @@ struct PlayerScreenV2: View {
                 VolumeSliderHost().frame(width: 1, height: 1).opacity(0.01)
                 shortcuts
             }
-            .onAppear { land = isLand }
+            .onAppear { land = isLand; insets = geo.safeAreaInsets }
             .onChange(of: isLand) { v in
                 land = v
                 if !v, panel != nil { panel = nil }
             }
+            .onChange(of: geo.safeAreaInsets) { insets = $0 }
         }
+        // Landscape: the picture uses the whole screen, including the home-indicator strip and the
+        // notch sides; only the controls keep clear of them (see `insets`).
+        .ignoresSafeArea(edges: land ? .all : [])
         .statusBarHidden(land || !showControls)
         .persistentSystemOverlays(.hidden)
         .preferredColorScheme(.dark)
@@ -352,9 +358,10 @@ struct PlayerScreenV2: View {
                 Spacer(minLength: 0)
                 bottomBar(isLand: isLand)
             }
-            .padding(.horizontal, isLand ? 34 : 10)
-            .padding(.top, isLand ? 14 : 6)
-            .padding(.bottom, isLand ? 14 : 4)
+            .padding(.leading, isLand ? max(24, insets.leading + 8) : 10)
+            .padding(.trailing, isLand ? max(24, insets.trailing + 8) : 10)
+            .padding(.top, isLand ? max(14, insets.top) : 6)
+            .padding(.bottom, isLand ? max(14, insets.bottom + 4) : 4)
             if !c.isLoading { centerButtons(isLand: isLand) }
         }
         .foregroundStyle(.white)
@@ -591,7 +598,10 @@ struct PlayerScreenV2: View {
                     chip("", "arrow.up.left.and.arrow.down.right") { OrientationController.set(.landscape) }
                 }
             }
-            .padding(10)
+            .padding(.top, isLand ? max(10, insets.top) : 10)
+            .padding(.leading, isLand ? max(10, insets.leading) : 10)
+            .padding(.trailing, isLand ? max(10, insets.trailing) : 10)
+            .padding(.bottom, 10)
             Spacer()
         }
     }
@@ -745,7 +755,10 @@ struct PlayerScreenV2: View {
                         .onAppear { if p == .episodes { proxy.scrollTo(c.index, anchor: .center) } }
                 }
             }
-            .frame(width: min(400, width * 0.42))
+            .padding(.trailing, insets.trailing)
+            .padding(.top, insets.top)
+            .padding(.bottom, insets.bottom)
+            .frame(width: min(400, width * 0.42) + insets.trailing)
             .background(.ultraThinMaterial)
             .environment(\.colorScheme, .dark)
             .foregroundStyle(.white)

@@ -6,7 +6,7 @@
   "sourceLinkTitle": "Сайт",
   "sourceLinkUrl": "https://qmurzik.github.io/AnixQ/",
   "sourceImage": "https://raw.githubusercontent.com/qmurzik/AnixQ/gbox-source/icon.png",
-  "sourceUpdateTime": "2026-11-07T16:10:54+0000",
+  "sourceUpdateTime": "2026-11-07T16:47:23+0000",
   "sourceDescription": "AnixQ — аниме с AnimeLib: каталог, плеер без рекламы, синхронизация с Shikimori.",
   "appCategories": [
     "Приложения"
@@ -15,13 +15,13 @@
     {
       "appType": "SELF_SIGN",
       "appCateIndex": 0,
-      "appUpdateTime": "2026-11-07T16:10:54+0000",
+      "appUpdateTime": "2026-11-07T16:47:23+0000",
       "appName": "AnixQ",
-      "appVersion": "1.0.75",
+      "appVersion": "1.0.76",
       "appImage": "https://raw.githubusercontent.com/qmurzik/AnixQ/gbox-source/icon.png",
-      "appPackage": "https://github.com/qmurzik/AnixQ/releases/download/v1.0.75/AnixQ.ipa",
-      "appSize": 4774805,
-      "appDescription": "• iOS-плеер: зависшая загрузка видео больше не тянется минуту — через 7 с без запаса переподключение на другой сервер с того же места, при повторе — качество ниже; запас видео снова не ограничен 60 секундами"
+      "appPackage": "https://github.com/qmurzik/AnixQ/releases/download/v1.0.76/AnixQ.ipa",
+      "appSize": 4774894,
+      "appDescription": "• Страница подборки на сайте: постеры, рейтинги, жанры, описание по нажатию, вид «Постеры/Список», обложка-коллаж; в ссылку подборки из iOS добавлены обложки"
     }
   ]
 }

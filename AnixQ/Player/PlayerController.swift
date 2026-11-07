@@ -72,6 +72,9 @@ final class PlayerController: ObservableObject {
     private var servers: [String] = []
     private var serverIndex = 0
     private var timeObserver: Any?
+    /// Checks for a stuck stream every second (the time observer is silent while the video stands still).
+    private var watchdog: Timer?
+    private var lastRecoverAt = Date.distantPast
     private var endObserver: NSObjectProtocol?
     private var failObserver: NSObjectProtocol?
     private var statusObservation: NSKeyValueObservation?
@@ -117,6 +120,9 @@ final class PlayerController: ObservableObject {
         self.autoQuality = (saved.qualityHeight ?? PlayerPrefs.preferredHeight) == 0
         player.allowsExternalPlayback = true
         player.automaticallyWaitsToMinimizeStalling = true
+        watchdog = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.checkStall() }
+        }
         timeObserver = player.addPeriodicTimeObserver(forInterval: CMTime(seconds: 0.25, preferredTimescale: 600),
                                                       queue: .main) { [weak self] t in
             let s = t.seconds
@@ -440,7 +446,8 @@ final class PlayerController: ObservableObject {
 
     private func attach(_ item: AVPlayerItem, at time: Double?) {
         if VideoEnhancer.enabled && !audioOnly { Task { await VideoEnhancer.apply(to: item) } }
-        // Start on the system's small buffer (fastest first frame); once playing, keep up to a minute ahead.
+        // 0 = the system decides: it starts quickly and then keeps minutes ahead, which rides out
+        // mobile-network dips (a 60 s cap here caused long stalls on LTE).
         item.preferredForwardBufferDuration = 0
         if let endObserver { NotificationCenter.default.removeObserver(endObserver) }
         endObserver = NotificationCenter.default.addObserver(forName: .AVPlayerItemDidPlayToEndTime, object: item,
@@ -676,6 +683,7 @@ final class PlayerController: ObservableObject {
 
     func stop() {
         ownPauseAt = Date()
+        watchdog?.invalidate(); watchdog = nil
         [rateObserver, interruptionObserver].compactMap { $0 }.forEach(NotificationCenter.default.removeObserver)
         SharePlayManager.shared.detach(self)
         WatchRoom.shared.detach(self)
@@ -691,9 +699,6 @@ final class PlayerController: ObservableObject {
     // MARK: Observers
 
     private func statusChanged(_ st: AVPlayer.TimeControlStatus) {
-        if st == .playing, let item = player.currentItem, item.preferredForwardBufferDuration == 0, !isLocalFile {
-            item.preferredForwardBufferDuration = 60
-        }
         // Any pause (button, headphones, app sent to background) sends the exact moment to the TV at once.
         if st == .paused, isPlaying { saveProgress(force: true) }
         // Paused without anyone asking: note why, so a "random pause" can be traced in the debug log.
@@ -722,14 +727,28 @@ final class PlayerController: ObservableObject {
 
     private var lastUpgradeCheck = Date()
 
+    /// Stuck stream: nothing buffered for 7 s (or no progress for 15 s) → reconnect at the same moment
+    /// (next mirror); stuck again within two minutes on automatic quality → one step lower.
+    private func checkStall() {
+        guard isNative, !recovering, let since = bufferingSince, currentTime > 1 else { return }
+        let waited = Date().timeIntervalSince(since)
+        guard (bufferedAhead < 1 && waited > 7) || waited > 15 else { return }
+        bufferingSince = Date()
+        if autoQuality, Date().timeIntervalSince(lastRecoverAt) < 120,
+           let q = quality, let i = qualities.firstIndex(of: q), i + 1 < qualities.count {
+            lastRecoverAt = Date()
+            lastQualityChange = Date()
+            DebugLog.log("player: stuck again — quality down \(q.label) -> \(qualities[i + 1].label)")
+            play(qualities[i + 1], at: currentTime)
+            return
+        }
+        lastRecoverAt = Date()
+        recover(reason: String(format: "stuck %.0fs, %.0fs buffered", waited, bufferedAhead))
+    }
+
     private func tick(_ s: Double) {
         guard s.isFinite else { return }
         if !isScrubbing { currentTime = s }
-        // Stuck buffering for a long time: try another mirror at the same moment.
-        if isNative, let since = bufferingSince, Date().timeIntervalSince(since) > 20, currentTime > 1, !recovering {
-            bufferingSince = Date()
-            recover(reason: "buffering 20s")
-        }
         if Date().timeIntervalSince(lastUpgradeCheck) > 30 {
             lastUpgradeCheck = Date()
             considerUpgrade()
@@ -861,6 +880,7 @@ final class PlayerController: ObservableObject {
 
     deinit {
         if let timeObserver { player.removeTimeObserver(timeObserver) }
+        watchdog?.invalidate()
         if let endObserver { NotificationCenter.default.removeObserver(endObserver) }
         let c = MPRemoteCommandCenter.shared()
         [c.playCommand, c.pauseCommand, c.togglePlayPauseCommand, c.skipForwardCommand, c.skipBackwardCommand,

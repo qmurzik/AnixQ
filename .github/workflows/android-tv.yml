@@ -56,13 +56,17 @@ jobs:
         continue-on-error: true
         working-directory: android
         run: gradle --no-daemon testDebugUnitTest --tests 'ru.qmods.anixq.tv.focus.*'
-      - name: Build
+      - name: Build (TV + phone)
         working-directory: android
         env: { BUILD_NUMBER: "${{ github.run_number }}" }
-        run: gradle --no-daemon assembleRelease
-      - run: cp android/app/build/outputs/apk/release/app-release.apk AnixQ-TV.apk
+        run: gradle --no-daemon :app:assembleRelease :mobile:assembleRelease
+      - run: |
+          cp android/app/build/outputs/apk/release/app-release.apk AnixQ-TV.apk
+          cp android/mobile/build/outputs/apk/release/mobile-release.apk AnixQ.apk
       - uses: actions/upload-artifact@v4
         with: { name: apk, path: AnixQ-TV.apk }
+      - uses: actions/upload-artifact@v4
+        with: { name: android-apk, path: AnixQ.apk }
       - name: Publish release
         if: github.event_name == 'push'
         env: { GH_TOKEN: "${{ github.token }}" }
@@ -77,6 +81,13 @@ jobs:
             'apk': 'https://github.com/${{ github.repository }}/releases/download/tv-v'+sys.argv[2]+'/AnixQ-TV.apk'}, open('tv-version.json','w'), ensure_ascii=False)" \
             "${{ github.run_number }}" "$V" "$NOTES"
           gh release upload tv AnixQ-TV.apk tv-version.json --clobber
+          # Phone app: same version number, its own rolling release + update manifest.
+          gh release create "android-v$V" AnixQ.apk --title "AnixQ для Android $V" --notes "Android-телефон: установите AnixQ.apk." --latest=false
+          gh release view android >/dev/null 2>&1 || gh release create android --title "AnixQ для Android (последняя)" --notes "Постоянная ссылка на последнюю сборку для Android-телефонов." --latest=false
+          python3 -c "import json,sys; json.dump({'code': int(sys.argv[1]), 'name': sys.argv[2], 'notes': sys.argv[3][:300],
+            'apk': 'https://github.com/${{ github.repository }}/releases/download/android-v'+sys.argv[2]+'/AnixQ.apk'}, open('android-version.json','w'), ensure_ascii=False)" \
+            "${{ github.run_number }}" "$V" "$NOTES"
+          gh release upload android AnixQ.apk android-version.json --clobber
 
   keepalive:
     if: github.event_name == 'schedule'

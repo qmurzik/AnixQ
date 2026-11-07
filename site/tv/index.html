@@ -109,7 +109,9 @@
     $('install').classList.remove('hidden'); $('form').classList.add('hidden');
     document.querySelector('main > p.note').classList.add('hidden'); return;
   }
-  if (/iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)) {
+  var isAndroidPhone = /Android/.test(navigator.userAgent) && /Mobile/.test(navigator.userAgent);
+  if (isAndroidPhone || /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)) {
+    if (isAndroidPhone) document.querySelector('#ios h2').textContent = 'Есть AnixQ на этом телефоне?';
     $('ios').classList.remove('hidden');
     $('iosBtn').href = 'anixq://pair/' + channel + '?k=' + key;
   }

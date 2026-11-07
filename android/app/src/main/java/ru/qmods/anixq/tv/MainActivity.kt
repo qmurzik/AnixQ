@@ -23,6 +23,7 @@ import ru.qmods.anixq.tv.data.Title
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        Updater.versionCode = BuildConfig.VERSION_CODE
         Store.init(applicationContext)
         ru.qmods.anixq.tv.data.WatchNext.init(applicationContext)
         Coil.setImageLoader(Images.loader(applicationContext))

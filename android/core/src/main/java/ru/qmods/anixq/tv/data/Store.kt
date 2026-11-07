@@ -192,8 +192,13 @@ object Store {
 
     // MARK: Changes
 
+    /** "tv" on the TV app, "and" on the phone app (set before [init]). */
+    var devicePrefix = "tv"
+    /** Shown to the other devices ("device" in sync documents). */
+    var deviceName = "Android TV"
+
     /** Stable id of this device for the live channel. */
-    val deviceId: String get() = prefs.getString("deviceId", null) ?: ("tv-" + java.util.UUID.randomUUID().toString().take(8)).also {
+    val deviceId: String get() = prefs.getString("deviceId", null) ?: (devicePrefix + "-" + java.util.UUID.randomUUID().toString().take(8)).also {
         prefs.edit().putString("deviceId", it).apply()
     }
 
@@ -217,7 +222,7 @@ object Store {
         }
         removedBookmarks.forEach { (slug, at) -> if (bookmarks.values.none { it.title.slug == slug } && history.any { it.title.id == titleId && it.title.slug == slug })
             b.put(slug, JSONObject().put("status", JSONObject.NULL).put("at", at)) }
-        return JSONObject().put("v", 1).put("device", "Android TV").put("updated", 0)
+        return JSONObject().put("v", 1).put("device", deviceName).put("updated", 0)
             .put("titles", titles).put("progress", progress).put("watched", w).put("bookmarks", b)
     }
 
@@ -299,7 +304,7 @@ object Store {
         val b = JSONObject()
         bookmarks.forEach { (slug, e) -> b.put(slug, JSONObject().put("title", e.title.id).put("status", e.status.raw).put("at", e.at)) }
         removedBookmarks.forEach { (slug, at) -> if (!bookmarks.containsKey(slug)) b.put(slug, JSONObject().put("status", JSONObject.NULL).put("at", at)) }
-        return JSONObject().put("v", 1).put("device", "Android TV").put("updated", 0)
+        return JSONObject().put("v", 1).put("device", deviceName).put("updated", 0)
             .put("titles", titles).put("progress", progress).put("watched", w).put("bookmarks", b)
             .put("prefs", JSONObject().put("dubs", JSONArray(dubs)).put("at", dubsAt))
             .apply { if (remoteChannel.isNotEmpty()) put("remote", JSONObject().put("channel", remoteChannel).put("key", remoteKey).put("at", remoteAt)) }

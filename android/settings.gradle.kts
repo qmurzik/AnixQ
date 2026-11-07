@@ -6,4 +6,4 @@ dependencyResolutionManagement {
     repositories { google(); mavenCentral() }
 }
 rootProject.name = "AnixQTV"
-include(":app")
+include(":app", ":core", ":mobile")

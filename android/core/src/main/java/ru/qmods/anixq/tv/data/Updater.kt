@@ -18,7 +18,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.Request
 import org.json.JSONObject
-import ru.qmods.anixq.tv.BuildConfig
 import java.io.File
 
 /** New version as published by the "Android TV" workflow (release "tv" → tv-version.json). */
@@ -36,8 +35,11 @@ sealed interface UpdateState {
 
 /** Updates the app from the TV itself: check → download → system installer. */
 object Updater {
-    private const val MANIFEST = "https://github.com/qmurzik/AnixQ/releases/download/tv/tv-version.json"
-    const val INSTALL_PAGE = "qmurzik.github.io/AnixQ/tv"
+    /** Set by the app at start: its own version code and release channel ("tv" or "android"). */
+    var versionCode = 0
+    var channel = "tv"
+    private val MANIFEST get() = "https://github.com/qmurzik/AnixQ/releases/download/$channel/$channel-version.json"
+    val INSTALL_PAGE get() = if (channel == "tv") "qmurzik.github.io/AnixQ/tv" else "qmurzik.github.io/AnixQ/android"
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var job: Job? = null
     private var lastCheck = 0L
@@ -64,7 +66,7 @@ object Updater {
                     }
                 }
                 val r = Release(json.getInt("code"), json.optString("name"), json.optString("notes"), json.getString("apk"))
-                state.value = if (r.code > BuildConfig.VERSION_CODE) UpdateState.Available(r) else UpdateState.UpToDate
+                state.value = if (r.code > versionCode) UpdateState.Available(r) else UpdateState.UpToDate
             } catch (e: Exception) {
                 state.value = if (quiet) UpdateState.Idle else UpdateState.Failed("Не удалось проверить обновления: ${e.message}", null)
             }
@@ -152,7 +154,7 @@ object Updater {
             PackageInstaller.STATUS_FAILURE_ABORTED -> state.value = UpdateState.Available(r ?: return)
             PackageInstaller.STATUS_FAILURE_CONFLICT, PackageInstaller.STATUS_FAILURE_INCOMPATIBLE ->
                 state.value = UpdateState.Failed("Эта версия подписана другим ключом. Удалите AnixQ и установите заново: $INSTALL_PAGE", r)
-            PackageInstaller.STATUS_FAILURE_STORAGE -> state.value = UpdateState.Failed("Не хватает места на телевизоре", r)
+            PackageInstaller.STATUS_FAILURE_STORAGE -> state.value = UpdateState.Failed("Не хватает места на устройстве", r)
             else -> {
                 val f = File(context.cacheDir, "update.apk")
                 if (!(f.exists() && viewInstall(context, f)))

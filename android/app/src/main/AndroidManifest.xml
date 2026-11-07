@@ -37,11 +37,6 @@
             </intent-filter>
             <meta-data android:name="android.app.searchable" android:resource="@xml/searchable" />
         </activity>
-        <receiver android:name=".data.InstallReceiver" android:exported="false" />
-        <provider android:name="androidx.core.content.FileProvider" android:authorities="${applicationId}.updates"
-            android:exported="false" android:grantUriPermissions="true">
-            <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/update_paths" />
-        </provider>
         <service android:name=".RemoteService" android:exported="false" android:foregroundServiceType="specialUse">
             <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="Receives play/pause commands from the user's phone remote" />
         </service>

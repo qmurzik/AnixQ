@@ -48,6 +48,11 @@ object Remote {
     private val seen = LinkedHashSet<String>()
 
     val online = MutableStateFlow(false)
+    /** true on the TV (receives commands, publishes what's on screen); false on a phone (the opposite). */
+    @Volatile var isTv = true
+    /** Phone side: what the TV shows now (decrypted state document), null until it answers. */
+    val tvState = MutableStateFlow<JSONObject?>(null)
+    private val pendingCmds = java.util.concurrent.ConcurrentLinkedQueue<JSONObject>()
     /** The open player, if any. */
     @Volatile var target: RemoteTarget? = null
     /** Opens a player in the running UI; null when the activity isn't on screen. */
@@ -78,23 +83,24 @@ object Remote {
         val req = Request.Builder().url("wss://public.cloud.shiftr.io").header("Sec-WebSocket-Protocol", "mqtt").build()
         ws = Api.http.newWebSocket(req, object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
-                webSocket.send(Mqtt.connect("anixq-tvrc-" + Store.remoteChannel.take(8) + "-" + (1000..9999).random(), "public", "public").toByteString())
+                webSocket.send(Mqtt.connect((if (isTv) "anixq-tvrc-" else "anixq-andrc-") + Store.remoteChannel.take(8) + "-" + (1000..9999).random(), "public", "public").toByteString())
             }
             override fun onMessage(webSocket: WebSocket, bytes: ByteString) {
                 Mqtt.parse(bytes.toByteArray()) { type, body ->
                     when (type) {
                         2 -> {
                             connected = true; online.value = true
-                            webSocket.send(Mqtt.subscribe(cmdTopic).toByteString())
+                            webSocket.send(Mqtt.subscribe(if (isTv) cmdTopic else stateTopic).toByteString())
                             webSocket.send(Mqtt.subscribe(livePrefix + "#").toByteString())
                             pendingLive?.let { publishLiveNow(it) }
                             pinger?.cancel()
                             pinger = scope.launch { while (isActive && connected) { delay(15_000); webSocket.send(byteArrayOf(0xC0.toByte(), 0).toByteString()) } }
-                            publishState()
+                            if (isTv) publishState() else flushCmds()
                         }
                         3 -> {
                             val (t, payload) = Mqtt.publishBody(body)
-                            if (t == cmdTopic && payload.isNotEmpty()) open(String(payload))?.let { handle(it) }
+                            if (isTv && t == cmdTopic && payload.isNotEmpty()) open(String(payload))?.let { handle(it) }
+                            else if (!isTv && t == stateTopic) tvState.value = if (payload.isEmpty()) null else open(String(payload))
                             else if (t.startsWith(livePrefix) && t != myLiveTopic && payload.isNotEmpty())
                                 open(String(payload))?.let { doc -> scope.launch(Dispatchers.Main) { Store.importSync(doc) } }
                         }
@@ -176,8 +182,34 @@ object Remote {
         w.send(Mqtt.publish(myLiveTopic, seal(doc).toByteArray(), retain = true).toByteString())
     }
 
+    /** Phone → TV command (play, toggle, seek {by}, seekTo {to}, next, prev, skip, volume {dir}, stop, ping). */
+    fun send(cmd: String, extra: JSONObject = JSONObject()) {
+        if (Store.remoteChannel.isEmpty()) return
+        val m = JSONObject(extra.toString()).put("cmd", cmd).put("id", java.util.UUID.randomUUID().toString())
+            .put("at", System.currentTimeMillis() / 1000.0 + Sync.serverClockOffset)
+        pendingCmds.add(m)
+        if (connected) flushCmds() else ensureConnected()
+    }
+
+    private fun flushCmds() {
+        val w = ws ?: return
+        while (true) {
+            val m = pendingCmds.poll() ?: break
+            if (System.currentTimeMillis() / 1000.0 + Sync.serverClockOffset - m.optDouble("at") > 60) continue
+            w.send(Mqtt.publish(cmdTopic, seal(m).toByteArray()).toByteString())
+        }
+    }
+
+    /** Start an episode on the TV (from a moment, optionally). */
+    fun playOnTv(title: Title, episodeId: Int, teamId: Int?, pos: Double?) {
+        val m = JSONObject().put("title", title.toSync()).put("episodeId", episodeId)
+        teamId?.let { m.put("teamId", it) }; pos?.let { m.put("pos", it) }
+        send("play", m)
+    }
+
     /** Tell the phone what is on screen (retained, so a remote opened later sees it at once). */
     fun publishState() {
+        if (!isTv) return
         val w = ws ?: return
         if (!connected) return
         val s = (target?.remoteState() ?: JSONObject().put("state", "idle"))

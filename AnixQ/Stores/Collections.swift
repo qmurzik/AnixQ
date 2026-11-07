@@ -111,7 +111,12 @@ final class UserDataStore: ObservableObject {
     }
 
     static func shareURL(_ c: UserCollection) -> URL? {
-        let p = Payload(n: c.name, e: c.emoji, i: c.items.map { [$0.slug, $0.title] })
+        // Third field: cover path (shortened), so the web page shows posters at once.
+        let prefix = "https://cover.imglib.info/uploads/anime/"
+        let p = Payload(n: c.name, e: c.emoji, i: c.items.map { item in
+            guard let cover = item.cover, !cover.isEmpty else { return [item.slug, item.title] }
+            return [item.slug, item.title, cover.hasPrefix(prefix) ? String(cover.dropFirst(prefix.count)) : cover]
+        })
         guard let data = try? JSONEncoder().encode(p) else { return nil }
         let b64 = data.base64EncodedString().replacingOccurrences(of: "+", with: "-")
             .replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: "=", with: "")

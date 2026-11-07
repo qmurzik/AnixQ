@@ -1,0 +1,412 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Смотрим вместе — AnixQ</title>
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#0b0912">
+<meta name="color-scheme" content="dark">
+<meta name="referrer" content="no-referrer">
+<link rel="icon" type="image/png" href="../favicon.png">
+<meta property="og:title" content="Смотрим аниме вместе в AnixQ">
+<meta property="og:description" content="Вас пригласили в комнату совместного просмотра — в приложении AnixQ или прямо в браузере.">
+<meta property="og:image" content="https://qmurzik.github.io/AnixQ/og.png">
+<style>
+  :root { --bg:#0b0912; --card:rgba(255,255,255,.06); --stroke:rgba(255,255,255,.1); --text:#f6f4fb; --muted:#a8a3b9;
+          --grad:linear-gradient(115deg,#ff4d7a,#8b5cff); --ok:#5be08f; }
+  * { box-sizing: border-box; }
+  html, body { margin:0; background:var(--bg); color:var(--text); }
+  body { font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif; min-height:100vh;
+         background-image:radial-gradient(circle at 15% 0%,rgba(255,77,122,.22),transparent 45%),radial-gradient(circle at 95% 90%,rgba(139,92,255,.25),transparent 50%); }
+  a { color:inherit; }
+  .wrap { max-width:980px; margin:0 auto; padding:16px; }
+  header { display:flex; align-items:center; gap:10px; padding:4px 0 14px; }
+  header img { width:32px; height:32px; border-radius:8px; }
+  header b { font-size:18px; }
+  header .sp { flex:1; }
+  .pill { display:inline-flex; align-items:center; gap:6px; padding:6px 12px; border-radius:999px; background:var(--card); border:1px solid var(--stroke); font-size:13px; color:var(--muted); }
+  .dot { width:8px; height:8px; border-radius:50%; background:#f5a524; }
+  .dot.on { background:var(--ok); }
+  .btn { display:block; width:100%; padding:15px 20px; border-radius:14px; border:0; font:700 16px/1 inherit; font-family:inherit; text-align:center; text-decoration:none; color:#fff; background:var(--grad); cursor:pointer; }
+  .btn.ghost { background:var(--card); border:1px solid var(--stroke); }
+  .intro { max-width:440px; margin:8vh auto 0; text-align:center; }
+  .intro img { width:96px; height:96px; border-radius:22px; margin:0 auto 18px; display:block; box-shadow:0 20px 50px -12px rgba(255,77,122,.55); }
+  .intro h1 { font-size:28px; margin:0 0 8px; letter-spacing:-.02em; }
+  .intro p { color:var(--muted); margin:0 0 22px; }
+  .intro .btn { margin-bottom:10px; }
+  .intro input { width:100%; margin:0 0 12px; padding:13px 14px; border-radius:12px; border:1px solid var(--stroke); background:rgba(0,0,0,.35); color:var(--text); font:inherit; }
+  .stage { position:relative; isolation:isolate; width:100%; aspect-ratio:16/9; background:#000; border-radius:16px; overflow:hidden; border:1px solid var(--stroke); }
+  .stage video, .stage iframe { position:absolute; inset:0; width:100%; height:100%; border:0; background:#000; }
+  .wait { position:absolute; inset:0; display:grid; place-items:center; text-align:center; color:var(--muted); padding:20px; }
+  .meta { margin:14px 2px 4px; }
+  .meta h2 { margin:0; font-size:20px; }
+  .meta div { color:var(--muted); font-size:14px; }
+  .bar { display:flex; flex-wrap:wrap; gap:8px; margin-top:12px; }
+  .note { margin-top:14px; padding:12px 14px; border-radius:14px; background:var(--card); border:1px solid var(--stroke); color:var(--muted); font-size:14px; }
+  .toast { position:fixed; left:50%; bottom:22px; transform:translateX(-50%); padding:10px 16px; border-radius:999px; background:rgba(30,26,40,.92); border:1px solid var(--stroke); font-size:14px; opacity:0; transition:opacity .3s; pointer-events:none; }
+  .toast.show { opacity:1; }
+  .emojis { display:flex; flex-wrap:wrap; gap:6px; margin-top:12px; }
+  .emojis button { font-size:22px; background:var(--card); border:1px solid var(--stroke); border-radius:12px; padding:6px 9px; cursor:pointer; }
+  .chat { margin-top:12px; border-radius:16px; background:var(--card); border:1px solid var(--stroke); overflow:hidden; }
+  .chat .list { max-height:220px; overflow-y:auto; padding:10px 12px; display:flex; flex-direction:column; gap:6px; font-size:14px; }
+  .chat .list:empty::before { content:"Пока тихо — напишите что-нибудь"; color:var(--muted); }
+  .chat .list b { color:#c9b8ff; }
+  .chat form { display:flex; gap:8px; padding:8px; border-top:1px solid var(--stroke); }
+  .chat input { flex:1; min-width:0; padding:10px 12px; border-radius:10px; border:1px solid var(--stroke); background:rgba(0,0,0,.35); color:var(--text); font:inherit; }
+  .chat button { padding:0 16px; border-radius:10px; border:0; background:var(--grad); color:#fff; font-weight:700; cursor:pointer; }
+  .fly { position:absolute; bottom:12%; font-size:38px; pointer-events:none; animation:fly 2.8s ease-out forwards; z-index:5; }
+  @keyframes fly { from { transform:translateY(0) scale(.8); opacity:1; } to { transform:translateY(-220px) scale(1.3); opacity:0; } }
+  .poll { margin-top:12px; padding:14px; border-radius:16px; background:linear-gradient(150deg,rgba(139,92,255,.25),rgba(255,77,122,.12)); border:1px solid rgba(139,92,255,.4); }
+  .poll h3 { margin:0 0 10px; font-size:16px; }
+  .poll button { display:flex; justify-content:space-between; width:100%; margin-top:6px; padding:10px 12px; border-radius:10px; border:1px solid var(--stroke); background:var(--card); color:var(--text); font:inherit; cursor:pointer; }
+  .poll button.win { background:rgba(91,224,143,.3); }
+  [hidden] { display:none !important; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <img src="../favicon.png" alt="">
+    <b>AnixQ</b>
+    <span class="sp"></span>
+    <span class="pill" id="conn" hidden><span class="dot" id="dot"></span><span id="connText">Подключаемся…</span></span>
+  </header>
+
+  <!-- Step 1: choose app or browser -->
+  <section class="intro" id="intro">
+    <img src="../icon-512.png" alt="AnixQ">
+    <h1>Смотрим вместе</h1>
+    <p id="introText">Вас пригласили в комнату совместного просмотра. Пауза, перемотка и смена серии общие для всех.</p>
+    <a class="btn" id="openApp" href="#">Открыть в AnixQ</a>
+    <input id="name" placeholder="Ваше имя (необязательно)" maxlength="30">
+    <button class="btn ghost" id="watchWeb">Смотреть в браузере</button>
+    <p style="margin-top:18px;font-size:14px"><a href="../#install">Установить AnixQ на iPhone или iPad</a></p>
+  </section>
+
+  <!-- Step 2: web player -->
+  <section id="room" hidden>
+    <div class="stage" id="stage">
+      <div class="wait" id="wait">Ждём, когда в комнате начнут смотреть…<br>Если ничего не происходит — попросите друга нажать ▶ в AnixQ.</div>
+    </div>
+    <div class="meta">
+      <h2 id="title">—</h2>
+      <div id="sub"></div>
+    </div>
+    <div class="bar">
+      <span class="pill" id="people">В комнате: только вы</span>
+      <span class="pill" id="sync">—</span>
+      <button class="pill" id="resync" style="cursor:pointer">⟳ Синхронизировать</button>
+    </div>
+    <div class="poll" id="poll" hidden></div>
+    <div class="emojis" id="emojis"></div>
+    <div class="chat">
+      <div class="list" id="chatList"></div>
+      <form id="chatForm" autocomplete="off"><input id="chatInput" placeholder="Сообщение" maxlength="300"><button>➤</button></form>
+    </div>
+    <div class="note" id="kodikNote" hidden>
+      В браузере видео идёт через плеер Kodik — в начале может быть реклама. После неё нажмите «Синхронизировать», и серия перемотается к остальным. Пауза из браузера общая, а перематывает серию тот, кто смотрит в приложении. В AnixQ рекламы нет.
+    </div>
+  </section>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+(function () {
+  'use strict';
+  var id = (location.hash || '').replace('#', '').replace(/[^a-z0-9]/gi, '').toLowerCase();
+  var $ = function (x) { return document.getElementById(x); };
+  if (!id) {
+    $('introText').textContent = 'Ссылка на комнату неполная — попросите прислать её ещё раз.';
+    $('watchWeb').hidden = true; $('name').hidden = true;
+  }
+  $('openApp').href = 'anixq://room/' + id;
+  try { $('name').value = localStorage.getItem('anixq.name') || ''; } catch (e) {}
+
+  var me = 'web-' + Math.random().toString(36).slice(2, 12);
+  var topic = 'anixq/rooms/' + id;
+  var myName = 'Гость';
+  var brokers = [
+    { url: 'wss://public.cloud.shiftr.io', user: 'public', pass: 'public' },
+    { url: 'wss://broker.hivemq.com:8884/mqtt' },
+    { url: 'wss://broker.emqx.io:8084/mqtt' }
+  ];
+  var brokerIndex = 0, ws = null, connected = false, pingTimer = null;
+  var participants = {};
+  var current = null;        // last state we follow
+  var mode = null;           // 'video' | 'kodik'
+  var video = null, iframe = null;
+  var kodikTime = 0, kodikPlaying = false;
+  var applying = false, needsSync = true, lastSent = 0;
+
+  function toast(t) { var el = $('toast'); el.textContent = t; el.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(function () { el.classList.remove('show'); }, 2500); }
+
+  // ---------- minimal MQTT 3.1.1 over WebSocket ----------
+  var enc = new TextEncoder(), dec = new TextDecoder();
+  function len(n) { var o = []; do { var d = n % 128; n = Math.floor(n / 128); if (n > 0) d |= 128; o.push(d); } while (n > 0); return o; }
+  function str(s) { var b = enc.encode(s); return [b.length >> 8, b.length & 255].concat(Array.from(b)); }
+  function packet(h, body) { return new Uint8Array([h].concat(len(body.length), body)); }
+
+  function connect() {
+    var b = brokers[brokerIndex % brokers.length];
+    setConn(false, 'Подключаемся…');
+    try { ws = new WebSocket(b.url, ['mqtt']); } catch (e) { return next(); }
+    ws.binaryType = 'arraybuffer';
+    var attempt = brokerIndex;
+    var timer = setTimeout(function () { if (!connected && attempt === brokerIndex) next(); }, 6000);
+    ws.onopen = function () {
+      var flags = 0x02 | (b.user ? 0x80 : 0) | (b.pass ? 0x40 : 0);
+      var vh = str('MQTT').concat([4, flags, 0, 30]);
+      var pl = str(me).concat(b.user ? str(b.user) : [], b.pass ? str(b.pass) : []);
+      ws.send(packet(0x10, vh.concat(pl)));
+    };
+    ws.onmessage = function (e) { handle(new Uint8Array(e.data)); };
+    ws.onclose = function () {
+      clearTimeout(timer);
+      if (connected) { connected = false; setConn(false, 'Переподключаемся…'); setTimeout(connect, 2500); }
+    };
+    function next() { clearTimeout(timer); try { ws.close(); } catch (e) {} brokerIndex++; setTimeout(connect, 500); }
+  }
+
+  function handle(d) {
+    var i = 0;
+    while (i < d.length) {
+      var h = d[i], mult = 1, l = 0, j = i + 1, b;
+      do { b = d[j++]; l += (b & 127) * mult; mult *= 128; } while (b & 128);
+      var body = d.subarray(j, j + l);
+      var type = h >> 4;
+      if (type === 2) {
+        connected = body[1] === 0;
+        if (connected) {
+          setConn(true, 'В сети');
+          ws.send(packet(0x82, [0, 1].concat(str(topic), [0])));
+          clearInterval(pingTimer);
+          pingTimer = setInterval(function () { if (connected) ws.send(new Uint8Array([0xC0, 0])); }, 20000);
+          send('join');
+        }
+      } else if (type === 3) {
+        var tl = (body[0] << 8) | body[1];
+        try { onMessage(JSON.parse(dec.decode(body.subarray(2 + tl)))); } catch (e) {}
+      }
+      i = j + l;
+    }
+  }
+
+  function publish(obj) {
+    if (!connected) return;
+    ws.send(packet(0x30, str(topic).concat(Array.from(enc.encode(JSON.stringify(obj))))));
+  }
+
+  function setConn(on, text) { $('dot').classList.toggle('on', on); $('connText').textContent = text; }
+
+  // ---------- room protocol ----------
+  function send(type) {
+    var m = { type: type, from: me, name: myName, sentAt: Date.now() / 1000, web: true };
+    if (type === 'state' && current) {
+      ['slug', 'titleName', 'episodeId', 'episodeNumber', 'teamId', 'stream', 'kodik', 'team', 'rate'].forEach(function (k) { m[k] = current[k]; });
+      m.playing = isPlaying();
+      m.position = currentTime();
+    }
+    lastSent = Date.now();
+    if (type === 'state' && current) { current.position = m.position; current.playing = m.playing; current.sentAt = m.sentAt; }
+    publish(m);
+  }
+
+  /// A local play / pause from the browser. Ads at the start of Kodik or a stray seek must not
+  /// drag the others back, so only changes close to the group's moment are shared; otherwise
+  /// the browser is pulled back to the group instead.
+  function localChange(kind) {
+    if (applying || !current || needsSync) return;
+    var off = Math.abs(currentTime() - target(current));
+    if (kind === 'seek' || off > 6) { if (current.playing || kind === 'seek') apply(current); return; }
+    send('state');
+  }
+
+  // ---------- chat, reactions, polls ----------
+  var EMOJIS = ['😂', '😱', '😭', '🔥', '❤️', '👏', '🤯', '💀'];
+  var poll = null;
+  EMOJIS.forEach(function (e) {
+    var b = document.createElement('button'); b.textContent = e;
+    b.onclick = function () { flyEmoji(e); sendExtra('react', { emoji: e }); };
+    $('emojis').appendChild(b);
+  });
+  $('chatForm').addEventListener('submit', function (ev) {
+    ev.preventDefault();
+    var t = $('chatInput').value.trim(); if (!t) return;
+    $('chatInput').value = '';
+    addChat(myName, t);
+    sendExtra('chat', { text: t.slice(0, 300) });
+  });
+  function sendExtra(type, extra) {
+    var m = { type: type, from: me, name: myName, sentAt: Date.now() / 1000, web: true };
+    for (var k in extra) m[k] = extra[k];
+    publish(m);
+  }
+  function addChat(name, text) {
+    var row = document.createElement('div');
+    var b = document.createElement('b'); b.textContent = name + ': ';
+    row.appendChild(b); row.appendChild(document.createTextNode(text));
+    var list = $('chatList'); list.appendChild(row);
+    while (list.children.length > 60) list.removeChild(list.firstChild);
+    list.scrollTop = list.scrollHeight;
+  }
+  function flyEmoji(e) {
+    var el = document.createElement('div'); el.className = 'fly'; el.textContent = e;
+    el.style.left = (55 + Math.random() * 35) + '%';
+    $('stage').appendChild(el);
+    setTimeout(function () { el.remove(); }, 3000);
+  }
+  function renderPoll() {
+    var box = $('poll');
+    if (!poll) { box.hidden = true; return; }
+    box.hidden = false; box.innerHTML = '';
+    var h = document.createElement('h3'); h.textContent = '🗳 ' + poll.question; box.appendChild(h);
+    poll.options.forEach(function (o, i) {
+      var n = 0; for (var k in poll.votes) if (poll.votes[k] === i) n++;
+      var b = document.createElement('button');
+      b.innerHTML = '<span></span><b></b>'; b.firstChild.textContent = o; b.lastChild.textContent = n;
+      if (poll.closed && poll.winner === i) b.className = 'win';
+      b.disabled = poll.closed;
+      b.onclick = function () { poll.votes[me] = i; renderPoll(); sendExtra('vote', { pollId: poll.id, option: i }); };
+      box.appendChild(b);
+    });
+  }
+
+  function onMessage(m) {
+    if (!m || m.from === me) return;
+    if (m.type === 'leave') { delete participants[m.from]; renderPeople(); return; }
+    participants[m.from] = { name: m.name || 'Друг', seen: Date.now() };
+    renderPeople();
+    if (m.type === 'chat' && m.text) { addChat(m.name || 'Друг', m.text); return; }
+    if (m.type === 'react' && m.emoji) { flyEmoji(String(m.emoji).slice(0, 4)); return; }
+    if (m.type === 'poll' && m.pollId) {
+      if (poll && poll.id === m.pollId && m.option != null) { poll.closed = true; poll.winner = m.option; renderPoll(); var pid = poll.id; setTimeout(function () { if (poll && poll.id === pid) { poll = null; renderPoll(); } }, 8000); }
+      else if (!poll || poll.id !== m.pollId) { poll = { id: m.pollId, question: m.question, options: m.options || [], votes: {}, closed: false }; renderPoll(); toast('Голосование: ' + m.question); }
+      return;
+    }
+    if (m.type === 'vote' && poll && poll.id === m.pollId) { poll.votes[m.from] = m.option; renderPoll(); return; }
+    if (m.type === 'join') { if (current && !needsSync) send('state'); return; }
+    if (m.type !== 'state' || !m.episodeId) return;
+    needsSync = false;
+    var changed = !current || current.episodeId !== m.episodeId || current.teamId !== m.teamId;
+    current = m;
+    $('title').textContent = m.titleName || 'Аниме';
+    $('sub').textContent = 'Серия ' + (m.episodeNumber || '?') + (m.team ? ' · ' + m.team : '');
+    document.title = (m.titleName || 'Смотрим вместе') + ' — AnixQ';
+    if (changed) { load(m); }
+    apply(m);
+  }
+
+  function target(m) {
+    var t = m.position || 0;
+    if (m.playing) t += Math.max(0, Date.now() / 1000 - m.sentAt) * (m.rate || 1);
+    return t;
+  }
+
+  function apply(m) {
+    applying = true;
+    clearTimeout(apply.t);
+    apply.t = setTimeout(function () { applying = false; }, 900);
+    var t = target(m);
+    if (Math.abs(currentTime() - t) > 2) seek(t);
+    if (m.playing && !isPlaying()) play();
+    if (!m.playing && isPlaying()) pause();
+    $('sync').textContent = 'Синхронизировано ' + new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  }
+
+  // ---------- players ----------
+  function clearStage() {
+    if (video) { video.remove(); video = null; }
+    if (iframe) { iframe.remove(); iframe = null; }
+    $('wait').hidden = true;
+  }
+
+  function load(m) {
+    clearStage();
+    if (m.stream) {
+      mode = 'video';
+      video = document.createElement('video');
+      video.controls = true; video.playsInline = true; video.preload = 'auto';
+      video.setAttribute('referrerpolicy', 'no-referrer');
+      video.src = m.stream;
+      video.addEventListener('error', function () {
+        // The stream refused a browser: fall back to Kodik.
+        if (m.kodik) { toast('Переключаемся на плеер Kodik'); loadKodik(m); } else { $('wait').hidden = false; $('wait').textContent = 'Видео не открывается в браузере. Установите AnixQ.'; }
+      }, { once: true });
+      video.addEventListener('play', function () { localChange('play'); });
+      video.addEventListener('pause', function () { localChange('pause'); });
+      video.addEventListener('seeked', function () { localChange('seek'); });
+      video.addEventListener('loadedmetadata', function () { if (current) apply(current); });
+      $('stage').appendChild(video);
+      $('kodikNote').hidden = true;
+    } else if (m.kodik) {
+      loadKodik(m);
+    } else {
+      $('wait').hidden = false;
+      $('wait').textContent = 'Эта серия скачана у друга и не доступна в браузере.';
+    }
+  }
+
+  function loadKodik(m) {
+    if (video) { video.remove(); video = null; }
+    mode = 'kodik';
+    kodikTime = 0; kodikPlaying = false;
+    iframe = document.createElement('iframe');
+    iframe.allow = 'autoplay; fullscreen; picture-in-picture';
+    iframe.allowFullscreen = true;
+    iframe.referrerPolicy = 'no-referrer';
+    iframe.src = m.kodik + (m.kodik.indexOf('?') < 0 ? '?' : '&') + 'translations=false';
+    $('stage').appendChild(iframe);
+    $('kodikNote').hidden = false;
+  }
+
+  // Kodik player API (postMessage)
+  window.addEventListener('message', function (e) {
+    var d = e.data;
+    if (!d || typeof d !== 'object' || !d.key) return;
+    if (d.key === 'kodik_player_time_update') { kodikTime = Number(d.value) || 0; }
+    else if (d.key === 'kodik_player_play') { kodikPlaying = true; localChange('play'); }
+    else if (d.key === 'kodik_player_pause') { kodikPlaying = false; localChange('pause'); }
+    else if (d.key === 'kodik_player_seek') { if (d.value && d.value.time != null) kodikTime = Number(d.value.time); localChange('seek'); }
+  });
+  function kodik(method, extra) {
+    if (!iframe) return;
+    var v = { method: method };
+    for (var k in extra || {}) v[k] = extra[k];
+    iframe.contentWindow.postMessage({ key: 'kodik_player_api', value: v }, '*');
+  }
+
+  function currentTime() { return mode === 'video' && video ? video.currentTime : kodikTime; }
+  function isPlaying() { return mode === 'video' && video ? !video.paused && !video.ended : kodikPlaying; }
+  function seek(t) { if (mode === 'video' && video) { try { video.currentTime = t; } catch (e) {} } else { kodik('seek', { seconds: Math.floor(t) }); kodikTime = t; } }
+  function play() {
+    if (mode === 'video' && video) { var p = video.play(); if (p && p.catch) p.catch(function () { toast('Нажмите ▶, чтобы начать'); }); }
+    else { kodik('play'); }
+  }
+  function pause() { if (mode === 'video' && video) video.pause(); else kodik('pause'); }
+
+  function renderPeople() {
+    var now = Date.now(), names = [];
+    for (var k in participants) { if (now - participants[k].seen < 45000) names.push(participants[k].name); }
+    $('people').textContent = names.length ? 'Вместе с вами: ' + names.slice(0, 4).join(', ') + (names.length > 4 ? ' и ещё ' + (names.length - 4) : '') : 'В комнате: только вы';
+  }
+
+  // ---------- start ----------
+  $('watchWeb').addEventListener('click', function () {
+    myName = ($('name').value || '').trim() || 'Гость из браузера';
+    try { localStorage.setItem('anixq.name', $('name').value.trim()); } catch (e) {}
+    $('intro').hidden = true; $('room').hidden = false; $('conn').hidden = false;
+    connect();
+    setInterval(function () {
+      renderPeople();
+      if (!connected) return;
+      // The app keeps the beat; the browser only asks when it has nothing to follow yet.
+      if (!current && Date.now() - lastSent > 15000) send('join');
+    }, 10000);
+  });
+  $('resync').addEventListener('click', function () { needsSync = true; send('join'); toast('Запросили позицию у друзей'); });
+  window.addEventListener('pagehide', function () { send('leave'); });
+})();
+</script>
+</body>
+</html>

@@ -95,14 +95,9 @@ import ru.qmods.anixq.tv.data.Title
 
 // MARK: - Images
 
-/** Screenshot tests swap network images for local ones. */
-val LocalImageOverride = compositionLocalOf<((String) -> Painter?)?> { null }
-
 @Composable
 fun Img(url: String?, modifier: Modifier = Modifier, contentScale: ContentScale = ContentScale.Crop, alpha: Float = 1f) {
     if (url == null) { Box(modifier); return }
-    val fake = LocalImageOverride.current
-    if (fake != null) { fake(url)?.let { Image(it, null, modifier, contentScale = contentScale, alpha = alpha) } ?: Box(modifier); return }
     AsyncImage(url, null, modifier, contentScale = contentScale, alpha = alpha)
 }
 

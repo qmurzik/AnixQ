@@ -67,13 +67,17 @@ enum LibAPI {
         if let cacheKey, let hit = ResponseCache.memory(cacheKey) { return hit }
         var lastError: Error = LibError.notFound
         let bodyData = try body.map { try JSONSerialization.data(withJSONObject: $0) }
-        for host in hosts {
+        // GETs go to whichever API host answered fastest recently (re-checked in the background every
+        // 5 minutes); a host that fails moves to the back, so one slow host can't stall every page.
+        let order = method == "GET" ? HostOrder.current() : hosts
+        if method == "GET" { HostOrder.recheckIfStale(path: path, query: query) }
+        for host in order {
             var comps = URLComponents(string: host + "/api" + path)!
             if !query.isEmpty { comps.queryItems = query }
             var req = URLRequest(url: comps.url!)
             req.httpMethod = method
             req.httpBody = bodyData
-            req.timeoutInterval = 20
+            req.timeoutInterval = method == "GET" ? 8 : 20
             req.setValue("5", forHTTPHeaderField: "Site-Id")
             req.setValue(site + "/", forHTTPHeaderField: "Referer")
             req.setValue(site, forHTTPHeaderField: "Origin")
@@ -104,6 +108,7 @@ enum LibAPI {
                         throw LibError.badStatus(status)
                     }
                     lastError = LibError.badStatus(status)
+                    HostOrder.demote(host)
                     continue
                 }
                 let json = try JSONSerialization.jsonObject(with: data)
@@ -114,6 +119,7 @@ enum LibAPI {
             } catch {
                 if (error as? URLError)?.code == .cancelled { throw error }
                 lastError = error
+                HostOrder.demote(host)
             }
         }
         throw lastError
@@ -424,12 +430,19 @@ enum LibAPI {
 
     /// Resolves players and the fastest mirror ahead of time so play only waits for the video.
     @MainActor
-    static func warmUp(episodeId: Int, teamId: Int) {
+    static func warmUp(episodeId: Int, teamId: Int, titleId: Int? = nil) {
         Task {
             guard let players = try? await players(episodeId: episodeId),
                   let p = players.first(where: { $0.team.id == teamId && $0.isNative }),
-                  let href = p.hrefs["720p"] ?? p.hrefs.values.first else { return }
-            _ = await rankServers(await videoServers(), href: href)
+                  let probe = p.hrefs["720p"] ?? p.hrefs.values.first else { return }
+            let ranked = await rankServers(await videoServers(), href: probe)
+            // Open the very file the player will start with (same mirror, same quality).
+            await MainActor.run {
+                guard let server = ranked.first,
+                      let href = VideoPrewarm.pick(p.hrefs, height: VideoPrewarm.startHeight(titleId: titleId)),
+                      let url = videoURL(server: server, href: href) else { return }
+                VideoPrewarm.prepare(url)
+            }
         }
     }
 
@@ -502,6 +515,50 @@ enum LibAPI {
 
 /// Short-lived memory cache for GET responses plus an on-disk copy of title data (detail,
 /// episodes, relations), used to paint screens instantly before the network answers.
+/// Order in which the two API hosts are tried for GETs: fastest first, failing ones last.
+enum HostOrder {
+    private static let lock = NSLock()
+    private static var order = LibAPI.hosts
+    private static var checkedAt = Date.distantPast
+
+    static func current() -> [String] { lock.lock(); defer { lock.unlock() }; return order }
+
+    static func demote(_ host: String) {
+        lock.lock(); order = order.filter { $0 != host } + [host]; lock.unlock()
+    }
+
+    /// Race both hosts with a tiny HEAD request in the background; the winner goes first.
+    static func recheckIfStale(path: String, query: [URLQueryItem]) {
+        lock.lock()
+        let stale = Date().timeIntervalSince(checkedAt) > 300
+        if stale { checkedAt = Date() }
+        lock.unlock()
+        guard stale else { return }
+        Task.detached(priority: .utility) {
+            let winner: String? = await withTaskGroup(of: String?.self) { group in
+                for host in LibAPI.hosts {
+                    group.addTask {
+                        var comps = URLComponents(string: host + "/api" + path)!
+                        if !query.isEmpty { comps.queryItems = query }
+                        var req = URLRequest(url: comps.url!)
+                        req.httpMethod = "HEAD"
+                        req.timeoutInterval = 6
+                        req.setValue("5", forHTTPHeaderField: "Site-Id")
+                        req.setValue(LibAPI.site + "/", forHTTPHeaderField: "Referer")
+                        guard let (_, resp) = try? await URLSession.shared.data(for: req),
+                              let code = (resp as? HTTPURLResponse)?.statusCode, code < 500 else { return nil }
+                        return host
+                    }
+                }
+                for await r in group { if let r { group.cancelAll(); return r } }
+                return nil
+            }
+            guard let winner else { return }
+            lock.lock(); order = [winner] + LibAPI.hosts.filter { $0 != winner }; lock.unlock()
+        }
+    }
+}
+
 enum ResponseCache {
     private static let lock = NSLock()
     private static var mem: [String: (Date, Any)] = [:]

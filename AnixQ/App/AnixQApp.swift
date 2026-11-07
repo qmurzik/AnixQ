@@ -60,6 +60,10 @@ struct AnixQApp: App {
                 await library.applyWidgetActions()
                 GistSync.shared.start(library: library)
                 RemoteTV.shared.startLive(library: library)
+                // "Continue watching" is the most likely tap: prepare that episode's video right away.
+                if let e = library.history.first, e.duration > 0, e.position / e.duration < 0.92 {
+                    LibAPI.warmUp(episodeId: e.episodeId, teamId: e.teamId, titleId: e.title.id)
+                }
                 await EpisodeCountdown.refresh(library: library)
                 await CalendarSync.sync(library: library)
                 CloudSync.shared.start(library: library)

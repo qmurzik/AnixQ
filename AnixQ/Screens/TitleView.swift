@@ -61,6 +61,9 @@ final class TitleModel: ObservableObject {
 
     /// Every block is filled as soon as its own request finishes (header first, Shikimori in parallel).
     /// Independent tasks instead of `async let` (avoids a Swift runtime task-allocator crash).
+    /// Last watched entry of this title (to prepare the episode you'll most likely play).
+    var lastEntry: WatchEntry?
+
     func load(lastTeamId: Int?, force: Bool = false) async {
         if !force, let loadedAt, Date().timeIntervalSince(loadedAt) < 600, !episodes.isEmpty { return }
         error = nil
@@ -132,7 +135,7 @@ final class TitleModel: ObservableObject {
                 ?? DubPreferences.pick(teams)
                 ?? teams.first { $0.team.name == Self.preferredTeamName && $0.native }
                 ?? teams.first
-            if let t = selectedTeam, t.native { LibAPI.warmUp(episodeId: first.id, teamId: t.id) }
+            if let t = selectedTeam, t.native { LibAPI.warmUp(episodeId: likelyEpisodeId ?? first.id, teamId: t.id, titleId: title.id) }
         } catch {
             self.error = error.localizedDescription
         }
@@ -146,6 +149,13 @@ final class TitleModel: ObservableObject {
         franchiseLoading = false
     }
 
+    /// The episode the big button will start: where you stopped, or the next one if that was finished.
+    var likelyEpisodeId: Int? {
+        guard let e = lastEntry, let i = episodes.firstIndex(where: { $0.id == e.episodeId }) else { return nil }
+        let done = e.duration > 0 && e.position / e.duration > 0.92
+        return done && i + 1 < episodes.count ? episodes[i + 1].id : episodes[i].id
+    }
+
     private static func players(_ id: Int?) async -> [LibPlayer] {
         guard let id else { return [] }
         return (try? await LibAPI.players(episodeId: id)) ?? []
@@ -155,7 +165,7 @@ final class TitleModel: ObservableObject {
         selectedTeam = team
         Self.preferredTeamName = team.team.name
         DubPreferences.use(team.team.name)
-        if team.native, let e = episodes.first { LibAPI.warmUp(episodeId: e.id, teamId: team.id) }
+        if team.native, let id = likelyEpisodeId ?? episodes.first?.id { LibAPI.warmUp(episodeId: id, teamId: team.id, titleId: title.id) }
     }
 }
 
@@ -219,6 +229,7 @@ struct TitleView: View {
             }
         }
         .task {
+            model.lastEntry = library.lastEntry(titleId: t.id)
             await model.load(lastTeamId: library.lastEntry(titleId: t.id)?.teamId)
             if let g = model.detail?.genres.map(\.name) { library.recordGenres(titleId: t.id, names: g) }
         }

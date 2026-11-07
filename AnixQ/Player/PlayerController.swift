@@ -165,6 +165,7 @@ final class PlayerController: ObservableObject {
     }
 
     private var networkObserver: NSObjectProtocol?
+    private var isLocalFile: Bool { quality?.url.isFileURL == true }
     private var rateObserver: NSObjectProtocol?
     private var interruptionObserver: NSObjectProtocol?
     private var ownPauseAt = Date.distantPast
@@ -209,11 +210,9 @@ final class PlayerController: ObservableObject {
         try? AVAudioSession.sharedInstance().setActive(true)
         SharePlayManager.shared.attach(self)
         WatchRoom.shared.attach(self)
-        Task {
-            // Resume exactly where the TV stopped.
-            await GistSync.shared.pullFresh()
-            await load()
-        }
+        // The live channel already brings the TV's position; the GitHub check runs alongside, not before.
+        Task { await GistSync.shared.pullFresh() }
+        Task { await load() }
     }
 
     func load() async {
@@ -290,7 +289,7 @@ final class PlayerController: ObservableObject {
                 if resume == nil, let server = p.serverTimecode, server > 15 { resume = server }
                 if let preferred { play(preferred, at: resume) }
                 DebugLog.log(String(format: "player: resolved in %.2fs", Date().timeIntervalSince(startedAt)))
-                if hasNext { LibAPI.warmUp(episodeId: episodes[index + 1].id, teamId: team.id) }
+                if hasNext { LibAPI.warmUp(episodeId: episodes[index + 1].id, teamId: team.id, titleId: title.id) }
             } else if let p = players.first(where: { $0.team.id == team.id && $0.isKodik }),
                       let src = p.kodikSrc, let url = LibAPI.kodikURL(src) {
                 kodikURL = url
@@ -345,7 +344,7 @@ final class PlayerController: ObservableObject {
     private func initialQuality() -> StreamQuality? {
         let wanted = titleSettings.qualityHeight ?? PlayerPrefs.preferredHeight
         if wanted == 0 {
-            let guess = NetworkMonitor.shared.isExpensive ? 480 : NetworkMonitor.shared.isWiFi ? 1080 : 720
+            let guess = VideoPrewarm.startHeight(titleId: title.id)
             let byBitrate = lastObservedBitrate.map { bps in
                 qualities.first { QualityBudget.need($0.height) * 1.3 <= bps }?.height
             } ?? nil
@@ -423,7 +422,10 @@ final class PlayerController: ObservableObject {
 
     private func play(_ q: StreamQuality, at time: Double?) {
         quality = q
-        let asset = AVURLAsset(url: q.url, options: ["AVURLAssetHTTPHeaderFieldsKey": ["Referer": LibAPI.site + "/"]])
+        // Prepared while you were on the title page: the file's header is already loaded.
+        let prepared = VideoPrewarm.take(q.url)
+        if prepared != nil { DebugLog.log("player: using prepared video \(q.label)") }
+        let asset = prepared ?? VideoPrewarm.makeAsset(q.url)
         if titleSettings.audioDelay != 0 {
             Task {
                 let shifted = await AudioOffset.item(for: asset, delay: titleSettings.audioDelay)
@@ -438,8 +440,8 @@ final class PlayerController: ObservableObject {
 
     private func attach(_ item: AVPlayerItem, at time: Double?) {
         if VideoEnhancer.enabled && !audioOnly { Task { await VideoEnhancer.apply(to: item) } }
-        // Keep up to a minute ahead: short Wi-Fi / mobile dips no longer reach the screen.
-        item.preferredForwardBufferDuration = 60
+        // Start on the system's small buffer (fastest first frame); once playing, keep up to a minute ahead.
+        item.preferredForwardBufferDuration = 0
         if let endObserver { NotificationCenter.default.removeObserver(endObserver) }
         endObserver = NotificationCenter.default.addObserver(forName: .AVPlayerItemDidPlayToEndTime, object: item,
                                                              queue: .main) { [weak self] _ in
@@ -689,6 +691,9 @@ final class PlayerController: ObservableObject {
     // MARK: Observers
 
     private func statusChanged(_ st: AVPlayer.TimeControlStatus) {
+        if st == .playing, let item = player.currentItem, item.preferredForwardBufferDuration == 0, !isLocalFile {
+            item.preferredForwardBufferDuration = 60
+        }
         // Any pause (button, headphones, app sent to background) sends the exact moment to the TV at once.
         if st == .paused, isPlaying { saveProgress(force: true) }
         // Paused without anyone asking: note why, so a "random pause" can be traced in the debug log.

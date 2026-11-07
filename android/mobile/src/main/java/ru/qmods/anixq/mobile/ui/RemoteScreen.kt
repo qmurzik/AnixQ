@@ -76,15 +76,13 @@ fun RemoteScreen(nav: Nav) {
     fun cmd(c: String, extra: JSONObject = JSONObject()) { view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY); Remote.send(c, extra) }
 
     Column(Modifier.fillMaxSize().statusBarsPadding().verticalScroll(rememberScrollState()).padding(bottom = 24.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = { nav.pop() }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Назад") }
-            Text(tv?.device ?: "Пульт ТВ", fontSize = 18.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+        TopBar(tv?.device?.let { "Пульт · $it" } ?: "Пульт ТВ", { nav.pop() }) {
             Box(Modifier.size(8.dp).clip(CircleShape).background(if (online) Pal.green else Pal.gold))
-            Text(if (online) " на связи" else " подключаемся…", fontSize = 12.sp, color = Pal.muted, modifier = Modifier.padding(end = 16.dp))
+            Text(if (online) " на связи" else " связь…", fontSize = 12.sp, color = Pal.muted, modifier = Modifier.padding(end = 14.dp))
         }
         if (Store.remoteChannel.isEmpty()) {
             Centered {
-                Text("Включите синхронизацию с GitHub (вкладка «Ещё») под тем же аккаунтом, что и на телевизоре — пульт найдёт его сам.",
+                Text("Включите синхронизацию: Медиатека → Настройки → «Войти через GitHub» (тот же аккаунт, что на ТВ) или «Взять вход с телевизора». Пульт найдёт ТВ сам.",
                     color = Pal.muted, textAlign = TextAlign.Center)
             }
             return@Column
@@ -100,7 +98,7 @@ fun RemoteScreen(nav: Nav) {
             return@Column
         }
         Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Cover(tv.title.thumb, Modifier.padding(top = 8.dp).width(170.dp).aspectRatio(0.7f), 16.dp)
+            PosterImage(tv.title.thumb, Modifier.padding(top = 8.dp).width(170.dp), 16.dp)
             Text(tv.title.title, fontSize = 19.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center, maxLines = 2, overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.padding(top = 14.dp).clickable { nav.open(tv.title) })
             Text(listOf("Серия ${tv.ep}", tv.team).filter { it.isNotBlank() }.joinToString(" · "), color = Pal.muted, fontSize = 13.sp)

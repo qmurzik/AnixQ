@@ -12,34 +12,51 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Subscriptions
 import androidx.compose.material.icons.filled.VideoLibrary
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.lifecycleScope
 import coil.Coil
 import kotlinx.coroutines.launch
 import ru.qmods.anixq.mobile.ui.AnixTheme
+import ru.qmods.anixq.mobile.ui.CatalogListScreen
+import ru.qmods.anixq.mobile.ui.CatalogRoute
+import ru.qmods.anixq.mobile.ui.CatalogScreen
+import ru.qmods.anixq.mobile.ui.FolderRoute
+import ru.qmods.anixq.mobile.ui.FolderScreen
+import ru.qmods.anixq.mobile.ui.HistoryRoute
+import ru.qmods.anixq.mobile.ui.HistoryScreen
 import ru.qmods.anixq.mobile.ui.HomeScreen
 import ru.qmods.anixq.mobile.ui.LibLoginRoute
 import ru.qmods.anixq.mobile.ui.LibLoginScreen
 import ru.qmods.anixq.mobile.ui.LibraryScreen
-import ru.qmods.anixq.mobile.ui.MoreScreen
 import ru.qmods.anixq.mobile.ui.Nav
-import ru.qmods.anixq.mobile.ui.PairRequest
+import ru.qmods.anixq.mobile.ui.PairFlow
 import ru.qmods.anixq.mobile.ui.Pal
 import ru.qmods.anixq.mobile.ui.Pip
 import ru.qmods.anixq.mobile.ui.PlayerRoute
@@ -47,6 +64,8 @@ import ru.qmods.anixq.mobile.ui.PlayerScreen
 import ru.qmods.anixq.mobile.ui.RemoteRoute
 import ru.qmods.anixq.mobile.ui.RemoteScreen
 import ru.qmods.anixq.mobile.ui.SearchScreen
+import ru.qmods.anixq.mobile.ui.SettingsRoute
+import ru.qmods.anixq.mobile.ui.SettingsScreen
 import ru.qmods.anixq.mobile.ui.SyncLoginScreen
 import ru.qmods.anixq.mobile.ui.SyncRoute
 import ru.qmods.anixq.mobile.ui.Tab
@@ -91,11 +110,10 @@ class MainActivity : ComponentActivity() {
     private fun handle(i: Intent?, nav: Nav) {
         val u = i?.data ?: return
         when (u.host) {
-            "pair" -> { nav.stack.clear(); nav.tab = Tab.MORE; PairRequest.pending = u.toString() }
-            "title" -> u.pathSegments.firstOrNull()?.let { slug ->
-                nav.open(Title(id = slug.substringBefore("--").toIntOrNull() ?: 0, slug = slug))
-            }
+            "pair" -> { nav.stack.removeAll { it is PlayerRoute }; nav.push(SettingsRoute); PairFlow.run(u.toString(), lifecycleScope) }
+            "title" -> u.pathSegments.firstOrNull()?.let { slug -> nav.open(Title(id = slug.substringBefore("--").toIntOrNull() ?: 0, slug = slug)) }
         }
+        i.data = null
     }
 
     override fun onStart() {
@@ -106,10 +124,15 @@ class MainActivity : ComponentActivity() {
         Updater.checkSometimes()
     }
 
+    override fun onResume() {
+        super.onResume()
+        // Back from the browser after authorising on GitHub: finish the sign-in at once.
+        Sync.wakeLogin()
+    }
+
     override fun onStop() {
         super.onStop()
         Sync.flush()
-        // The live channel isn't needed in the background; the latest state is retained and arrives on return.
         if (!Pip.inPip) Remote.stop()
     }
 
@@ -128,7 +151,7 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun Root(nav: Nav) {
+fun Root(nav: Nav) {
     val holder = rememberSaveableStateHolder()
     val top = nav.top
     BackHandler(enabled = top != null || nav.tab != Tab.HOME) { if (top != null) nav.pop() else nav.tab = Tab.HOME }
@@ -136,7 +159,11 @@ private fun Root(nav: Nav) {
         when (top) {
             is PlayerRoute -> PlayerScreen(nav, top)
             is TitleRoute -> holder.SaveableStateProvider("title-${top.title.id}-${nav.stack.size}") { TitleScreen(nav, top.title) }
+            is CatalogRoute -> holder.SaveableStateProvider("cat-${top.title}-${nav.stack.size}") { CatalogListScreen(nav, top) }
+            is FolderRoute -> FolderScreen(nav, top.status)
+            HistoryRoute -> HistoryScreen(nav)
             RemoteRoute -> RemoteScreen(nav)
+            SettingsRoute -> SettingsScreen(nav)
             SyncRoute -> SyncLoginScreen(nav)
             LibLoginRoute -> LibLoginScreen(nav)
             null -> Column(Modifier.fillMaxSize()) {
@@ -144,21 +171,32 @@ private fun Root(nav: Nav) {
                     holder.SaveableStateProvider(nav.tab.name) {
                         when (nav.tab) {
                             Tab.HOME -> HomeScreen(nav)
-                            Tab.SEARCH -> SearchScreen(nav)
+                            Tab.CATALOG -> CatalogScreen(nav)
                             Tab.LIBRARY -> LibraryScreen(nav)
-                            Tab.MORE -> MoreScreen(nav)
+                            Tab.SEARCH -> SearchScreen(nav)
                         }
                     }
                 }
-                NavigationBar(containerColor = Pal.card) {
-                    Tab.entries.forEach { t ->
-                        NavigationBarItem(
-                            selected = nav.tab == t, onClick = { nav.tab = t },
-                            icon = { Icon(when (t) { Tab.HOME -> Icons.Default.Home; Tab.SEARCH -> Icons.Default.Search; Tab.LIBRARY -> Icons.Default.VideoLibrary; Tab.MORE -> Icons.Default.Menu }, null) },
-                            label = { Text(t.label) },
-                            colors = NavigationBarItemDefaults.colors(selectedIconColor = Pal.pink, selectedTextColor = Pal.pink, indicatorColor = Pal.pink.copy(alpha = 0.15f)),
-                        )
-                    }
+                TabBar(nav)
+            }
+        }
+    }
+}
+
+/** iOS-style tab bar: icon over a small label, accent for the selected tab. */
+@Composable
+private fun TabBar(nav: Nav) {
+    Column(Modifier.fillMaxWidth().background(Color(0xF2121214)).navigationBarsPadding()) {
+        HorizontalDivider(thickness = 0.5.dp, color = Color.White.copy(alpha = 0.12f))
+        Row(Modifier.fillMaxWidth().height(54.dp)) {
+            Tab.entries.forEach { t ->
+                val sel = nav.tab == t
+                val c = if (sel) Pal.pink else Pal.muted
+                Column(Modifier.weight(1f).fillMaxSize().clickable(remember { MutableInteractionSource() }, null) { nav.tab = t }.padding(top = 6.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(when (t) { Tab.HOME -> Icons.Default.Subscriptions; Tab.CATALOG -> Icons.Default.GridView
+                        Tab.LIBRARY -> Icons.Default.VideoLibrary; Tab.SEARCH -> Icons.Default.Search }, t.label, Modifier.size(25.dp), tint = c)
+                    Text(t.label, fontSize = 10.sp, fontWeight = FontWeight.Medium, color = c)
                 }
             }
         }

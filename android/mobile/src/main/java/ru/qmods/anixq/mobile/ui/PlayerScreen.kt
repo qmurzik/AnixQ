@@ -223,7 +223,7 @@ fun PlayerScreen(nav: Nav, route: PlayerRoute) {
                 if (m.native) Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(130.dp)
                     .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.75f)))))
                 Column(Modifier.fillMaxSize().safeDrawingPadding()) {
-                    TopBar(m, onBack = { nav.pop() }, onEpisodes = { episodesOpen = true; touched() }, onTv = {
+                    PlayerTopBar(m, onBack = { nav.pop() }, onEpisodes = { episodesOpen = true; touched() }, onTv = {
                         m.sendToTv()
                         Toast.makeText(context, "Продолжаем на телевизоре с ${fmt(m.pos)}", Toast.LENGTH_SHORT).show()
                         nav.pop(); nav.push(RemoteRoute)
@@ -278,7 +278,7 @@ fun PlayerScreen(nav: Nav, route: PlayerRoute) {
 }
 
 @Composable
-private fun TopBar(m: PlayerModel, onBack: () -> Unit, onEpisodes: () -> Unit, onTv: () -> Unit, touched: () -> Unit) {
+private fun PlayerTopBar(m: PlayerModel, onBack: () -> Unit, onEpisodes: () -> Unit, onTv: () -> Unit, touched: () -> Unit) {
     var menu by remember { mutableStateOf<String?>(null) }
     Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
         IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Назад", tint = Color.White) }

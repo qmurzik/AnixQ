@@ -2,6 +2,7 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
+    id("app.cash.paparazzi")
 }
 
 val buildNumber = (System.getenv("BUILD_NUMBER") ?: "1").toInt()
@@ -48,6 +49,7 @@ android {
     kotlinOptions { jvmTarget = "17" }
     buildFeatures { compose = true; buildConfig = true }
     lint { abortOnError = false; checkReleaseBuilds = false }
+    testOptions { unitTests.isIncludeAndroidResources = true }
 }
 
 dependencies {
@@ -63,4 +65,6 @@ dependencies {
     implementation("io.coil-kt:coil-compose:2.7.0")
     implementation("com.google.android.gms:play-services-code-scanner:16.1.0")
     implementation("androidx.profileinstaller:profileinstaller:1.4.1")
+    implementation("androidx.browser:browser:1.8.0")
+    testImplementation("junit:junit:4.13.2")
 }

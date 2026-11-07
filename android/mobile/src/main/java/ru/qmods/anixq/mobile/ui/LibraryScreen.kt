@@ -1,65 +1,146 @@
 package ru.qmods.anixq.mobile.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.material3.PrimaryScrollableTabRow
-import androidx.compose.material3.Tab
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.BarChart
+import androidx.compose.material.icons.filled.CloudSync
+import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.PersonAdd
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.SettingsRemote
+import androidx.compose.material.icons.filled.VideoLibrary
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import ru.qmods.anixq.tv.data.Bookmark
+import ru.qmods.anixq.tv.data.Remote
 import ru.qmods.anixq.tv.data.Store
+import ru.qmods.anixq.tv.data.Sync
 
-/** "Моё": history and the lists — the same ones the TV and iPhone show. */
-@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+/** "Медиатека": tiles, bookmark folders, history — like the iPhone's. */
 @Composable
 fun LibraryScreen(nav: Nav) {
     val version by Store.version.collectAsState()
-    val tabs = listOf<Bookmark?>(null) + Bookmark.entries
-    var tab by rememberSaveable { mutableIntStateOf(0) }
+    val online by Remote.online.collectAsState()
+    val syncStatus by Sync.status.collectAsState()
+    val history = remember(version) { Store.history.sortedByDescending { it.at }.take(30) }
     val (eps, hours, titles) = remember(version) { Store.stats() }
-    Column(Modifier.fillMaxSize()) {
-        Row(Modifier.statusBarsPadding().padding(horizontal = 16.dp, vertical = 8.dp)) {
-            Column {
-                Text("Моё", fontSize = 28.sp, fontWeight = FontWeight.Black)
-                Text("$eps серий · $hours ч · $titles тайтлов", color = Pal.muted, fontSize = 13.sp)
+    Column(Modifier.fillMaxSize().statusBarsPadding().verticalScroll(rememberScrollState()).padding(bottom = 28.dp)) {
+        LargeTitle("Медиатека") {
+            IconButton(onClick = { nav.push(SettingsRoute) }) { Icon(Icons.Default.Settings, "Настройки", tint = Pal.pink) }
+        }
+        if (Store.libToken == null) Group {
+            GroupRow("Войти в AnimeLib", "Серии 18+ и отметки на сайте", Icons.Default.PersonAdd, Pal.pink, divider = false, chevron = true) { nav.push(LibLoginRoute) }
+        }
+        Row(Modifier.padding(horizontal = 16.dp).padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Tile("Синхронизация", if (Sync.isOn) syncStatus else "Телефон ↔ ТВ ↔ iPhone", Icons.Default.CloudSync, listOf(Pal.blue, Pal.teal), Modifier.weight(1f)) {
+                nav.push(if (Sync.isOn) SettingsRoute else SyncRoute)
+            }
+            Tile("Пульт ТВ", when { Store.remoteChannel.isEmpty() -> "Нужна синхронизация"; online -> "На связи"; else -> "Подключаемся…" },
+                Icons.Default.SettingsRemote, listOf(Pal.pink, Pal.purple), Modifier.weight(1f)) { nav.push(if (Store.remoteChannel.isEmpty()) SyncRoute else RemoteRoute) }
+        }
+        Row(Modifier.padding(horizontal = 16.dp).padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Tile("Статистика", "$eps ${plural(eps, "серия", "серии", "серий")} · $hours ч", Icons.Default.BarChart, listOf(Pal.orange, Pal.gold), Modifier.weight(1f)) {}
+            Tile("История", "$titles ${plural(titles, "тайтл", "тайтла", "тайтлов")}", Icons.Default.History, listOf(Pal.green, Pal.teal), Modifier.weight(1f)) { nav.push(HistoryRoute) }
+        }
+        Group("Закладки") {
+            Bookmark.entries.forEachIndexed { i, b ->
+                val n = remember(version) { Store.titles(b).size }
+                GroupRow(b.title, icon = b.icon, iconColor = b.color, value = "$n", chevron = true, divider = i < Bookmark.entries.lastIndex) { nav.push(FolderRoute(b)) }
             }
         }
-        PrimaryScrollableTabRow(selectedTabIndex = tab, edgePadding = 16.dp, containerColor = Pal.bg) {
-            tabs.forEachIndexed { i, b -> Tab(tab == i, { tab = i }, text = { Text(b?.title ?: "История") }) }
-        }
-        val status = tabs[tab]
-        val h = remember(version) { Store.history.sortedByDescending { it.at } }
-        val list = remember(version, status) { status?.let { Store.titles(it) } ?: emptyList() }
-        LazyVerticalGrid(GridCells.Adaptive(108.dp), Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            if (status == null) {
-                items(h, key = { it.title.id }) { e ->
-                    PosterCard(e.title, width = 200.dp, subtitle = "Серия ${e.ep}", progress = e.progress.toFloat()) { nav.open(e.title) }
+        Group("История") {
+            if (history.isEmpty()) Text("Здесь появятся тайтлы, которые вы начнёте смотреть — на телефоне, ТВ или iPhone",
+                color = Pal.muted, fontSize = 14.sp, modifier = Modifier.padding(16.dp))
+            history.forEachIndexed { i, e ->
+                Column {
+                    Row(Modifier.fillMaxWidth().pressable { nav.open(e.title) }.padding(horizontal = 14.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
+                        PosterImage(e.title.thumb, Modifier.width(46.dp), 6.dp)
+                        Column(Modifier.weight(1f).padding(start = 12.dp)) {
+                            Text(e.title.title, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text("Серия ${e.ep}" + (if (e.teamName.isNotBlank()) " · ${e.teamName}" else ""), fontSize = 12.sp, color = Pal.muted, maxLines = 1)
+                            ProgressLine(e.progress.toFloat(), Modifier.padding(top = 7.dp), 3.dp)
+                        }
+                    }
+                    if (i < history.lastIndex) androidx.compose.material3.HorizontalDivider(Modifier.padding(start = 72.dp), thickness = 0.5.dp, color = Color.White.copy(alpha = 0.1f))
                 }
-                if (h.isEmpty()) item(span = { GridItemSpan(maxLineSpan) }) { Centered { Text("Здесь появится всё, что вы смотрите — на телефоне, телевизоре или iPhone.", color = Pal.muted) } }
-            } else {
-                items(list, key = { it.id }) { t -> PosterCard(t, width = 200.dp) { nav.open(t) } }
-                if (list.isEmpty()) item(span = { GridItemSpan(maxLineSpan) }) { Centered { Text("Список пуст", color = Pal.muted) } }
             }
+        }
+    }
+}
+
+@Composable
+private fun Tile(title: String, subtitle: String, icon: ImageVector, colors: List<Color>, modifier: Modifier, onClick: () -> Unit) {
+    Column(modifier.clip(RoundedCornerShape(18.dp)).background(Pal.card)
+        .background(Brush.linearGradient(listOf(colors[0].copy(alpha = 0.16f), colors.last().copy(alpha = 0.05f))))
+        .pressable(onClick = onClick).padding(14.dp)) {
+        Box(Modifier.size(38.dp).clip(RoundedCornerShape(11.dp)).background(Brush.linearGradient(colors)), contentAlignment = Alignment.Center) {
+            Icon(icon, null, Modifier.size(21.dp), tint = Color.White)
+        }
+        Spacer(Modifier.height(10.dp))
+        Text(title, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+        Text(subtitle, fontSize = 12.sp, color = Pal.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+@Composable
+fun FolderScreen(nav: Nav, status: Bookmark) {
+    val version by Store.version.collectAsState()
+    val list = remember(version, status) { Store.titles(status) }
+    Column(Modifier.fillMaxSize().statusBarsPadding()) {
+        TopBar(status.title, { nav.pop() })
+        LazyVerticalGrid(GridCells.Adaptive(105.dp), Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
+            items(list, key = { it.id }) { t -> PosterCard(t) { nav.open(t) } }
+            if (list.isEmpty()) item(span = { GridItemSpan(maxLineSpan) }) { EmptyState(status.icon, "Пусто", "Добавляйте тайтлы кнопкой «+» на их странице") }
+        }
+    }
+}
+
+@Composable
+fun HistoryScreen(nav: Nav) {
+    val version by Store.version.collectAsState()
+    val list = remember(version) { Store.history.sortedByDescending { it.at } }
+    Column(Modifier.fillMaxSize().statusBarsPadding()) {
+        TopBar("История", { nav.pop() })
+        LazyVerticalGrid(GridCells.Adaptive(105.dp), Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
+            items(list, key = { it.title.id }) { e -> PosterCard(e.title, subtitle = "Серия ${e.ep}", progress = e.progress.toFloat()) { nav.open(e.title) } }
+            if (list.isEmpty()) item(span = { GridItemSpan(maxLineSpan) }) { EmptyState(Icons.Default.VideoLibrary, "Пока пусто") }
         }
     }
 }

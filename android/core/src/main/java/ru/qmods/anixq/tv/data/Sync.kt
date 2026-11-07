@@ -100,18 +100,32 @@ object Sync {
 
     // MARK: Sign-in on the TV (GitHub device flow)
 
+    private val wake = kotlinx.coroutines.channels.Channel<Unit>(kotlinx.coroutines.channels.Channel.CONFLATED)
+
+    /** The app is back on screen: check the GitHub sign-in right away instead of waiting. */
+    fun wakeLogin() { if (deviceLogin.value != null) wake.trySend(Unit) }
+
+    private var loginJob: Job? = null
+
     fun signInOnTv() {
-        scope.launch {
+        if (loginJob?.isActive == true) return
+        loginJob = scope.launch {
             try {
+                status.value = "Получаем код…"
                 val code = post("https://github.com/login/device/code", JSONObject().put("client_id", CLIENT_ID).put("scope", "gist"))
                 val device = code.str("device_code") ?: return@launch
                 deviceLogin.value = (code.str("user_code") ?: "") to (code.str("verification_uri") ?: "https://github.com/login/device")
                 var interval = code.int("interval") ?: 5
                 val deadline = System.currentTimeMillis() + (code.int("expires_in") ?: 900) * 1000L
                 while (System.currentTimeMillis() < deadline) {
-                    delay(interval * 1000L)
-                    val r = post("https://github.com/login/oauth/access_token", JSONObject().put("client_id", CLIENT_ID)
-                        .put("device_code", device).put("grant_type", "urn:ietf:params:oauth:grant-type:device_code"))
+                    // Wake early when the app comes back from the browser (see wakeLogin).
+                    kotlinx.coroutines.withTimeoutOrNull(interval * 1000L) { wake.receive() }
+                    delay(1_000)
+                    // A phone in the background may have no network for a moment: just try again.
+                    val r = try {
+                        post("https://github.com/login/oauth/access_token", JSONObject().put("client_id", CLIENT_ID)
+                            .put("device_code", device).put("grant_type", "urn:ietf:params:oauth:grant-type:device_code"))
+                    } catch (e: Exception) { Log.d("AnixQ", "github poll: ${e.message}"); continue }
                     r.str("access_token")?.let { token ->
                         finishLogin(token, null)
                         deviceLogin.value = null
@@ -272,6 +286,8 @@ class Pairing(
     private val onError: (String) -> Unit,
     /** Login and password typed on a phone/PC (site page) for the TV to sign in with. */
     private val onCredentials: ((String, String) -> Unit)? = null,
+    /** A phone asks for this device's logins ("want"): show who, call approve(true/false). */
+    private val onRequest: ((from: String, approve: (Boolean) -> Unit) -> Unit)? = null,
 ) {
     private val channel: String
     private val key = ByteArray(32).also { SecureRandom().nextBytes(it) }
@@ -341,10 +357,11 @@ class Pairing(
                 CoroutineScope(Dispatchers.Main).launch { onCredentials.invoke(l, p) }
                 return
             }
-            finished = true
+            val want = json.optBoolean("want") && onRequest != null
             // Clear the retained message from the relay.
             ws?.send(Mqtt.publish(topic, ByteArray(0), retain = true).toByteString())
-            ws?.close(1000, null)
+            if (!want) { finished = true; ws?.close(1000, null) }
+            val from = json.str("from") ?: "телефона"
             CoroutineScope(Dispatchers.Main).launch {
                 json.optJSONObject("animelib")?.let { a ->
                     Store.setLib(a.str("token"), a.str("refresh"), a.str("username"), a.int("userId"))
@@ -354,14 +371,41 @@ class Pairing(
                 json.optJSONObject("github")?.let { g ->
                     g.str("token")?.let { Sync.finishLogin(it, g.str("gist")) }
                 }
-                onDone(json.str("from") ?: "телефона")
+                if (!want) { onDone(from); return@launch }
+                onRequest!!.invoke(from) { ok ->
+                    // Answer on <topic>/back, sealed with the same one-time key (only that phone has it).
+                    if (ok) ws?.send(Mqtt.publish("$topic/back", seal(credentials()).toByteArray(), retain = true).toByteString())
+                    finished = true
+                    CoroutineScope(Dispatchers.IO).launch { delay(2_000); ws?.close(1000, null) }
+                    if (ok) onDone(from) else onError("Отклонено")
+                }
             }
         } catch (e: Exception) {
             onError("Не удалось расшифровать: ${e.message}")
         }
     }
 
+    private fun seal(json: JSONObject): String {
+        val nonce = ByteArray(12).also { SecureRandom().nextBytes(it) }
+        val c = Cipher.getInstance("AES/GCM/NoPadding")
+        c.init(Cipher.ENCRYPT_MODE, SecretKeySpec(key, "AES"), GCMParameterSpec(128, nonce))
+        return Base64.encodeToString(nonce + c.doFinal(json.toString().toByteArray()), Base64.NO_WRAP)
+    }
+
     fun stop() { finished = true; pinger?.cancel(); ws?.close(1000, null) }
+
+    companion object {
+        /** This device's logins in the pairing format (what the iPhone sends). */
+        fun credentials(from: String = Store.deviceName): JSONObject = JSONObject().apply {
+            put("from", from)
+            Store.libToken?.let { t ->
+                put("animelib", JSONObject().put("token", t).put("refresh", Store.libRefresh ?: JSONObject.NULL)
+                    .put("username", Store.libUser ?: JSONObject.NULL).put("userId", Store.libUserId ?: JSONObject.NULL))
+            }
+            Store.shikiJson?.let { put("shiki", it) }
+            Store.githubToken?.let { t -> put("github", JSONObject().put("token", t).put("gist", Store.gistId ?: JSONObject.NULL)) }
+        }
+    }
 }
 
 /** Minimal MQTT 3.1.1 packets (QoS 0), as in the iOS app. */

@@ -69,12 +69,12 @@ fun SettingsScreen(nav: Nav) {
                 Text(
                     if (Store.githubToken != null) "Подключено${Store.githubLogin?.let { " · GitHub $it" } ?: ""} · $status" +
                         (if (last > 0) " · ${SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date(last))}" else "")
-                    else "Нужна, только если смотрите ещё и на iPhone (или на втором ТВ): прогресс, история и закладки в вашем приватном GitHub Gist.",
+                    else "Нужна, если смотрите ещё на телефоне (iPhone или Android) или втором ТВ: прогресс, история и закладки в вашем приватном GitHub Gist.",
                     fontSize = 18.sp, color = C.muted,
                 )
                 Spacer(Modifier.height(12.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    PillButton("Связать с iPhone (AnixQ)", Icons.Rounded.PhoneIphone, primary = Store.githubToken == null && Store.libToken != null,
+                    PillButton("Связать с телефоном (AnixQ)", Icons.Rounded.PhoneIphone, primary = Store.githubToken == null && Store.libToken != null,
                         modifier = Modifier.memo("settings", "pair")) { pairing = true }
                     if (Store.githubToken == null) PillButton("Войти через GitHub на ТВ") { Sync.signInOnTv(); dialog = "device" }
                     else {
@@ -119,8 +119,8 @@ fun SettingsScreen(nav: Nav) {
             Section("Пульт с телефона") {
                 val online by ru.qmods.anixq.tv.data.Remote.online.collectAsState()
                 Text(when {
-                    Store.githubToken == null -> "Включите синхронизацию выше — и iPhone сможет включать серии на этом ТВ и управлять ими из любого места."
-                    online -> "Готово: на iPhone откройте серию → «Смотреть на ТВ», или в плеере «⋯» → «Продолжить на ТВ»."
+                    Store.githubToken == null -> "Включите синхронизацию выше — и телефон сможет включать серии на этом ТВ и управлять ими из любого места."
+                    online -> "Готово: на телефоне откройте серию → «На ТВ» — она включится здесь."
                     else -> "Подключаемся… (нужна синхронизация и интернет)"
                 }, fontSize = 18.sp, color = if (online) Color(0xFF5BE08F) else C.muted)
                 val ctx = androidx.compose.ui.platform.LocalContext.current
@@ -199,14 +199,24 @@ fun SettingsScreen(nav: Nav) {
 private fun PairDialog(onClose: () -> Unit) {
     var state by remember { mutableStateOf<String?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
-    val pairing = remember { Pairing(onDone = { state = it }, onError = { error = it }) }
+    var request by remember { mutableStateOf<Pair<String, (Boolean) -> Unit>?>(null) }
+    val pairing = remember { Pairing(onDone = { state = it }, onError = { error = it }, onRequest = { from, approve -> request = from to approve }) }
     DisposableEffect(pairing) { pairing.start(); onDispose { pairing.stop() } }
     Dialog(onDismissRequest = onClose) {
         Column(Modifier.background(C.card, RoundedCornerShape(22.dp)).padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("Вход с iPhone", fontSize = 28.sp, fontWeight = FontWeight.Bold)
+            Text("Подключить телефон", fontSize = 28.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(18.dp))
-            if (state != null) {
-                Text("Готово — данные получены с $state", fontSize = 21.sp)
+            val req = request
+            if (req != null && state == null) {
+                Text("${req.first} просит вход с этого ТВ", fontSize = 21.sp)
+                Text("Телефон получит синхронизацию (GitHub), AnimeLib и Shikimori этого телевизора", fontSize = 17.sp, color = C.muted)
+                Spacer(Modifier.height(18.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                    PillButton("Разрешить", primary = true, modifier = Modifier.memo("pairreq", "ok", initial = true)) { request = null; req.second(true) }
+                    PillButton("Отклонить", modifier = Modifier.memo("pairreq", "no")) { request = null; req.second(false); onClose() }
+                }
+            } else if (state != null) {
+                Text("Готово — связь с $state установлена", fontSize = 21.sp)
                 Text("Синхронизация включится через пару секунд", fontSize = 17.sp, color = C.muted)
                 Spacer(Modifier.height(18.dp))
                 PillButton("Отлично", primary = true, modifier = Modifier.memo("pairdone", "ok", initial = true)) { onClose() }
@@ -214,9 +224,9 @@ private fun PairDialog(onClose: () -> Unit) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(28.dp)) {
                     QrCode(pairing.qrText, Modifier.size(240.dp))
                     Column(Modifier.width(320.dp)) {
-                        Step("1", "Откройте камеру на iPhone и наведите на код")
+                        Step("1", "Наведите камеру телефона на код (iPhone или Android с AnixQ)")
                         Step("2", "Нажмите «Открыть в AnixQ»")
-                        Step("3", "Подтвердите, что передать: синхронизацию, AnimeLib, Shikimori")
+                        Step("3", "Телефон передаст свои входы или попросит вход с этого ТВ")
                         Spacer(Modifier.height(8.dp))
                         Text("Данные шифруются ключом из этого QR — никто, кроме ТВ, их не прочитает.", fontSize = 16.sp, color = C.muted)
                         error?.let { Text(it, fontSize = 17.sp, color = C.pink, modifier = Modifier.padding(top = 8.dp)) }

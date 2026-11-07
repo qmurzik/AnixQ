@@ -3,9 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>AnixQ — смотреть аниме на iPhone без рекламы | приложение для iOS</title>
-<meta name="description" content="AnixQ — бесплатное приложение для просмотра аниме на iPhone и iPad: каталог AnimeLib, плеер без рекламы, загрузка серий офлайн, расписание и синхронизация с Shikimori, поиск аниме по скриншоту.">
-<meta name="keywords" content="аниме на iphone, смотреть аниме ios, приложение для аниме, anixq, animelib ios, shikimori, аниме без рекламы, аниме офлайн, найти аниме по скриншоту, ipa">
+<title>AnixQ — смотреть аниме без рекламы на iPhone, Android и телевизоре</title>
+<meta name="description" content="AnixQ — бесплатное приложение для просмотра аниме на iPhone, iPad, Android-телефоне и Android TV: каталог AnimeLib, плеер без рекламы, продолжение с того же места на любом устройстве, загрузка серий офлайн, Shikimori.">
+<meta name="keywords" content="аниме на iphone, аниме на android, аниме на телевизоре, android tv аниме, смотреть аниме ios, приложение для аниме, anixq, animelib ios, shikimori, аниме без рекламы, аниме офлайн, найти аниме по скриншоту, ipa">
 <meta name="robots" content="index, follow, max-image-preview:large">
 <meta name="author" content="qmurzik">
 <meta name="theme-color" content="#0b0912">
@@ -18,14 +18,14 @@
 <meta property="og:type" content="website">
 <meta property="og:locale" content="ru_RU">
 <meta property="og:site_name" content="AnixQ">
-<meta property="og:title" content="AnixQ — аниме на iPhone без рекламы">
-<meta property="og:description" content="Каталог AnimeLib, плеер без рекламы, загрузки офлайн, расписание и Shikimori. Бесплатно для iOS 16.1+.">
+<meta property="og:title" content="AnixQ — аниме без рекламы на iPhone, Android и ТВ">
+<meta property="og:description" content="Каталог AnimeLib, плеер без рекламы, общий прогресс на телефоне и телевизоре, загрузки офлайн и Shikimori. Бесплатно.">
 <meta property="og:url" content="https://qmurzik.github.io/AnixQ/">
 <meta property="og:image" content="https://qmurzik.github.io/AnixQ/og.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="AnixQ — аниме на iPhone без рекламы">
+<meta name="twitter:title" content="AnixQ — аниме без рекламы на iPhone, Android и ТВ">
 <meta name="twitter:description" content="Каталог AnimeLib, плеер без рекламы, загрузки офлайн, расписание и Shikimori.">
 <meta name="twitter:image" content="https://qmurzik.github.io/AnixQ/og.png">
 
@@ -34,9 +34,9 @@
   "@context": "https://schema.org",
   "@type": "SoftwareApplication",
   "name": "AnixQ",
-  "operatingSystem": "iOS 16.1+",
+  "operatingSystem": "iOS 16.1+, Android 6.0+, Android TV",
   "applicationCategory": "EntertainmentApplication",
-  "description": "Приложение для просмотра аниме на iPhone и iPad: каталог AnimeLib, плеер без рекламы, загрузка серий офлайн, расписание и синхронизация с Shikimori, поиск аниме по скриншоту.",
+  "description": "Приложение для просмотра аниме на iPhone, iPad, Android и Android TV: каталог AnimeLib, плеер без рекламы, загрузка серий офлайн, расписание и синхронизация с Shikimori, поиск аниме по скриншоту.",
   "url": "https://qmurzik.github.io/AnixQ/",
   "image": "https://qmurzik.github.io/AnixQ/icon-512.png",
   "downloadUrl": "https://github.com/qmurzik/AnixQ/releases/latest",
@@ -53,6 +53,8 @@
       "acceptedAnswer": { "@type": "Answer", "text": "Да, AnixQ полностью бесплатный и без рекламы в интерфейсе." } },
     { "@type": "Question", "name": "Как установить AnixQ на iPhone?",
       "acceptedAnswer": { "@type": "Answer", "text": "Добавьте источник AnixQ в GBox и установите приложение оттуда, либо скачайте IPA из релизов GitHub и установите через AltStore, SideStore, Sideloadly или TrollStore." } },
+    { "@type": "Question", "name": "Как установить AnixQ на Android или телевизор?",
+      "acceptedAnswer": { "@type": "Answer", "text": "На Android-телефоне скачайте AnixQ.apk с сайта и откройте файл. На Android TV установите Downloader из Google Play и введите адрес qmurzik.github.io/AnixQ/tv.apk. Дальше приложения обновляются сами." } },
     { "@type": "Question", "name": "Какая нужна версия iOS?",
       "acceptedAnswer": { "@type": "Answer", "text": "iOS или iPadOS 16.1 и новее." } },
     { "@type": "Question", "name": "Нужен ли аккаунт?",
@@ -241,6 +243,10 @@
   .copy code { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; color: #e2dcff; }
   .copy button { flex: none; padding: 10px 14px; border-radius: 10px; border: 0; background: var(--text); color: #111; font-weight: 750; font-size: 14px; cursor: pointer; }
   .gbox-btn { margin-top: 12px; padding: 12px 20px; font-size: 16px; }
+  .plat { display: inline-flex; gap: 4px; padding: 4px; margin-top: 22px; border-radius: 999px; background: var(--card); border: 1px solid var(--stroke); max-width: 100%; overflow-x: auto; }
+  .plat button { border: 0; background: none; color: var(--text); font: inherit; font-weight: 650; font-size: 15px; padding: 10px 16px; border-radius: 999px; cursor: pointer; white-space: nowrap; }
+  .plat button.on { background: var(--text); color: #111; }
+  .install[hidden] { display: none; }
   .tools { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
   .tools span { padding: 6px 12px; border-radius: 999px; border: 1px solid var(--stroke); font-size: 14px; color: var(--muted); }
 
@@ -388,8 +394,8 @@
     <div class="wrap">
       <div>
         <a class="badge" href="#features"><b>Новое</b> Поиск аниме по скриншоту →</a>
-        <h1>Аниме на&nbsp;iPhone.<br><span class="g">Без&nbsp;рекламы.</span></h1>
-        <p class="lead">AnixQ — бесплатное приложение для просмотра аниме. Огромный каталог AnimeLib, удобный плеер, загрузки офлайн и синхронизация с&nbsp;Shikimori.</p>
+        <h1>Аниме на&nbsp;телефоне и&nbsp;ТВ.<br><span class="g">Без&nbsp;рекламы.</span></h1>
+        <p class="lead">AnixQ — бесплатное приложение для iPhone, Android и&nbsp;Android&nbsp;TV. Огромный каталог AnimeLib, удобный плеер, а&nbsp;начатую на&nbsp;телевизоре серию можно досмотреть на&nbsp;телефоне с&nbsp;той&nbsp;же секунды.</p>
         <div class="cta">
           <a class="btn primary" href="#install">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 20h14"/></svg>
@@ -398,8 +404,9 @@
         </div>
         <div class="trust">
           <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 5 5 9-10"/></svg>Бесплатно</span>
-          <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 5 5 9-10"/></svg>iOS 16.1+</span>
           <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 5 5 9-10"/></svg>iPhone и iPad</span>
+          <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 5 5 9-10"/></svg>Android</span>
+          <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 5 5 9-10"/></svg>Android TV</span>
         </div>
       </div>
 
@@ -438,7 +445,7 @@
       <div class="rv">
         <div class="eyebrow">Возможности</div>
         <h2>Всё, чтобы просто<br>смотреть аниме</h2>
-        <p class="sub">Нативное приложение на SwiftUI — быстрое и привычное, как встроенные приложения iOS.</p>
+        <p class="sub">Нативные приложения для iPhone, Android и телевизора — быстрые и привычные, с общей библиотекой.</p>
       </div>
 
       <div class="bento">
@@ -502,8 +509,8 @@
           <div class="body"><h3>Смотреть вместе</h3><p>SharePlay по FaceTime: пауза, перемотка и смена серии — у всех сразу.</p></div>
         </article>
         <article class="tile t-sm rv">
-          <div class="ico" style="background:rgba(63,215,255,.15)">☁︎</div>
-          <div class="body"><h3>iCloud</h3><p>История, позиции и настройки переезжают между iPhone и iPad.</p></div>
+          <div class="ico" style="background:rgba(63,215,255,.15)">📺</div>
+          <div class="body"><h3>Телефон ↔ ТВ</h3><p>Начали на телевизоре — досмотрели на телефоне с той же секунды. Кнопка «На ТВ» и пульт из любой точки.</p></div>
         </article>
         <article class="tile t-sm rv">
           <div class="ico" style="background:rgba(255,77,122,.16)">♥︎</div>
@@ -520,9 +527,14 @@
       <div class="rv">
         <div class="eyebrow">Установка</div>
         <h2>Пара минут — и готово</h2>
-        <p class="sub">AnixQ распространяется в виде IPA. Через GBox обновления будут приходить сами.</p>
+        <p class="sub">Выберите устройство. Ставить вручную нужно один раз — дальше обновления приходят сами.</p>
+        <div class="plat" role="tablist">
+          <button type="button" class="on" data-plat="ios">iPhone и iPad</button>
+          <button type="button" data-plat="android">Android</button>
+          <button type="button" data-plat="tv">Android TV</button>
+        </div>
       </div>
-      <div class="install">
+      <div class="install" data-for="ios">
         <div class="panel main rv">
           <h3>Через GBox</h3>
           <p class="muted">Рекомендуем — с автообновлениями</p>
@@ -544,6 +556,43 @@
           <p class="muted" style="margin:18px 0 0">Все версии — на странице <a href="https://github.com/qmurzik/AnixQ/releases">релизов</a>.</p>
         </div>
       </div>
+      <div class="install" data-for="android" hidden>
+        <div class="panel main">
+          <h3>Android-телефон</h3>
+          <p class="muted">Android 6.0 и новее</p>
+          <a class="btn primary" style="width:100%" href="android.apk" download="AnixQ.apk">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 20h14"/></svg>
+            Скачать AnixQ.apk</a>
+          <div class="step" style="margin-top:14px"><span class="num">1</span><div><strong>Откройте скачанный файл</strong><p>Если телефон спросит — разрешите браузеру устанавливать приложения.</p></div></div>
+          <div class="step"><span class="num">2</span><div><strong>Войдите в синхронизацию</strong><p>Медиатека → ⚙ → «Войти через GitHub» тем же аккаунтом, что на ТВ или iPhone. Или «Взять вход с телевизора» по QR.</p></div></div>
+          <div class="step"><span class="num">3</span><div><strong>Готово</strong><p>Новые версии приложение скачает само.</p></div></div>
+        </div>
+        <div class="panel">
+          <h3>Вместе с телевизором</h3>
+          <p class="muted">Одна библиотека на всех устройствах</p>
+          <div class="step"><span class="num">📺</span><div><strong>«На ТВ»</strong><p>Серия включается на телевизоре с того места, где вы остановились.</p></div></div>
+          <div class="step"><span class="num">📱</span><div><strong>«Здесь»</strong><p>Забирает серию с телевизора на телефон с той же секунды.</p></div></div>
+          <div class="step"><span class="num">🎛</span><div><strong>Пульт</strong><p>Пауза, перемотка, следующая серия — через интернет, из любой точки.</p></div></div>
+        </div>
+      </div>
+      <div class="install" data-for="tv" hidden>
+        <div class="panel main">
+          <h3>Через Downloader</h3>
+          <p class="muted">Самый простой способ, нужен только пульт</p>
+          <div class="step"><span class="num">1</span><div><strong>Установите Downloader</strong><p>В Google Play на телевизоре — оранжевая иконка, автор AFTVnews.</p></div></div>
+          <div class="step"><span class="num">2</span><div><strong>Введите адрес</strong><p>В строке Downloader наберите пультом:</p>
+            <div class="copy"><code id="tvsrc">qmurzik.github.io/AnixQ/tv.apk</code><button type="button" data-copy="tvsrc">Копировать</button></div></div></div>
+          <div class="step"><span class="num">3</span><div><strong>Установите</strong><p>Разрешите Downloader установку и нажмите «Установить». Обновления — в настройках приложения.</p></div></div>
+        </div>
+        <div class="panel">
+          <h3>Файлом APK</h3>
+          <p class="muted">Через флешку или «Send files to TV»</p>
+          <a class="btn primary" style="width:100%" href="tv.apk" download="AnixQ-TV.apk">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 20h14"/></svg>
+            Скачать AnixQ-TV.apk</a>
+          <p class="muted" style="margin:18px 0 0">Вход в AnimeLib и синхронизацию на ТВ — по QR-коду с телефона, без ввода паролей пультом. <a href="tv/">Подробнее</a>.</p>
+        </div>
+      </div>
     </div>
   </section>
 
@@ -556,6 +605,7 @@
       </div>
       <div class="rv">
         <details><summary>Это бесплатно?</summary><p>Да, AnixQ полностью бесплатный и без рекламы в интерфейсе.</p></details>
+        <details><summary>На каких устройствах работает?</summary><p>iPhone и iPad (iOS 16.1+), Android-телефоны (Android 6.0+) и телевизоры на Android TV / Google TV. Прогресс, закладки и озвучки общие для всех устройств.</p></details>
         <details><summary>Какая нужна версия iOS?</summary><p>iOS или iPadOS 16.1 и новее.</p></details>
         <details><summary>Нужен ли аккаунт?</summary><p>Нет, смотреть можно сразу. Вход в AnimeLib открывает плеер без рекламы и синхронизацию закладок, вход в Shikimori — отметки серий, статусы и оценки.</p></details>
         <details><summary>Можно ли смотреть без интернета?</summary><p>Да, серии можно скачать заранее, а новые серии из «Смотрю» — загружаться автоматически по Wi-Fi.</p></details>
@@ -581,7 +631,7 @@
       <div class="final rv">
         <img src="icon-512.png" alt="Иконка AnixQ" width="96" height="96">
         <h2>Пора что-нибудь посмотреть</h2>
-        <p class="sub" style="margin:0 auto 28px">Бесплатно, без рекламы, на iPhone и iPad.</p>
+        <p class="sub" style="margin:0 auto 28px">Бесплатно, без рекламы — на iPhone, Android и телевизоре.</p>
         <div class="cta"><a class="btn primary" href="#install">Установить AnixQ</a></div>
       </div>
     </div>
@@ -597,7 +647,7 @@
 
 <div class="dock" id="dock">
   <img src="apple-touch-icon.png" alt="" width="40" height="40">
-  <div><b>AnixQ</b><small>Бесплатно · iOS 16.1+</small></div>
+  <div><b>AnixQ</b><small>Бесплатно · iPhone, Android, ТВ</small></div>
   <a class="btn primary" href="#install">Установить</a>
 </div>
 
@@ -610,6 +660,16 @@
       else { var t = document.createElement('textarea'); t.value = text; document.body.appendChild(t); t.select(); document.execCommand('copy'); t.remove(); done(); }
     });
   });
+
+  // Install tabs: open the visitor's own platform first.
+  function showPlat(id) {
+    document.querySelectorAll('.plat button').forEach(function (b) { b.classList.toggle('on', b.dataset.plat === id); });
+    document.querySelectorAll('.install[data-for]').forEach(function (el) { el.hidden = el.dataset.for !== id; });
+  }
+  document.querySelectorAll('.plat button').forEach(function (b) { b.addEventListener('click', function () { showPlat(b.dataset.plat); }); });
+  var ua = navigator.userAgent;
+  if (/Android/.test(ua)) showPlat(/Mobile/.test(ua) ? 'android' : 'tv');
+  else if (/SMART-TV|SmartTV|AFT|BRAVIA|GoogleTV/i.test(ua)) showPlat('tv');
 
   var rv = document.querySelectorAll('.rv');
   if ('IntersectionObserver' in window) {

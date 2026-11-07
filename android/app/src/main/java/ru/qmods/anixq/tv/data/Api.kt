@@ -20,7 +20,10 @@ class ApiException(message: String) : Exception(message)
 
 /** AnimeLib (lib.social) API, the same calls the iOS app makes. */
 object Api {
-    private val hosts = listOf("https://api.cdnlibs.org", "https://api.lib.social")
+    /** All official API addresses; one that fails moves to the back (see [demote]). */
+    private val hostOrder = java.util.concurrent.CopyOnWriteArrayList(listOf(
+        "https://api.cdnlibs.org", "https://api.lib.social", "https://api.imglib.info", "https://hapi.hentaicdn.org"))
+    private fun demote(h: String) { if (hostOrder.remove(h)) hostOrder.add(h) }
     const val SITE = "https://anilib.me"
     private const val UA = "Mozilla/5.0 (Linux; Android 12; AndroidTV) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36"
     private val fallbackServers = listOf("https://video1.cdnlibs.org/.аs/", "https://video2.cdnlibs.org/", "https://video1.imglib.info/")
@@ -39,7 +42,7 @@ object Api {
         val key = path + query.joinToString("&") { "${it.first}=${it.second}" }
         if (method == "GET") synchronized(cache) { cache[key]?.let { if (System.currentTimeMillis() - it.first < 5 * 60_000) return@withContext it.second } }
         var last: Exception = ApiException("Нет связи с AnimeLib")
-        for (host in hosts) {
+        for (host in hostOrder.toList()) {
             try {
                 val url = (host + "/api" + path).toHttpUrl().newBuilder().apply {
                     query.forEach { addQueryParameter(it.first, it.second) }
@@ -59,6 +62,9 @@ object Api {
                         if (refresh()) return@withContext request(path, query, method, body, auth, true)
                         throw ApiException("Войдите в AnimeLib заново")
                     }
+                    // Server error or a protection page (HTML, e.g. DDoS-Guard geo-block): try the next address.
+                    val html = resp.header("Content-Type")?.contains("html") == true
+                    if (resp.code >= 500 || html) { demote(host); last = ApiException("AnimeLib ответил ${resp.code}"); return@use null }
                     if (resp.code !in 200..299) throw ApiException("AnimeLib ответил ${resp.code}")
                     val parsed: Any = when {
                         text.isBlank() -> JSONObject()
@@ -72,6 +78,7 @@ object Api {
                 throw e
             } catch (e: Exception) {
                 last = e
+                demote(host)
             }
         }
         throw last

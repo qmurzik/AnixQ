@@ -51,7 +51,9 @@ enum LibError: LocalizedError {
 
 /// Client for the AnimeLib (lib.social) API that anilib.me / animelib.org use themselves.
 enum LibAPI {
-    static let hosts = ["https://api.cdnlibs.org", "https://api.lib.social"]
+    /// All official API addresses (the site's own list); the fastest working one is used first.
+    /// api.imglib.info is geo-limited by DDoS-Guard (often the fastest from Russia), hapi.* is the same API.
+    static let hosts = ["https://api.cdnlibs.org", "https://api.lib.social", "https://api.imglib.info", "https://hapi.hentaicdn.org"]
     static let site = "https://anilib.me"
     static let userAgent = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1"
     private static let fallbackServers = ["https://video1.cdnlibs.org/.аs/", "https://video2.cdnlibs.org/",
@@ -95,6 +97,13 @@ enum LibAPI {
                         return try await request(path, query: query, auth: auth, method: method, body: body)
                     }
                     throw LibError.unauthorized
+                }
+                // A protection / block page (HTML instead of JSON) means "this address doesn't work here".
+                let ctype = (response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Content-Type") ?? ""
+                if !data.isEmpty, !ctype.contains("json"), status >= 400 || ctype.contains("html") {
+                    lastError = LibError.badStatus(status)
+                    HostOrder.demote(host)
+                    continue
                 }
                 if status == 204 || data.isEmpty { return JSON() }
                 guard (200..<300).contains(status) else {
@@ -545,8 +554,10 @@ enum HostOrder {
                         req.timeoutInterval = 6
                         req.setValue("5", forHTTPHeaderField: "Site-Id")
                         req.setValue(LibAPI.site + "/", forHTTPHeaderField: "Referer")
+                        // Only a real API answer counts (a geo-block page also answers fast).
                         guard let (_, resp) = try? await URLSession.shared.data(for: req),
-                              let code = (resp as? HTTPURLResponse)?.statusCode, code < 500 else { return nil }
+                              let http = resp as? HTTPURLResponse, (200..<400).contains(http.statusCode),
+                              (http.value(forHTTPHeaderField: "Content-Type") ?? "").contains("json") else { return nil }
                         return host
                     }
                 }

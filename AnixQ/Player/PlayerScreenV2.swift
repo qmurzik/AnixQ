@@ -39,6 +39,7 @@ struct PlayerScreenV2: View {
     @StateObject private var c: PlayerController
     @EnvironmentObject private var library: LibraryStore
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
     let background: URL?
 
     @State private var land = false
@@ -107,10 +108,23 @@ struct PlayerScreenV2: View {
             }
             .onAppear { land = isLand; insets = geo.safeAreaInsets }
             .onChange(of: isLand) { v in
+                guard scenePhase == .active else { return }
                 land = v
                 if !v, panel != nil { panel = nil }
             }
             .onChange(of: geo.safeAreaInsets) { insets = $0 }
+            .onChange(of: scenePhase) { phase in
+                // Swiping Home can cancel a drag without calling onEnded.
+                hideTask?.cancel()
+                resetTransientInteraction()
+                if phase == .active {
+                    land = isLand
+                    insets = geo.safeAreaInsets
+                    if !isLand { panel = nil }
+                    showControls = true
+                    scheduleHide()
+                }
+            }
         }
         // Landscape: the picture uses the whole screen, including the home-indicator strip and the
         // notch sides; only the controls keep clear of them (see `insets`).
@@ -130,7 +144,7 @@ struct PlayerScreenV2: View {
             if let pip, pip.isPictureInPictureActive { PiPKeeper.shared.keep(c, pip: pip) } else { c.stop() }
             OrientationController.set(.portrait)
         }
-        .onChange(of: c.isPlaying) { playing in if playing { scheduleHide() } }
+        .onChange(of: c.isPlaying) { playing in if playing && scenePhase == .active { scheduleHide() } }
         .modifier(SubtitleTranslation(c: c))
         .userActivity(HandoffSeek.activityType, isActive: c.isNative && c.duration > 0) { a in
             a.title = "\(c.title.title) — серия \(c.episode.number)"
@@ -287,6 +301,12 @@ struct PlayerScreenV2: View {
                 ripple = (left, UUID(), count)
             }
             .onTapGesture {
+                if dragMode != nil {
+                    resetTransientInteraction()
+                    showControls = true
+                    scheduleHide()
+                    return
+                }
                 if locked { showControls.toggle(); scheduleHide(); return }
                 if panel != nil { panel = nil; return }
                 showControls.toggle()
@@ -1060,11 +1080,25 @@ struct PlayerScreenV2: View {
         .opacity(0).allowsHitTesting(false).accessibilityHidden(true)
     }
 
+    private func resetTransientInteraction() {
+        if let previousRate = boosted {
+            c.rate = previousRate
+            boosted = nil
+        }
+        dragMode = nil
+        seekPreview = nil
+        dismissOffset = 0
+        hud = nil
+        ripple = nil
+        if c.isScrubbing { c.isScrubbing = false }
+    }
+
     private func scheduleHide() {
         hideTask?.cancel()
+        guard scenePhase == .active else { return }
         hideTask = Task {
             try? await Task.sleep(nanoseconds: 3_500_000_000)
-            guard !Task.isCancelled, panel == nil, !c.isScrubbing else { return }
+            guard !Task.isCancelled, scenePhase == .active, panel == nil, !c.isScrubbing else { return }
             if c.isPlaying || locked { showControls = false }
         }
     }

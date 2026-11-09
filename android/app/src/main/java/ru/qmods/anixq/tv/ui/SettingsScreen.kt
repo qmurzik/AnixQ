@@ -94,6 +94,7 @@ fun SettingsScreen(nav: Nav) {
                 Toggle("Звуки навигации пультом", Store.navSounds) { Store.navSounds = it }
                 Toggle("Видео-превью, когда задерживаешься на тайтле", Store.hoverPreview) { Store.hoverPreview = it }
                 Toggle("Заставка через 3 минуты без нажатий", Store.screensaver) { Store.screensaver = it }
+                if (Store.screensaver) Toggle("Заставка с видео: отрывки серий без звука", Store.screensaverVideo) { Store.screensaverVideo = it }
                 Spacer(Modifier.height(6.dp))
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text("Качество", fontSize = 20.sp, modifier = Modifier.width(260.dp))

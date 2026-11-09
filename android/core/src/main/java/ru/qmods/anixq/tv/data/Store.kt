@@ -154,6 +154,11 @@ object Store {
         get() = prefs.getBoolean("hoverPreview", true)
         set(v) { prefs.edit().putBoolean("hoverPreview", v).apply(); bump() }
 
+    /** The screensaver plays muted clips of episodes (otherwise a slideshow of covers). */
+    var screensaverVideo: Boolean
+        get() = prefs.getBoolean("screensaverVideo", true)
+        set(v) { prefs.edit().putBoolean("screensaverVideo", v).apply(); bump() }
+
     var screensaver: Boolean
         get() = prefs.getBoolean("screensaver", true)
         set(v) { prefs.edit().putBoolean("screensaver", v).apply(); bump() }

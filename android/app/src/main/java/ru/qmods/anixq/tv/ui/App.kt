@@ -1,5 +1,7 @@
 package ru.qmods.anixq.tv.ui
 
+import androidx.compose.ui.draw.alpha
+
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -158,10 +160,15 @@ fun App(nav: Nav) {
     BackHandler(enabled = top != null && top !is PlayerRoute && top != LoginRoute) { nav.pop() }
     var lastKey by remember { mutableStateOf(System.currentTimeMillis()) }
     var saver by remember { mutableStateOf(false) }
+    // While AnixQ is open with its screensaver on, the box's own screensaver must not start over it:
+    // keep the screen on — but let the TV sleep after 2 hours with no button pressed at all.
+    val view = androidx.compose.ui.platform.LocalView.current
     LaunchedEffect(top) {
         while (true) {
+            val idle = System.currentTimeMillis() - lastKey
+            view.keepScreenOn = top is PlayerRoute || (Store.screensaver && idle < 2 * 3600_000L)
+            if (nav.stack.lastOrNull() == null && Store.screensaver && idle > 180_000) saver = true
             delay(5_000)
-            if (nav.stack.lastOrNull() == null && Store.screensaver && System.currentTimeMillis() - lastKey > 180_000) saver = true
         }
     }
     Box(Modifier.fillMaxSize().background(C.bg).onPreviewKeyEvent { e ->
@@ -203,9 +210,82 @@ fun App(nav: Nav) {
     }
 }
 
-/** Slow slideshow of the catalogue with a big clock — nicer than the TV going grey. */
+/** Muted 30-second clips of what you watch and what's popular, with a clock; covers when video isn't possible. */
 @Composable
 internal fun Screensaver() {
+    if (!Store.screensaverVideo) { SlideshowSaver(); return }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val titles = remember {
+        val mine = Store.continueList.map { it.title } + Store.titles(ru.qmods.anixq.tv.data.Bookmark.WATCHING)
+        (mine.shuffled().take(8) + HomeData.rows.value.flatMap { it.second }.shuffled()).distinctBy { it.id }.take(30)
+    }
+    val exo = remember {
+        androidx.media3.exoplayer.ExoPlayer.Builder(context)
+            .setMediaSourceFactory(androidx.media3.exoplayer.source.DefaultMediaSourceFactory(
+                androidx.media3.datasource.okhttp.OkHttpDataSource.Factory(ru.qmods.anixq.tv.data.Api.http)
+                    .setDefaultRequestProperties(mapOf("Referer" to "${ru.qmods.anixq.tv.data.Api.SITE}/", "Origin" to ru.qmods.anixq.tv.data.Api.SITE))))
+            .setLoadControl(androidx.media3.exoplayer.DefaultLoadControl.Builder().setBufferDurationsMs(6_000, 20_000, 1_000, 2_000).build())
+            .build().apply { volume = 0f }
+    }
+    var shown by remember { mutableStateOf<ru.qmods.anixq.tv.data.Title?>(null) }
+    var video by remember { mutableStateOf(false) }
+    var now by remember { mutableStateOf(System.currentTimeMillis()) }
+    androidx.compose.runtime.DisposableEffect(exo) {
+        val l = object : androidx.media3.common.Player.Listener { override fun onRenderedFirstFrame() { video = true } }
+        exo.addListener(l)
+        onDispose { exo.removeListener(l); exo.release() }
+    }
+    LaunchedEffect(Unit) { while (true) { delay(15_000); now = System.currentTimeMillis() } }
+    LaunchedEffect(titles) {
+        var i = 0
+        var misses = 0
+        while (titles.isNotEmpty()) {
+            val t = titles[i % titles.size]; i++
+            val clip = PreviewClips.clip(t)
+            if (clip == null) {
+                // No AnimeLib video for this one: show its cover for a while instead.
+                video = false; exo.stop(); shown = t; misses++
+                delay(if (misses > 3) 9_000 else 1_500); continue
+            }
+            misses = 0
+            video = false
+            shown = t
+            // Somewhere into the episode, not always the same scene.
+            val start = clip.second + (0..240).random()
+            exo.setMediaItem(androidx.media3.common.MediaItem.fromUri(clip.first), (start * 1000).toLong())
+            exo.prepare(); exo.playWhenReady = true
+            delay(30_000)
+        }
+    }
+    val a by androidx.compose.animation.core.animateFloatAsState(if (video) 1f else 0f, androidx.compose.animation.core.tween(1200), label = "saverVideo")
+    Box(Modifier.fillMaxSize().background(Color.Black)) {
+        androidx.compose.animation.Crossfade(shown, animationSpec = androidx.compose.animation.core.tween(1200), label = "saverArt") { cur ->
+            if (cur != null) Box(Modifier.fillMaxSize()) {
+                Ambient(cur.thumb, Modifier.fillMaxSize(), alpha = 0.5f)
+                Cover(cur.poster, Modifier.align(Alignment.CenterEnd).padding(end = 110.dp).height(440.dp).aspectRatio(2f / 3f).clip(RoundedCornerShape(16.dp)))
+            }
+        }
+        androidx.compose.ui.viewinterop.AndroidView(factory = { ctx -> android.view.TextureView(ctx).also { exo.setVideoTextureView(it) } },
+            modifier = Modifier.fillMaxSize().alpha(a))
+        Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(0f to Color.Black.copy(alpha = 0.75f), 0.55f to Color.Transparent)))
+        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.55f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.7f))))
+        Column(Modifier.align(Alignment.BottomStart).padding(start = 72.dp, bottom = 70.dp).width(620.dp)) {
+            Text(java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(java.util.Date(now)),
+                fontSize = 84.sp, fontWeight = FontWeight.Light, color = Color.White)
+            Text(java.text.SimpleDateFormat("EEEE, d MMMM", java.util.Locale("ru")).format(java.util.Date(now)),
+                fontSize = 20.sp, color = Color.White.copy(alpha = 0.75f))
+            shown?.let { cur ->
+                Spacer(Modifier.height(28.dp))
+                Text(cur.title, fontSize = 26.sp, fontWeight = FontWeight.SemiBold, color = Color.White, maxLines = 2)
+                Text(cur.meta, fontSize = 16.sp, color = Color.White.copy(alpha = 0.7f))
+            }
+        }
+    }
+}
+
+/** Slow slideshow of the catalogue with a big clock — nicer than the TV going grey. */
+@Composable
+private fun SlideshowSaver() {
     val titles = remember { HomeData.rows.value.flatMap { it.second }.distinctBy { it.id }.shuffled().take(30) }
     var i by remember { mutableStateOf(0) }
     var now by remember { mutableStateOf(System.currentTimeMillis()) }

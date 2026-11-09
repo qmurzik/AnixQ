@@ -142,7 +142,7 @@ object Store {
         set(v) { prefs.edit().putInt("upscale", v).apply() }
 
     var hoverPreview: Boolean
-        get() = prefs.getBoolean("hoverPreview", !weakDevice)
+        get() = prefs.getBoolean("hoverPreview", true)
         set(v) { prefs.edit().putBoolean("hoverPreview", v).apply(); bump() }
 
     var screensaver: Boolean

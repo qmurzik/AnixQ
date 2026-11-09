@@ -36,8 +36,9 @@ object PreviewClips {
             val mine = Store.lastEntry(t.id)?.let { e -> eps.firstOrNull { it.id == e.episodeId } }
             val ep = mine ?: eps.firstOrNull() ?: return@runCatching null
             val p = Api.players(ep.id).firstOrNull { it.isNative } ?: return@runCatching null
-            // Small quality: it's a muted background, decode must stay cheap on TV boxes.
-            val key = p.hrefs.keys.sortedBy { it.removeSuffix("p").toIntOrNull() ?: 9999 }.firstOrNull { (it.removeSuffix("p").toIntOrNull() ?: 0) >= 480 }
+            // Small quality: it's a muted background, decode must stay cheap on TV boxes (weak ones: the lowest).
+            val sorted = p.hrefs.keys.sortedBy { it.removeSuffix("p").toIntOrNull() ?: 9999 }
+            val key = (if (Store.weakDevice) sorted.firstOrNull() else sorted.firstOrNull { (it.removeSuffix("p").toIntOrNull() ?: 0) >= 480 })
                 ?: p.hrefs.keys.first()
             val href = p.hrefs.getValue(key)
             val server = Api.rankServers(href).firstOrNull() ?: return@runCatching null
@@ -53,11 +54,11 @@ object PreviewClips {
 
 /**
  * Muted clip that fades in over the backdrop when the cursor rests on a title (Netflix-style).
- * Needs the ad-free AnimeLib player, i.e. a signed-in account.
+ * Uses AnimeLib's own player (no Kodik ads); titles without it simply show no clip.
  */
 @Composable
 fun HoverVideo(title: Title?, modifier: Modifier = Modifier, waitMs: Long = 1800, playMs: Long = 35_000) {
-    if (title == null || Store.libToken == null || !Store.hoverPreview) return
+    if (title == null || !Store.hoverPreview) return
     val context = LocalContext.current
     val exo = remember {
         ExoPlayer.Builder(context)
@@ -84,5 +85,6 @@ fun HoverVideo(title: Title?, modifier: Modifier = Modifier, waitMs: Long = 1800
         delay(800); exo.pause()
     }
     val a by animateFloatAsState(if (visible) 1f else 0f, tween(if (visible) 900 else 500), label = "preview")
-    if (a > 0f || visible) AndroidView(factory = { ctx -> TextureView(ctx).also { exo.setVideoTextureView(it) } }, modifier = modifier.alpha(a))
+    // The surface must exist before the first frame can be drawn (it fades in once that happens).
+    AndroidView(factory = { ctx -> TextureView(ctx).also { exo.setVideoTextureView(it) } }, modifier = modifier.alpha(a))
 }

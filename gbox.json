@@ -6,7 +6,7 @@
   "sourceLinkTitle": "Сайт",
   "sourceLinkUrl": "https://qmurzik.github.io/AnixQ/",
   "sourceImage": "https://raw.githubusercontent.com/qmurzik/AnixQ/gbox-source/icon.png",
-  "sourceUpdateTime": "2026-11-07T19:09:08+0000",
+  "sourceUpdateTime": "2026-11-09T12:29:58+0000",
   "sourceDescription": "AnixQ — аниме с AnimeLib: каталог, плеер без рекламы, синхронизация с Shikimori.",
   "appCategories": [
     "Приложения"
@@ -15,13 +15,13 @@
     {
       "appType": "SELF_SIGN",
       "appCateIndex": 0,
-      "appUpdateTime": "2026-11-07T19:09:08+0000",
+      "appUpdateTime": "2026-11-09T12:29:58+0000",
       "appName": "AnixQ",
-      "appVersion": "1.0.77",
+      "appVersion": "1.0.78",
       "appImage": "https://raw.githubusercontent.com/qmurzik/AnixQ/gbox-source/icon.png",
-      "appPackage": "https://github.com/qmurzik/AnixQ/releases/download/v1.0.77/AnixQ.ipa",
-      "appSize": 4779339,
-      "appDescription": "• fix(iOS): restore player controls when app returns from background"
+      "appPackage": "https://github.com/qmurzik/AnixQ/releases/download/v1.0.78/AnixQ.ipa",
+      "appSize": 4827661,
+      "appDescription": "• Плеер: «Картинка и звук» — насыщенность, сочность, яркость, контраст (меняются на лету) и умный звук (ровная громкость, чёткие голоса, восстановление верхов, ночной режим) на iPhone, Android и ТВ; iOS: после возврата в приложение кнопки плеера больше не пропадают"
     }
   ]
 }

@@ -18,6 +18,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.PhoneIphone
 import androidx.compose.material.icons.rounded.Sync
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -94,7 +95,7 @@ fun SettingsScreen(nav: Nav) {
                 Toggle("Звуки навигации пультом", Store.navSounds) { Store.navSounds = it }
                 Toggle("Видео-превью, когда задерживаешься на тайтле", Store.hoverPreview) { Store.hoverPreview = it }
                 Toggle("Заставка через 3 минуты без нажатий", Store.screensaver) { Store.screensaver = it }
-                if (Store.screensaver) Toggle("Заставка с видео: отрывки серий без звука", Store.screensaverVideo) { Store.screensaverVideo = it }
+                if (version >= 0 && Store.screensaver) Toggle("Заставка с видео: отрывки серий без звука", Store.screensaverVideo) { Store.screensaverVideo = it }
                 Spacer(Modifier.height(6.dp))
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text("Качество", fontSize = 20.sp, modifier = Modifier.width(260.dp))
@@ -263,12 +264,16 @@ private fun Section(title: String, content: @Composable () -> Unit) {
 
 @Composable
 private fun Toggle(label: String, value: Boolean, onChange: (Boolean) -> Unit) {
-    Focusable(onClick = { onChange(!value) }, modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp), radius = 12.dp, scale = 1.01f,
+    // Own state: settings live in SharedPreferences, which Compose doesn't observe — without this the
+    // switch was saved but never moved on screen (and a second press saved the same value again).
+    var on by remember(label) { mutableStateOf(value) }
+    LaunchedEffect(value) { on = value }
+    Focusable(onClick = { on = !on; onChange(on) }, modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp), radius = 12.dp, scale = 1.01f,
         container = Color.Transparent) {
         Row(Modifier.padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(label, fontSize = 20.sp, modifier = Modifier.weight(1f))
-            Row(Modifier.width(52.dp).height(30.dp).background(if (value) C.pink else Color.White.copy(alpha = 0.2f), RoundedCornerShape(50)).padding(4.dp),
-                horizontalArrangement = if (value) Arrangement.End else Arrangement.Start) {
+            Row(Modifier.width(52.dp).height(30.dp).background(if (on) C.pink else Color.White.copy(alpha = 0.2f), RoundedCornerShape(50)).padding(4.dp),
+                horizontalArrangement = if (on) Arrangement.End else Arrangement.Start) {
                 androidx.compose.foundation.layout.Box(Modifier.size(22.dp).background(Color.White, RoundedCornerShape(50)))
             }
         }

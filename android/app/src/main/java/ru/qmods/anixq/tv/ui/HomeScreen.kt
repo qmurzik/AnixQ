@@ -145,6 +145,12 @@ val HeroHeight = 250.dp
 fun HomeScreen(nav: Nav) {
     val version by Store.version.collectAsState()
     val rows by HomeData.rows.collectAsState()
+    // Previews: find the clips of what's on screen in the background, so they start without waiting.
+    LaunchedEffect(rows.size) {
+        if (!Store.hoverPreview || rows.isEmpty()) return@LaunchedEffect
+        delay(2_500)
+        PreviewClips.prefetch((Store.continueList.map { it.title } + rows.take(2).flatMap { it.second.take(10) }).distinctBy { it.id })
+    }
     val error by HomeData.error.collectAsState()
     // Written by cards, read only by the hero: moving the cursor doesn't redraw the rows.
     val spot = remember { mutableStateOf<Title?>(null) }

@@ -20,6 +20,7 @@ import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import ru.qmods.anixq.tv.data.Api
 import ru.qmods.anixq.tv.data.Store
@@ -27,12 +28,25 @@ import ru.qmods.anixq.tv.data.Title
 
 /** Where a title's preview clip comes from: episode 1 (or the one you're on), right after the opening. */
 object PreviewClips {
-    private val cache = HashMap<Int, Pair<String, Double>?>()
+    private val cache = java.util.concurrent.ConcurrentHashMap<Int, Pair<String, Double>>()
+    private val none = java.util.Collections.newSetFromMap(java.util.concurrent.ConcurrentHashMap<Int, Boolean>())
+    /** The screensaver is on: previews must give the video decoder back (TV boxes have one or two). */
+    var saverActive by mutableStateOf(false)
+
+    fun cached(t: Title): Pair<String, Double>? = cache[t.id]
+
+    /** Look up clips ahead for the titles on screen, so a preview starts the moment the cursor rests. */
+    suspend fun prefetch(titles: List<Title>) {
+        for (t in titles.take(24)) { if (!cache.containsKey(t.id) && t.id !in none) clip(t) }
+    }
 
     suspend fun clip(t: Title): Pair<String, Double>? {
-        if (cache.containsKey(t.id)) return cache[t.id]
+        cache[t.id]?.let { return it }
+        if (t.id in none) return null
+        var answered = false
         val r = runCatching {
             val eps = Api.episodes(t.slug)
+            answered = true
             val mine = Store.lastEntry(t.id)?.let { e -> eps.firstOrNull { it.id == e.episodeId } }
             val ep = mine ?: eps.firstOrNull() ?: return@runCatching null
             val p = Api.players(ep.id).firstOrNull { it.isNative } ?: return@runCatching null
@@ -47,7 +61,8 @@ object PreviewClips {
                 else opening?.let { it.to + 20 } ?: 300.0
             Api.videoUrl(server, href) to start
         }.getOrNull()
-        cache[t.id] = r
+        // "No ad-free video" is remembered; a network hiccup is not (it'll be tried again).
+        if (r != null) cache[t.id] = r else if (answered) none.add(t.id)
         return r
     }
 }
@@ -57,7 +72,7 @@ object PreviewClips {
  * Uses AnimeLib's own player (no Kodik ads); titles without it simply show no clip.
  */
 @Composable
-fun HoverVideo(title: Title?, modifier: Modifier = Modifier, waitMs: Long = 1800, playMs: Long = 35_000) {
+fun HoverVideo(title: Title?, modifier: Modifier = Modifier, waitMs: Long = 1200, playMs: Long = 35_000) {
     if (title == null || !Store.hoverPreview) return
     val context = LocalContext.current
     val exo = remember {
@@ -73,16 +88,22 @@ fun HoverVideo(title: Title?, modifier: Modifier = Modifier, waitMs: Long = 1800
         exo.addListener(l)
         onDispose { exo.removeListener(l); exo.release() }
     }
-    LaunchedEffect(title.id) {
+    LaunchedEffect(title.id, PreviewClips.saverActive) {
         visible = false
         exo.stop()
-        delay(waitMs)
-        val (url, start) = PreviewClips.clip(title) ?: return@LaunchedEffect
-        exo.setMediaItem(MediaItem.fromUri(url), (start * 1000).toLong())
+        if (PreviewClips.saverActive) return@LaunchedEffect
+        // Find the clip while waiting (not after): ready the moment the cursor has rested long enough.
+        val found = kotlinx.coroutines.coroutineScope {
+            val c = async { PreviewClips.cached(title) ?: PreviewClips.clip(title) }
+            delay(waitMs)
+            c.await()
+        } ?: return@LaunchedEffect
+        exo.setMediaItem(MediaItem.fromUri(found.first), (found.second * 1000).toLong())
         exo.prepare(); exo.playWhenReady = true
         delay(playMs)
         visible = false
-        delay(800); exo.pause()
+        // stop(), not pause(): frees the hardware decoder for the player / screensaver.
+        delay(800); exo.stop()
     }
     val a by animateFloatAsState(if (visible) 1f else 0f, tween(if (visible) 900 else 500), label = "preview")
     // The surface must exist before the first frame can be drawn (it fades in once that happens).

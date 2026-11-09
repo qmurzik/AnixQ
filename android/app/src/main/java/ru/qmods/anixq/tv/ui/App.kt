@@ -205,6 +205,7 @@ fun App(nav: Nav) {
             is PlayerRoute -> PlayerScreen(nav, top)
             LoginRoute -> LoginScreen(nav)
         }
+        LaunchedEffect(saver) { PreviewClips.saverActive = saver }
         androidx.compose.animation.AnimatedVisibility(saver, enter = androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(1200)),
             exit = androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(300))) { Screensaver() }
     }
@@ -231,7 +232,10 @@ internal fun Screensaver() {
     var video by remember { mutableStateOf(false) }
     var now by remember { mutableStateOf(System.currentTimeMillis()) }
     androidx.compose.runtime.DisposableEffect(exo) {
-        val l = object : androidx.media3.common.Player.Listener { override fun onRenderedFirstFrame() { video = true } }
+        val l = object : androidx.media3.common.Player.Listener {
+            override fun onRenderedFirstFrame() { video = true }
+            override fun onPlayerError(error: androidx.media3.common.PlaybackException) { android.util.Log.w("AnixQ", "saver: ${error.errorCodeName}") }
+        }
         exo.addListener(l)
         onDispose { exo.removeListener(l); exo.release() }
     }
@@ -254,6 +258,10 @@ internal fun Screensaver() {
             val start = clip.second + (0..240).random()
             exo.setMediaItem(androidx.media3.common.MediaItem.fromUri(clip.first), (start * 1000).toLong())
             exo.prepare(); exo.playWhenReady = true
+            // Didn't start within 8 s (slow mirror, decoder busy): move on instead of a frozen cover.
+            var waited = 0
+            while (!video && waited < 8_000) { delay(250); waited += 250 }
+            if (!video) { exo.stop(); continue }
             delay(30_000)
         }
     }

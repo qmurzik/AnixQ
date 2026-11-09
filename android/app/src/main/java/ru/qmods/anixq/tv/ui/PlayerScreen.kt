@@ -248,7 +248,23 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
     val showNext get() = hasNext && !nextDismissed && dur > 0 &&
         (ended || inEnding || (ending == null && remaining <= 90) || remaining <= 15)
     /** The card counts down by itself only when we're sure it's the end. */
-    val countdown get() = Store.autoNext && !sleepAfterEpisode && (ended || inEnding || remaining <= 12)
+    val countdown get() = (Store.autoNext || Store.marathon) && !sleepAfterEpisode && !breakPrompt && (ended || inEnding || remaining <= 12)
+    /** Marathon: a break is suggested instead of the next episode every few in a row. */
+    var breakPrompt by mutableStateOf(false)
+    private var marathonRun = 0
+    private var endingSkipped = false
+
+    /** The next episode without the viewer asking (countdown / marathon). */
+    fun autoAdvance() {
+        marathonRun += 1
+        if (Store.marathon && marathonRun >= ru.qmods.anixq.tv.data.Marathon.BREAK_AFTER) {
+            marathonRun = 0
+            engine?.pause(); playing = false; saveProgress(force = true)
+            breakPrompt = true
+            return
+        }
+        next()
+    }
 
     fun say(s: String) { toast = s; toastAt = System.currentTimeMillis() }
 
@@ -279,7 +295,7 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
         val sameEpisode = i == index && episodes.isNotEmpty() && keepPos != null
         index = i
         val ep = episodes[i]
-        if (!sameEpisode) { extraSegments = emptyList(); openingSkipped = false; nextDismissed = false; viewedSent = false; prefetched = false; pos = 0.0; dur = 0.0; ended = false }
+        if (!sameEpisode) { endingSkipped = false; extraSegments = emptyList(); openingSkipped = false; nextDismissed = false; viewedSent = false; prefetched = false; pos = 0.0; dur = 0.0; ended = false }
         message = if (sameEpisode) "Переключаем…" else "Серия ${ep.number}"
         failed = false
         buffering = true
@@ -297,10 +313,12 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
                 player = chosen
                 val local = Store.resume(ep.id)
                 val remote = chosen.serverTimecode?.takeIf { it > 5 && (route.episodeId != ep.id || local == null) }
-                val startAt = keepPos ?: (if (!startedOnce) route.startAt ?: (if (route.fromStart) 0.0 else null) else null) ?: local ?: remote ?: 0.0
+                var startAt = keepPos ?: (if (!startedOnce) route.startAt ?: (if (route.fromStart) 0.0 else null) else null) ?: local ?: remote ?: 0.0
+                var recapNote: String? = null
+                if (keepPos == null && route.startAt == null) ru.qmods.anixq.tv.data.Recap.adjust(title.id, ep.id, startAt).let { (a, n) -> startAt = a; recapNote = n }
                 startedOnce = true
                 if (chosen.isNative) startNative(chosen, startAt, qualityKey) else startKodik(chosen, startAt)
-                if (startAt > 5 && keepPos == null) say("Продолжаем с ${fmt(startAt)}")
+                if (recapNote != null) say(recapNote!!) else if (startAt > 5 && keepPos == null) say("Продолжаем с ${fmt(startAt)}")
                 message = null
             } catch (e: Exception) {
                 message = e.message ?: "Не удалось загрузить серию"; failed = true
@@ -388,7 +406,15 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
         if (sleepAfterEpisode && ended) { sleepAfterEpisode = false; saveProgress(force = true); say("Таймер сна: серия закончилась") }
         // Auto-skip the opening once per episode.
         val op = opening
-        if (Store.autoSkipOpening && op != null && !openingSkipped && pos >= op.from && pos < op.to - 3) skipOpening(auto = true)
+        if ((Store.autoSkipOpening || Store.marathon) && op != null && !openingSkipped && pos >= op.from && pos < op.to - 3) skipOpening(auto = true)
+        // Marathon: straight on once the ending (and preview) begins.
+        val ed = ending
+        if (Store.marathon && hasNext && ed != null && !endingSkipped && !breakPrompt && !sleepAfterEpisode && pos >= ed.from + 1 && pos < ed.to) {
+            endingSkipped = true
+            if (!viewedSent) episode?.let { ep -> viewedSent = true; Store.markWatched(title, ep); scope.launch { Api.markViewed(ep.id, player?.playerId) } }
+            autoAdvance()
+            return
+        }
         // Watched at 90 %.
         if (!viewedSent && dur > 60 && pos / dur >= 0.9) {
             viewedSent = true
@@ -528,9 +554,9 @@ fun PlayerScreen(nav: Nav, route: PlayerRoute) {
     var count by remember { mutableIntStateOf(10) }
     val counting = showNext && countdown && dialog == null && panel == Panel.NONE
     LaunchedEffect(counting, m.index) {
-        count = if (m.ended) 3 else 10
+        count = if (m.ended || Store.marathon) 3 else 10
         while (counting && count > 0) { delay(1000); count -= 1 }
-        if (counting && count == 0) m.next()
+        if (counting && count == 0) m.autoAdvance()
     }
     LaunchedEffect(controls, panel, dialog) {
         delay(60)
@@ -646,9 +672,9 @@ fun PlayerScreen(nav: Nav, route: PlayerRoute) {
         // Next episode
         if (!controls && panel == Panel.NONE && showNext && seekAcc == 0.0) {
             val ep = m.episodes.getOrNull(m.index + 1)
-            ActionCard("Серия ${ep?.number ?: ""}" + (ep?.displayTitle?.takeIf { !it.startsWith("Серия") }?.let { " · $it" } ?: ""),
+            ActionCard("Серия ${ep?.number ?: ""}" + (ep?.let { ru.qmods.anixq.tv.data.Spoilers.title(m.title.id, it) }?.takeIf { !it.startsWith("Серия") }?.let { " · $it" } ?: ""),
                 if (countdown) "через $count с  ·  OK — сейчас" else "OK — смотреть следующую",
-                Modifier.align(Alignment.BottomEnd).padding(48.dp), progress = if (countdown) count / if (m.ended) 3f else 10f else null)
+                Modifier.align(Alignment.BottomEnd).padding(48.dp), progress = if (countdown) count / if (m.ended || Store.marathon) 3f else 10f else null)
         }
 
         // Watch-together: friends' chat, reactions and polls over the picture.
@@ -667,6 +693,11 @@ fun PlayerScreen(nav: Nav, route: PlayerRoute) {
             EpisodesPanel(m) { i -> panel = Panel.NONE; controls = false; m.load(i) }
         }
     }
+
+    // Marathon: a break instead of the next episode every few in a row.
+    if (m.breakPrompt) ChoiceDialog("Уже ${ru.qmods.anixq.tv.data.Marathon.BREAK_AFTER} серии подряд — может, перерыв?",
+        listOf(Choice("Ещё одну", hint = "следующая серия"), Choice("Перерыв", hint = "пауза, продолжите когда захотите")),
+        { m.breakPrompt = false }) { i -> m.breakPrompt = false; if (i == 0) m.next() }
 
     when (dialog) {
         "dub" -> {
@@ -688,6 +719,7 @@ fun PlayerScreen(nav: Nav, route: PlayerRoute) {
                 (Upscaler.lastInfo.takeIf { m.upscale == 2 && it.isNotEmpty() }?.let { " · $it" } ?: "")) else null,
             if (m.native) Choice("Цвет картинки", hint = Picture.presets.firstOrNull { it.second == ColorTuning.value }?.first ?: "свой") else null,
             if (m.native) Choice("Звук", hint = SoundMode.current.title) else null,
+            Choice("Режим марафона", hint = if (Store.marathon) "включён: без опенингов и эндингов, серии подряд" else "выключен"),
             Choice("Смотреть вместе", hint = if (ru.qmods.anixq.tv.data.Room.roomId.value != null) "комната открыта" else "друзья с телефона или браузера"),
             Choice("Таймер сна", hint = when {
                 m.sleepAfterEpisode -> "после этой серии"
@@ -697,9 +729,10 @@ fun PlayerScreen(nav: Nav, route: PlayerRoute) {
         ).let { opts -> opts }, { dialog = null }) { i ->
             val hasSubs = m.native && m.player?.subtitles?.isNotEmpty() == true
             val keys = listOfNotNull(if (m.native) "speed" else null, if (hasSubs) "subs" else null, if (m.native) "upscale" else null,
-                if (m.native) "color" else null, if (m.native) "sound" else null, "room", "sleep")
+                if (m.native) "color" else null, if (m.native) "sound" else null, "marathon", "room", "sleep")
             when (val k = keys.getOrNull(i)) {
                 "subs" -> { dialog = null; m.toggleSubtitles() }
+                "marathon" -> { dialog = null; Store.marathon = !Store.marathon; m.say(if (Store.marathon) "Марафон: без опенингов и эндингов, серии подряд" else "Марафон выключен") }
                 else -> dialog = k
             }
         }
@@ -1021,7 +1054,7 @@ internal fun EpisodesPanel(m: PlayerModel, onPick: (Int) -> Unit) {
                             if (prog > 0.01 && prog <= 0.92) ProgressLine(prog, Modifier.align(Alignment.BottomCenter))
                         }
                     }
-                    Text(e.displayTitle, fontSize = 13.sp, color = C.muted, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 6.dp))
+                    Text(if (i == m.index) e.displayTitle else ru.qmods.anixq.tv.data.Spoilers.title(e, watched), fontSize = 13.sp, color = C.muted, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 6.dp))
                 }
             }
         }

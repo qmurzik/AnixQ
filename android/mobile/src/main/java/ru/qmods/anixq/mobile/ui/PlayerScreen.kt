@@ -156,7 +156,7 @@ fun PlayerScreen(nav: Nav, route: PlayerRoute) {
     // "Next episode" starts by itself a few seconds after the ending begins (autoNext setting).
     val autoGo = m.showNext && m.countdown
     LaunchedEffect(autoGo, m.index) {
-        if (autoGo) { delay(6000); if (m.showNext && m.countdown) m.next() }
+        if (autoGo) { delay(if (Store.marathon) 3000 else 6000); if (m.showNext && m.countdown) m.autoAdvance() }
     }
     BackHandler { if (episodesOpen) episodesOpen = false else if (tuneOpen) tuneOpen = false else nav.pop() }
 
@@ -277,6 +277,7 @@ fun PlayerScreen(nav: Nav, route: PlayerRoute) {
         }
         if (episodesOpen) EpisodesPanel(m) { episodesOpen = false }
         if (tuneOpen) TunePanel(m) { tuneOpen = false }
+        if (m.breakPrompt && !Pip.inPip) BreakCard(m)
     }
 }
 
@@ -349,7 +350,7 @@ private fun EpisodesPanel(m: PlayerModel, onClose: () -> Unit) {
                 Row(Modifier.fillMaxWidth().clickable { onClose(); m.load(i) }.background(if (i == m.index) Pal.pink.copy(alpha = 0.18f) else Color.Transparent)
                     .padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text(ep.number, fontWeight = FontWeight.SemiBold, modifier = Modifier.width(44.dp), color = if (watched) Pal.muted else Pal.text)
-                    Text(ep.displayTitle, maxLines = 1, overflow = TextOverflow.Ellipsis, color = if (watched) Pal.muted else Pal.text, modifier = Modifier.weight(1f))
+                    Text(if (i == m.index) ep.displayTitle else ru.qmods.anixq.tv.data.Spoilers.title(ep, watched), maxLines = 1, overflow = TextOverflow.Ellipsis, color = if (watched) Pal.muted else Pal.text, modifier = Modifier.weight(1f))
                 }
             }
         }
@@ -390,6 +391,17 @@ private fun TunePanel(m: PlayerModel, onClose: () -> Unit) {
                     Text(s.subtitle, fontSize = 12.sp, color = Pal.muted)
                 }
             }
+            item {
+                var marathon by remember { mutableStateOf(Store.marathon) }
+                Row(Modifier.fillMaxWidth().padding(top = 16.dp).clickable { marathon = !marathon; Store.marathon = marathon }, verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Режим марафона", fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+                        Text("Без опенингов и эндингов, серии подряд, перерыв каждые ${ru.qmods.anixq.tv.data.Marathon.BREAK_AFTER}", fontSize = 12.sp, color = Pal.muted)
+                    }
+                    androidx.compose.material3.Switch(marathon, { marathon = it; Store.marathon = it },
+                        colors = androidx.compose.material3.SwitchDefaults.colors(checkedTrackColor = Pal.green))
+                }
+            }
             item { Box(Modifier.height(16.dp)) }
         }
     }
@@ -407,5 +419,24 @@ private fun TuneSlider(title: String, value: Float, range: ClosedFloatingPointRa
         }
         Slider(value, onChange, valueRange = range, onValueChangeFinished = onDone,
             colors = SliderDefaults.colors(thumbColor = Pal.pink, activeTrackColor = Pal.pink, inactiveTrackColor = Color.White.copy(alpha = 0.2f)))
+    }
+}
+
+
+@Composable
+private fun BreakCard(m: PlayerModel) {
+    Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.55f)), contentAlignment = Alignment.Center) {
+        Column(Modifier.padding(24.dp).clip(RoundedCornerShape(22.dp)).background(Pal.card).padding(22.dp).width(320.dp),
+            horizontalAlignment = Alignment.CenterHorizontally) {
+            Text("☕", fontSize = 34.sp)
+            Text("Уже ${ru.qmods.anixq.tv.data.Marathon.BREAK_AFTER} серии подряд", fontSize = 19.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 6.dp))
+            Text("Может, перерыв? Глазам и спине тоже нужен отдых.", fontSize = 14.sp, color = Pal.muted, modifier = Modifier.padding(top = 4.dp, bottom = 16.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("Перерыв", fontWeight = FontWeight.SemiBold, modifier = Modifier.clip(CircleShape).background(Color.White.copy(alpha = 0.12f))
+                    .clickable { m.breakPrompt = false }.padding(horizontal = 18.dp, vertical = 11.dp))
+                Text("▶ Ещё одну", fontWeight = FontWeight.Bold, color = Color.Black, modifier = Modifier.clip(CircleShape).background(Color.White)
+                    .clickable { m.breakPrompt = false; m.next() }.padding(horizontal = 18.dp, vertical = 11.dp))
+            }
+        }
     }
 }

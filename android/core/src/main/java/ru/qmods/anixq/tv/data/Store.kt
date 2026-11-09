@@ -132,6 +132,15 @@ object Store {
         get() = prefs.getInt("soundMode", 0)
         set(v) { prefs.edit().putInt("soundMode", v).apply() }
 
+    /** Marathon: openings/endings skipped, episodes back to back, a break suggested every few. */
+    var marathon: Boolean
+        get() = prefs.getBoolean("marathon", false)
+        set(v) { prefs.edit().putBoolean("marathon", v).apply(); bump() }
+    /** Hide the names of episodes not watched yet. */
+    var noSpoilers: Boolean
+        get() = prefs.getBoolean("noSpoilers", false)
+        set(v) { prefs.edit().putBoolean("noSpoilers", v).apply(); bump() }
+
     var subtitles: Boolean
         get() = prefs.getBoolean("subtitles", true)
         set(v) { prefs.edit().putBoolean("subtitles", v).apply() }

@@ -194,6 +194,9 @@ struct TitleView: View {
             VStack(alignment: .leading, spacing: 26) {
                 header
                 VStack(alignment: .leading, spacing: 26) {
+                    if let e = library.lastEntry(titleId: t.id), e.progress < 0.92, Date().timeIntervalSince(e.date) > 3 * 86_400 {
+                        recapCard(e)
+                    }
                     if let summary = model.detail?.summary {
                         about(summary).frame(maxWidth: Layout.maxTextWidth, alignment: .leading)
                     }
@@ -360,6 +363,27 @@ struct TitleView: View {
         let ep = model.episodes[nextEpisodeIndex]
         if library.resumePosition(episodeId: ep.id) != nil { return "Продолжить · серия \(ep.number)" }
         return model.episodes.count == 1 ? "Смотреть" : "Смотреть · серия \(ep.number)"
+    }
+
+    // MARK: Recap
+
+    /// Back after a break: where you stopped, and that playback starts a little earlier.
+    private func recapCard(_ e: WatchEntry) -> some View {
+        let days = Int(Date().timeIntervalSince(e.date) / 86_400)
+        func fmt(_ s: Double) -> String { String(format: "%d:%02d", Int(s) / 60, Int(s) % 60) }
+        return HStack(alignment: .top, spacing: 12) {
+            Image(systemName: "clock.arrow.circlepath").font(.title3).foregroundStyle(Theme.accent)
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Давно не смотрели · \(days) дн.").font(.subheadline.weight(.bold))
+                Text("Вы остановились на серии \(e.episodeNumber)" + (e.episodeName.isEmpty || e.episodeName == "Серия \(e.episodeNumber)" ? "" : " «\(e.episodeName)»")
+                     + " на \(fmt(e.position)) из \(fmt(e.duration)). Продолжим на 30 секунд раньше, чтобы вспомнить.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .cardStyle()
+        .padding(.horizontal)
     }
 
     // MARK: About
@@ -544,7 +568,7 @@ struct TitleView: View {
                         HStack {
                             Text(ep.number).font(.headline.monospacedDigit()).frame(width: 44, alignment: .leading)
                             VStack(alignment: .leading, spacing: 2) {
-                                Text(ep.displayTitle).foregroundStyle(.primary)
+                                Text(Spoilers.title(ep, watched: library.isWatched(titleId: t.id, number: ep.number))).foregroundStyle(.primary)
                                 let p = library.progress(episodeId: ep.id)
                                 if p > 0.02 { ProgressView(value: p).tint(Theme.accent) }
                             }
@@ -781,7 +805,7 @@ struct EpisodeCard: View {
                         .padding(6)
                 }
             }
-            Text(episode.displayTitle).font(.footnote.weight(.semibold)).lineLimit(1)
+            Text(Spoilers.title(episode, watched: watched)).font(.footnote.weight(.semibold)).lineLimit(1)
                 .foregroundStyle(watched ? .secondary : .primary)
         }
         .frame(width: 200, alignment: .leading)

@@ -45,6 +45,10 @@ final class PlayerController: ObservableObject {
     @Published private(set) var recovering = false
     /// Short message shown over the video (e.g. automatic dub switch).
     @Published var notice: String?
+    /// Marathon: shown instead of starting the next episode after a few in a row.
+    @Published var breakPrompt = false
+    static let marathonBreakAfter = 3
+    private var marathonRun = 0
     /// AnimeLib comments with timecodes for this episode.
     @Published private(set) var timedComments: [TimedComment] = []
     /// Bumped to ask the view to translate the current subtitles (iOS 18).
@@ -264,7 +268,7 @@ final class PlayerController: ObservableObject {
             servers = []
             let q = StreamQuality(label: "Скачано", url: file)
             qualities = [q]
-            play(q, at: library?.resumePosition(episodeId: ep.id))
+            play(q, at: rewindIfLongAgo(library?.resumePosition(episodeId: ep.id), episodeId: ep.id))
             isResolving = false
             DebugLog.log("player: playing downloaded file")
             updateNowPlaying()
@@ -293,6 +297,7 @@ final class PlayerController: ObservableObject {
                 // Local position first, then the one saved on the AnimeLib account.
                 var resume = HandoffSeek.take(episodeId: ep.id) ?? library?.resumePosition(episodeId: ep.id)
                 if resume == nil, let server = p.serverTimecode, server > 15 { resume = server }
+                resume = rewindIfLongAgo(resume, episodeId: ep.id)
                 if let preferred { play(preferred, at: resume) }
                 DebugLog.log(String(format: "player: resolved in %.2fs", Date().timeIntervalSince(startedAt)))
                 if hasNext { LibAPI.warmUp(episodeId: episodes[index + 1].id, teamId: team.id, titleId: title.id) }
@@ -692,6 +697,29 @@ final class PlayerController: ObservableObject {
     }
 
     func next() { go(to: index + 1) }
+
+    /// The next episode without the viewer asking; in marathon mode every few episodes it asks first.
+    private func autoAdvance() {
+        marathonRun += 1
+        if PlayerPrefs.marathon, marathonRun >= Self.marathonBreakAfter {
+            marathonRun = 0
+            ownPauseAt = Date()
+            player.pause()
+            breakPrompt = true
+            DebugLog.log("player: marathon break suggested")
+            return
+        }
+        next()
+    }
+
+    /// Haven't watched this for days: start a little earlier so the context comes back.
+    private func rewindIfLongAgo(_ resume: Double?, episodeId: Int) -> Double? {
+        guard let r = resume, r > 60, let last = library?.lastEntry(titleId: title.id), last.episodeId == episodeId,
+              Date().timeIntervalSince(last.date) > 3 * 86_400 else { return resume }
+        let days = Int(Date().timeIntervalSince(last.date) / 86_400)
+        notice = "Не смотрели \(days) дн. — продолжаем на 30 с раньше, чтобы вспомнить"
+        return r - 30
+    }
     func previous() { go(to: index - 1) }
 
     func cancelCountdown() {
@@ -782,7 +810,7 @@ final class PlayerController: ObservableObject {
             if text != subtitleText { subtitleText = text }
         }
         if duration <= 0, let d = player.currentItem?.duration.seconds, d.isFinite, d > 0 { duration = d }
-        if PlayerPrefs.autoSkipOpening, !autoSkipped, isNative {
+        if PlayerPrefs.autoSkipOpening || PlayerPrefs.marathon, !autoSkipped, isNative {
             if let op = opening {
                 if s >= op.from, s < op.to - 1 { skipOpening() }
             } else if s > 2, s < 15, duration > 300 {
@@ -790,7 +818,7 @@ final class PlayerController: ObservableObject {
             }
         }
         // Marathon mode: straight to the next episode once the ending (and preview) starts.
-        if PlayerPrefs.autoSkipEnding, isNative, hasNext, !endingSkipped, !sleepAfterEpisode, !isScrubbing,
+        if PlayerPrefs.autoSkipEnding || PlayerPrefs.marathon, isNative, hasNext, !endingSkipped, !sleepAfterEpisode, !isScrubbing, !breakPrompt,
            let ed = ending, s >= ed.from + 1, s < ed.to {
             endingSkipped = true
             if !markedWatched {
@@ -800,7 +828,7 @@ final class PlayerController: ObservableObject {
                 Task { await LibAPI.markViewed(episodeId: eid, playerId: pid) }
             }
             DebugLog.log("player: ending skipped -> next")
-            next()
+            autoAdvance()
             return
         }
         if duration > 0, s / duration > 0.9, !markedWatched {
@@ -822,16 +850,16 @@ final class PlayerController: ObservableObject {
             sleepAfterEpisode = false
             return
         }
-        guard hasNext, PlayerPrefs.autoNext else { return }
+        guard hasNext, PlayerPrefs.autoNext || PlayerPrefs.marathon, !breakPrompt else { return }
         countdownTask?.cancel()
         countdownTask = Task {
-            for n in stride(from: 5, through: 1, by: -1) {
+            for n in stride(from: PlayerPrefs.marathon ? 3 : 5, through: 1, by: -1) {
                 nextCountdown = n
                 try? await Task.sleep(nanoseconds: 1_000_000_000)
                 if Task.isCancelled { return }
             }
             nextCountdown = nil
-            next()
+            autoAdvance()
         }
     }
 

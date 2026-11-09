@@ -33,6 +33,8 @@ import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.HighQuality
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Language
+import androidx.compose.material.icons.filled.LocalFireDepartment
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.SettingsRemote
@@ -150,6 +152,8 @@ fun SettingsScreen(nav: Nav) {
             ToggleRow("Пропускать опенинги", Icons.Default.FastForward, Pal.purple, Store.autoSkipOpening) { Store.autoSkipOpening = it }
             ToggleRow("Следующая серия сама", Icons.Default.SkipNext, Pal.green, Store.autoNext) { Store.autoNext = it }
             ToggleRow("Субтитры, где есть", Icons.Default.Subtitles, Pal.teal, Store.subtitles) { Store.subtitles = it }
+            ToggleRow("Режим марафона", Icons.Default.LocalFireDepartment, Pal.orange, Store.marathon) { Store.marathon = it }
+            ToggleRow("Без спойлеров", Icons.Default.VisibilityOff, Pal.indigo, Store.noSpoilers) { Store.noSpoilers = it }
             GroupRow("Качество", icon = Icons.Default.HighQuality, iconColor = Pal.blue, divider = false, trailing = {
                 Row(Modifier.clip(RoundedCornerShape(9.dp)).background(Pal.cardHi).padding(2.dp)) {
                     listOf(480, 720, 1080).forEach { q ->

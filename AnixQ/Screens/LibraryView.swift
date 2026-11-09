@@ -182,6 +182,16 @@ struct BookmarkFolderView: View {
 // MARK: - Settings
 
 struct PlayerPrefs {
+    /// Marathon: openings and endings skipped, episodes back to back, a break suggested every few.
+    static var marathon: Bool {
+        get { UserDefaults.standard.bool(forKey: "player.marathon") }
+        set { UserDefaults.standard.set(newValue, forKey: "player.marathon") }
+    }
+    /// Hide the names of episodes not watched yet.
+    static var noSpoilers: Bool {
+        get { UserDefaults.standard.bool(forKey: "player.noSpoilers") }
+        set { UserDefaults.standard.set(newValue, forKey: "player.noSpoilers") }
+    }
     static var autoSkipEnding: Bool {
         get { UserDefaults.standard.object(forKey: "player.autoSkipEnding") as? Bool ?? false }
         set { UserDefaults.standard.set(newValue, forKey: "player.autoSkipEnding") }
@@ -245,6 +255,8 @@ struct SettingsView: View {
     @State private var autoSkip = PlayerPrefs.autoSkipOpening
     @State private var autoSkipEnd = PlayerPrefs.autoSkipEnding
     @State private var autoNext = PlayerPrefs.autoNext
+    @State private var marathon = PlayerPrefs.marathon
+    @State private var noSpoilers = PlayerPrefs.noSpoilers
     @State private var opLength = PlayerPrefs.openingLength
     @State private var quality = PlayerPrefs.preferredHeight
     @State private var downloadQuality = PlayerPrefs.downloadHeight
@@ -373,6 +385,10 @@ struct SettingsView: View {
                     }
                     Toggle("Следующая серия автоматически", isOn: $autoNext)
                         .onChange(of: autoNext) { PlayerPrefs.autoNext = $0 }
+                    Toggle("Режим марафона", isOn: $marathon)
+                        .onChange(of: marathon) { PlayerPrefs.marathon = $0 }
+                    Toggle("Без спойлеров (скрывать названия новых серий)", isOn: $noSpoilers)
+                        .onChange(of: noSpoilers) { PlayerPrefs.noSpoilers = $0 }
                     Toggle("Пропускать опенинг автоматически", isOn: $autoSkip)
                         .onChange(of: autoSkip) { PlayerPrefs.autoSkipOpening = $0 }
                     Toggle("Пропускать эндинг и превью", isOn: $autoSkipEnd)

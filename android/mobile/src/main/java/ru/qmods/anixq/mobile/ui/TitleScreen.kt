@@ -75,7 +75,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
+import androidx.compose.material.icons.filled.History
 import ru.qmods.anixq.tv.data.Api
 import ru.qmods.anixq.tv.data.CatalogQuery
 import ru.qmods.anixq.tv.data.CatalogSort
@@ -128,6 +130,16 @@ fun TitleScreen(nav: Nav, start: Title) {
     var epMenu by remember { mutableStateOf<Episode?>(null) }
     var reload by remember { mutableStateOf(0) }
     val title = detail?.title?.let { d -> d.copy(cover = d.cover ?: start.cover, coverThumb = d.coverThumb ?: start.coverThumb) } ?: start
+    var franchise by remember { mutableStateOf<List<Pair<ru.qmods.anixq.tv.data.Franchise.Node, Title>>>(emptyList()) }
+    LaunchedEffect(title.shikiId) {
+        val sid = title.shikiId ?: return@LaunchedEffect
+        val nodes = ru.qmods.anixq.tv.data.Franchise.nodes(sid)
+        val main = nodes.filter { it.isMain }
+        val shown = if (main.size >= 2) main else nodes
+        franchise = kotlinx.coroutines.coroutineScope {
+            shown.map { n -> async { ru.qmods.anixq.tv.data.Franchise.title(n)?.let { n to it } } }.mapNotNull { it.await() }
+        }
+    }
     val hasTv = Store.remoteChannel.isNotEmpty()
 
     LaunchedEffect(Unit) { runCatching { GenreIds.load() } }
@@ -219,6 +231,18 @@ fun TitleScreen(nav: Nav, start: Title) {
                     }
                 }
             }
+            val away = ru.qmods.anixq.tv.data.Recap.daysAway(title.id)
+            val lastE = Store.lastEntry(title.id)
+            if (away != null && lastE != null) item(key = "recap") {
+                Row(Modifier.padding(horizontal = 16.dp).padding(top = 18.dp).fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Pal.card).padding(14.dp)) {
+                    Icon(Icons.Default.History, null, tint = Pal.pink)
+                    Column(Modifier.padding(start = 12.dp)) {
+                        Text("Давно не смотрели · $away дн.", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                        Text("Вы остановились на серии ${lastE.ep}" + (lastE.epName.takeIf { it.isNotBlank() && !it.startsWith("Серия") }?.let { " «$it»" } ?: "") +
+                            " на ${fmt(lastE.pos)} из ${fmt(lastE.dur)}. Продолжим на 30 секунд раньше, чтобы вспомнить.", fontSize = 13.sp, color = Pal.muted)
+                    }
+                }
+            }
             detail?.summary?.takeIf { it.isNotBlank() }?.let { summary ->
                 item(key = "about") {
                     Column(Modifier.padding(horizontal = 16.dp).padding(top = 18.dp)) {
@@ -287,6 +311,20 @@ fun TitleScreen(nav: Nav, start: Title) {
                     }
                 }
             }
+            if (franchise.size > 1) item(key = "franchise") {
+                Column(Modifier.padding(top = 26.dp)) {
+                    SectionHeader("Порядок просмотра")
+                    Spacer(Modifier.height(10.dp))
+                    LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        itemsIndexed(franchise, key = { _, f -> "f" + f.second.id }) { i, (node, t) ->
+                            val here = t.id == title.id
+                            PosterCard(t, Modifier.width(118.dp), subtitle = if (here) "▶ Вы здесь" else "${i + 1} · " + listOfNotNull(node.kind, node.year?.toString()).joinToString(" ")) {
+                                if (!here) nav.open(t)
+                            }
+                        }
+                    }
+                }
+            }
             if (related.isNotEmpty()) item(key = "related") {
                 Column(Modifier.padding(top = 26.dp)) {
                     SectionHeader("Связанные")
@@ -321,7 +359,7 @@ fun TitleScreen(nav: Nav, start: Title) {
                 Row(Modifier.fillMaxWidth().clickable { allEpisodes = false; play(i) }.padding(horizontal = 16.dp, vertical = 11.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text(ep.number, fontSize = 17.sp, fontWeight = FontWeight.Bold, modifier = Modifier.width(48.dp), color = if (i == idx) Pal.pink else Pal.text)
                     Column(Modifier.weight(1f)) {
-                        Text(ep.displayTitle, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(ru.qmods.anixq.tv.data.Spoilers.title(title.id, ep), fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         if (p > 0.02) ProgressLine(p.toFloat(), Modifier.padding(top = 6.dp), 3.dp)
                     }
                     if (Store.isWatched(title.id, ep.number)) Icon(Icons.Default.CheckCircle, null, Modifier.padding(start = 8.dp).size(20.dp), tint = Pal.muted)
@@ -355,7 +393,7 @@ fun EpisodeCard(ep: Episode, image: String?, progress: Float, watched: Boolean, 
                 Icon(Icons.Default.CheckCircle, "Просмотрено", Modifier.size(20.dp), tint = Pal.pink)
             }
         }
-        Text(ep.displayTitle, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis,
+        Text(ru.qmods.anixq.tv.data.Spoilers.title(ep, watched), fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis,
             color = if (watched) Pal.muted else Pal.text, modifier = Modifier.padding(top = 6.dp))
     }
 }

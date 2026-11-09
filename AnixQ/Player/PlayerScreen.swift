@@ -444,6 +444,9 @@ struct PlayerScreen: View {
                         Label("Улучшение чёткости", systemImage: "wand.and.stars")
                     }
                     Button { panel = .picture } label: { Label("Картинка и звук", systemImage: "slider.horizontal.3") }
+                    Toggle(isOn: Binding(get: { PlayerPrefs.marathon }, set: { PlayerPrefs.marathon = $0 })) {
+                        Label("Режим марафона", systemImage: "flame")
+                    }
                 } label: {
                     Image(systemName: "ellipsis.circle").font(.system(size: 17, weight: .semibold))
                         .frame(width: 43, height: 43).foregroundStyle(.white)
@@ -582,10 +585,11 @@ struct PlayerScreen: View {
                 withAnimation { ripple = nil }
             }
         }
+        if c.breakPrompt { MarathonBreakCard(c: c) }
         if let n = c.nextCountdown, c.hasNext {
             VStack(spacing: 12) {
                 Text("Следующая серия через \(n)").font(.headline)
-                Text(c.episodes[c.index + 1].displayTitle).font(.subheadline).foregroundStyle(.white.opacity(0.7))
+                Text(Spoilers.title(c.episodes[c.index + 1], watched: library.isWatched(titleId: c.title.id, number: c.episodes[c.index + 1].number))).font(.subheadline).foregroundStyle(.white.opacity(0.7))
                 HStack {
                     Button("Отмена") { c.cancelCountdown() }.buttonStyle(.bordered)
                     Button("Смотреть") { c.cancelCountdown(); c.next() }.buttonStyle(.borderedProminent)
@@ -690,7 +694,7 @@ struct PlayerScreen: View {
                 } content: {
                     Text(ep.number).font(.headline.monospacedDigit()).frame(width: 40, alignment: .leading)
                     VStack(alignment: .leading, spacing: 3) {
-                        Text(ep.displayTitle).lineLimit(1)
+                        Text(i == c.index ? ep.displayTitle : Spoilers.title(ep, watched: library.isWatched(titleId: c.title.id, number: ep.number))).lineLimit(1)
                         let prog = library.progress(episodeId: ep.id)
                         if prog > 0.02 { ProgressView(value: prog).tint(.white) }
                     }

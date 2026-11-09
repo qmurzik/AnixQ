@@ -75,7 +75,22 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
     val inEnding get() = ending?.let { pos >= it.from } == true
     val remaining get() = if (dur > 0) dur - pos else Double.MAX_VALUE
     val showNext get() = hasNext && !nextDismissed && dur > 0 && (ended || inEnding || (ending == null && remaining <= 90) || remaining <= 15)
-    val countdown get() = Store.autoNext && (ended || inEnding || remaining <= 12)
+    val countdown get() = (Store.autoNext || Store.marathon) && !breakPrompt && (ended || inEnding || remaining <= 12)
+    /** Marathon: a break is suggested instead of the next episode every few in a row. */
+    var breakPrompt by mutableStateOf(false)
+    private var marathonRun = 0
+    private var endingSkipped = false
+
+    fun autoAdvance() {
+        marathonRun += 1
+        if (Store.marathon && marathonRun >= ru.qmods.anixq.tv.data.Marathon.BREAK_AFTER) {
+            marathonRun = 0
+            pause()
+            breakPrompt = true
+            return
+        }
+        next()
+    }
     val qualities: List<String> get() = player?.hrefs?.keys?.sortedByDescending { it.removeSuffix("p").toIntOrNull() ?: 0 } ?: emptyList()
 
     fun say(s: String) { toast = s; toastAt = System.currentTimeMillis() }
@@ -104,7 +119,7 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
         val sameEpisode = i == index && episodes.isNotEmpty() && keepPos != null
         index = i
         val ep = episodes[i]
-        if (!sameEpisode) { extraSegments = emptyList(); openingSkipped = false; nextDismissed = false; viewedSent = false; prefetched = false; pos = 0.0; dur = 0.0; ended = false }
+        if (!sameEpisode) { endingSkipped = false; extraSegments = emptyList(); openingSkipped = false; nextDismissed = false; viewedSent = false; prefetched = false; pos = 0.0; dur = 0.0; ended = false }
         message = if (sameEpisode) "Переключаем…" else "Серия ${ep.number}"
         failed = false
         buffering = true
@@ -123,10 +138,12 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
                 player = chosen
                 val local = Store.resume(ep.id)
                 val remote = chosen.serverTimecode?.takeIf { it > 5 && (route.episodeId != ep.id || local == null) }
-                val startAt = keepPos ?: (if (!startedOnce) route.startAt else null) ?: local ?: remote ?: 0.0
+                var startAt = keepPos ?: (if (!startedOnce) route.startAt else null) ?: local ?: remote ?: 0.0
+                var recapNote: String? = null
+                if (keepPos == null && route.startAt == null) ru.qmods.anixq.tv.data.Recap.adjust(title.id, ep.id, startAt).let { (a, n) -> startAt = a; recapNote = n }
                 startedOnce = true
                 if (chosen.isNative) startNative(chosen, startAt, qualityKey) else startKodik(chosen, startAt)
-                if (startAt > 5 && keepPos == null) say("Продолжаем с ${fmt(startAt)}")
+                if (recapNote != null) say(recapNote!!) else if (startAt > 5 && keepPos == null) say("Продолжаем с ${fmt(startAt)}")
                 message = null
             } catch (e: Exception) {
                 message = e.message ?: "Не удалось загрузить серию"; failed = true
@@ -190,7 +207,14 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
         }
         if (toast != null && System.currentTimeMillis() - toastAt > 2500) toast = null
         val op = opening
-        if (Store.autoSkipOpening && op != null && !openingSkipped && pos >= op.from && pos < op.to - 3) skipOpening(auto = true)
+        if ((Store.autoSkipOpening || Store.marathon) && op != null && !openingSkipped && pos >= op.from && pos < op.to - 3) skipOpening(auto = true)
+        val ed = ending
+        if (Store.marathon && hasNext && ed != null && !endingSkipped && !breakPrompt && pos >= ed.from + 1 && pos < ed.to) {
+            endingSkipped = true
+            if (!viewedSent) episode?.let { ep -> viewedSent = true; Store.markWatched(title, ep); scope.launch { runCatching { Api.markViewed(ep.id, player?.playerId) } } }
+            autoAdvance()
+            return
+        }
         if (!viewedSent && dur > 60 && pos / dur >= 0.9) {
             viewedSent = true
             episode?.let { ep ->

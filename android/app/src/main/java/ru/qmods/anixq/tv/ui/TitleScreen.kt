@@ -1,5 +1,7 @@
 package ru.qmods.anixq.tv.ui
 
+import kotlinx.coroutines.async
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -129,6 +131,19 @@ fun TitleScreen(nav: Nav, start: Title) {
     val plan = remember(version, episodes) { episodes?.let { resumePlan(title, it) } }
     val bookmark = remember(version) { Store.bookmark(start.slug) }
     val team = teams.firstOrNull { it.team.id == teamId }
+    // Franchise watch order (Shikimori), only entries that exist on AnimeLib.
+    var franchise by remember { mutableStateOf<List<Pair<ru.qmods.anixq.tv.data.Franchise.Node, Title>>>(emptyList()) }
+    val shikiId = title.shikiId
+    LaunchedEffect(shikiId) {
+        val sid = shikiId ?: return@LaunchedEffect
+        val nodes = ru.qmods.anixq.tv.data.Franchise.nodes(sid)
+        val main = nodes.filter { it.isMain }
+        val shown = if (main.size >= 2) main else nodes
+        franchise = kotlinx.coroutines.coroutineScope {
+            shown.map { n -> async { ru.qmods.anixq.tv.data.Franchise.title(n)?.let { n to it } } }.mapNotNull { it.await() }
+        }
+    }
+    val awayDays = remember(version) { ru.qmods.anixq.tv.data.Recap.daysAway(start.id) }
 
     Box(Modifier.fillMaxSize()) {
         // Backdrop: wide art when the site has it, otherwise a colour wash + the poster.
@@ -180,9 +195,23 @@ fun TitleScreen(nav: Nav, start: Title) {
                 Text(listOfNotNull(plan?.sub, team?.let { if (it.native) "без рекламы" else "плеер Kodik" }).joinToString("  ·  "),
                     fontSize = 13.sp, color = C.muted, modifier = Modifier.padding(start = 4.dp, top = 8.dp))
                 error?.let { Text(it, fontSize = 14.sp, color = C.pink, modifier = Modifier.padding(top = 8.dp)) }
+                awayDays?.let { d ->
+                    Text("Давно не смотрели · $d дн. — продолжим на 30 секунд раньше, чтобы вспомнить", fontSize = 13.sp, color = C.gold,
+                        modifier = Modifier.padding(start = 4.dp, top = 6.dp))
+                }
             }
             Spacer(Modifier.weight(1f))
             episodes?.takeIf { it.isNotEmpty() }?.let { eps -> EpisodeStrip(eps, title, plan?.episode?.id, sc, onMenu = { menuEp = it; dialog = "ep" }) { ep -> nav.play(title, ep.id, teamId) } }
+            }
+          }
+          if (franchise.size > 1) item("franchise") {
+            Shelf("Порядок просмотра") {
+                items(franchise.size, key = { "f" + franchise[it].second.id }) { i ->
+                    val (node, t) = franchise[i]
+                    val here = t.id == title.id
+                    PosterCard(t, onClick = { if (!here) nav.open(t) }, modifier = Modifier.memo(sc, "f${t.id}"),
+                        badge = if (here) "СЕЙЧАС" else "${i + 1} · " + listOfNotNull(node.kind, node.year?.toString()).joinToString(" "))
+                }
             }
           }
           if (related.isNotEmpty()) item("related") {
@@ -269,7 +298,7 @@ private fun EpisodeStrip(eps: List<Episode>, title: Title, current: Int?, sc: St
                             if (prog > 0.01 && prog <= 0.92) ProgressLine(prog, Modifier.align(Alignment.BottomCenter))
                         }
                     }
-                    Text(e.displayTitle, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, color = C.muted,
+                    Text(ru.qmods.anixq.tv.data.Spoilers.title(e, watched), fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, color = C.muted,
                         modifier = Modifier.padding(top = 6.dp))
                 }
             }

@@ -194,6 +194,7 @@ struct PlayerScreenV2: View {
                     webChrome(isLand: isLand)
                 }
                 if let n = c.nextCountdown, c.hasNext { nextCard(n, isLand: isLand) }
+                if c.breakPrompt { MarathonBreakCard(c: c) }
                 if isLand && room.isActive && !locked { RoomOverlay() }
             }
             .clipped()
@@ -470,6 +471,9 @@ struct PlayerScreenV2: View {
                     Label("Улучшение чёткости", systemImage: "wand.and.stars")
                 }
                 Button { panel = .picture } label: { Label("Картинка и звук", systemImage: "slider.horizontal.3") }
+                Toggle(isOn: Binding(get: { PlayerPrefs.marathon }, set: { PlayerPrefs.marathon = $0; c.notice = $0 ? "Марафон: без опенингов и эндингов, серии подряд" : "Марафон выключен" })) {
+                    Label("Режим марафона", systemImage: "flame")
+                }
             }
             if c.isNative && (sharePlay.isEligible || sharePlay.isActive) {
                 Button {
@@ -614,7 +618,7 @@ struct PlayerScreenV2: View {
             .frame(width: 40, height: 40)
             VStack(alignment: .leading, spacing: 2) {
                 Text("Далее · серия \(next.number)").font(.subheadline.weight(.bold))
-                Text(next.displayTitle).font(.caption).foregroundStyle(.white.opacity(0.7)).lineLimit(1)
+                Text(Spoilers.title(next, watched: library.isWatched(titleId: c.title.id, number: next.number))).font(.caption).foregroundStyle(.white.opacity(0.7)).lineLimit(1)
             }
             Spacer(minLength: 8)
             Button("Отмена") { c.cancelCountdown() }.font(.subheadline).foregroundStyle(.white.opacity(0.8))
@@ -764,7 +768,7 @@ struct PlayerScreenV2: View {
                 }
                 .frame(width: 46, height: 46)
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(ep.displayTitle).font(.subheadline.weight(current ? .bold : .medium)).lineLimit(1)
+                    Text(current ? ep.displayTitle : Spoilers.title(ep, watched: watched)).font(.subheadline.weight(current ? .bold : .medium)).lineLimit(1)
                     if progress > 0.02 && !watched {
                         Capsule().fill(.white.opacity(0.15)).frame(height: 3)
                             .overlay(alignment: .leading) {
@@ -836,7 +840,7 @@ struct PlayerScreenV2: View {
             ForEach(Array(c.episodes.enumerated()), id: \.element.id) { i, ep in
                 row(selected: i == c.index) { c.go(to: i); panel = nil } content: {
                     Text(ep.number).font(.headline.monospacedDigit()).frame(width: 40, alignment: .leading)
-                    Text(ep.displayTitle).lineLimit(1)
+                    Text(i == c.index ? ep.displayTitle : Spoilers.title(ep, watched: library.isWatched(titleId: c.title.id, number: ep.number))).lineLimit(1)
                     Spacer()
                     if library.isWatched(titleId: c.title.id, number: ep.number) {
                         Image(systemName: "checkmark.circle.fill").foregroundStyle(.white.opacity(0.45))

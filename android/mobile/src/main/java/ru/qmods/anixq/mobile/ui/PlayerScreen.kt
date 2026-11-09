@@ -49,6 +49,8 @@ import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Tv
 import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.Groups
+import androidx.compose.runtime.collectAsState
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
@@ -109,6 +111,8 @@ fun PlayerScreen(nav: Nav, route: PlayerRoute) {
     var lastTouch by remember { mutableLongStateOf(System.currentTimeMillis()) }
     var episodesOpen by remember { mutableStateOf(false) }
     var tuneOpen by remember { mutableStateOf(false) }
+    var roomOpen by remember { mutableStateOf(false) }
+    val roomId by ru.qmods.anixq.tv.data.Room.roomId.collectAsState()
     var seekDrag by remember { mutableStateOf<Float?>(null) }
     var gesture by remember { mutableStateOf<Pair<ImageVector, Float>?>(null) }
     var gestureAt by remember { mutableLongStateOf(0L) }
@@ -122,6 +126,7 @@ fun PlayerScreen(nav: Nav, route: PlayerRoute) {
     DisposableEffect(m) {
         m.start()
         Pip.model = m
+        ru.qmods.anixq.tv.data.Room.player = m
         val before = activity.requestedOrientation
         activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
         val ctl = WindowCompat.getInsetsController(activity.window, activity.window.decorView)
@@ -129,6 +134,7 @@ fun PlayerScreen(nav: Nav, route: PlayerRoute) {
         ctl.hide(WindowInsetsCompat.Type.systemBars())
         onDispose {
             Pip.model = null
+            if (ru.qmods.anixq.tv.data.Room.player === m) ru.qmods.anixq.tv.data.Room.player = null
             m.release()
             ctl.show(WindowInsetsCompat.Type.systemBars())
             activity.requestedOrientation = if (before == ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE) ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED else before
@@ -158,7 +164,7 @@ fun PlayerScreen(nav: Nav, route: PlayerRoute) {
     LaunchedEffect(autoGo, m.index) {
         if (autoGo) { delay(if (Store.marathon) 3000 else 6000); if (m.showNext && m.countdown) m.autoAdvance() }
     }
-    BackHandler { if (episodesOpen) episodesOpen = false else if (tuneOpen) tuneOpen = false else nav.pop() }
+    BackHandler { if (episodesOpen) episodesOpen = false else if (tuneOpen) tuneOpen = false else if (roomOpen) roomOpen = false else nav.pop() }
 
     Box(Modifier.fillMaxSize().background(Color.Black)) {
         m.exo?.let { e -> if (m.native) AndroidView(factory = { e.view }, modifier = Modifier.fillMaxSize()) }
@@ -225,7 +231,7 @@ fun PlayerScreen(nav: Nav, route: PlayerRoute) {
                 if (m.native) Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(130.dp)
                     .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.75f)))))
                 Column(Modifier.fillMaxSize().safeDrawingPadding()) {
-                    PlayerTopBar(m, onBack = { nav.pop() }, onEpisodes = { episodesOpen = true; touched() }, onTune = { tuneOpen = true; touched() }, onTv = {
+                    PlayerTopBar(m, onBack = { nav.pop() }, onEpisodes = { episodesOpen = true; touched() }, onTune = { tuneOpen = true; touched() }, onRoom = { roomOpen = true; touched() }, roomActive = roomId != null, onTv = {
                         m.sendToTv()
                         Toast.makeText(context, "Продолжаем на телевизоре с ${fmt(m.pos)}", Toast.LENGTH_SHORT).show()
                         nav.pop(); nav.push(RemoteRoute)
@@ -277,12 +283,15 @@ fun PlayerScreen(nav: Nav, route: PlayerRoute) {
         }
         if (episodesOpen) EpisodesPanel(m) { episodesOpen = false }
         if (tuneOpen) TunePanel(m) { tuneOpen = false }
+        RoomOverlay(Modifier.fillMaxSize())
+        if (roomOpen) RoomPanel { roomOpen = false }
         if (m.breakPrompt && !Pip.inPip) BreakCard(m)
     }
 }
 
 @Composable
-private fun PlayerTopBar(m: PlayerModel, onBack: () -> Unit, onEpisodes: () -> Unit, onTune: () -> Unit, onTv: () -> Unit, touched: () -> Unit) {
+private fun PlayerTopBar(m: PlayerModel, onBack: () -> Unit, onEpisodes: () -> Unit, onTune: () -> Unit, onRoom: () -> Unit, roomActive: Boolean,
+                         onTv: () -> Unit, touched: () -> Unit) {
     var menu by remember { mutableStateOf<String?>(null) }
     Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
         IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Назад", tint = Color.White) }
@@ -294,6 +303,7 @@ private fun PlayerTopBar(m: PlayerModel, onBack: () -> Unit, onEpisodes: () -> U
         if (Store.remoteChannel.isNotEmpty()) IconButton(onClick = onTv) { Icon(Icons.Default.Tv, "Смотреть на ТВ", tint = Color.White) }
         IconButton(onClick = onEpisodes) { Icon(Icons.Default.FormatListNumbered, "Серии", tint = Color.White) }
         if (m.native) IconButton(onClick = onTune) { Icon(Icons.Default.Tune, "Картинка и звук", tint = Color.White) }
+        IconButton(onClick = onRoom) { Icon(Icons.Default.Groups, "Смотреть вместе", tint = if (roomActive) Pal.green else Color.White) }
         val teams = m.players.distinctBy { it.team.id }
         if (teams.size > 1) Box {
             IconButton(onClick = { menu = "dub"; touched() }) { Icon(Icons.Default.RecordVoiceOver, "Озвучка", tint = Color.White) }

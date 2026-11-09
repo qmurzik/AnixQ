@@ -40,6 +40,14 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:scheme="anixq" android:host="continue" />
             </intent-filter>
+            <!-- Watch-together invite and shared collections. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="anixq" android:host="room" />
+                <data android:scheme="anixq" android:host="list" />
+            </intent-filter>
         </activity>
         <!-- "Продолжить" home-screen widget. -->
         <receiver android:name=".ContinueWidget" android:exported="false" android:label="Продолжить просмотр">

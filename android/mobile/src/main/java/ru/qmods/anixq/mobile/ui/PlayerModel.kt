@@ -27,7 +27,36 @@ import ru.qmods.anixq.tv.ui.KodikEngine
 
 /** Phone player logic: same choices and progress rules as the TV player, so both sides agree. */
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
-class PlayerModel(private val context: Context, private val scope: CoroutineScope, val title: Title, private val route: PlayerRoute) {
+class PlayerModel(private val context: Context, private val scope: CoroutineScope, val title: Title, private val route: PlayerRoute) :
+    ru.qmods.anixq.tv.data.RoomPlayer {
+    /** Watch together: what the others need to follow us (same format as the TV, iPhone and the web page). */
+    override fun roomState(): org.json.JSONObject = org.json.JSONObject()
+        .put("slug", title.slug).put("titleName", title.title).put("episodeId", episode?.id ?: 0)
+        .put("episodeNumber", episode?.number ?: "").put("teamId", player?.team?.id ?: 0).put("team", player?.team?.name ?: "")
+        .put("playing", playing).put("position", pos).put("rate", speed.toDouble())
+        .apply {
+            if (native) currentUrl?.takeIf { it.startsWith("http") }?.let { put("stream", it) }
+            val k = if (!native) currentUrl else players.firstOrNull { it.team.id == player?.team?.id && it.isKodik }?.kodikSrc?.let { Api.kodikUrl(it) }
+                ?: players.firstOrNull { it.isKodik }?.kodikSrc?.let { Api.kodikUrl(it) }
+            k?.let { put("kodik", it) }
+        }
+
+    override fun roomApply(m: org.json.JSONObject) {
+        if (m.optString("slug") != title.slug) { say("В комнате смотрят «${m.optString("titleName")}»"); return }
+        val eid = m.optInt("episodeId"); val tid = m.optInt("teamId")
+        if (eid != episode?.id) {
+            val i = episodes.indexOfFirst { it.id == eid }
+            if (i >= 0) load(i, teamId = tid.takeIf { it > 0 }, keepPos = m.optDouble("position", 0.0))
+            return
+        }
+        val remotePlaying = m.optBoolean("playing")
+        var target = m.optDouble("position", pos)
+        if (remotePlaying) target += (System.currentTimeMillis() / 1000.0 + Sync.serverClockOffset - m.optDouble("sentAt", 0.0))
+            .coerceIn(0.0, 10.0) * m.optDouble("rate", 1.0)
+        if (kotlin.math.abs(target - pos) > 2) { engine?.seek(target); pos = target }
+        if (remotePlaying != playing) toggle()
+    }
+
     var episodes by mutableStateOf<List<Episode>>(emptyList())
     var index by mutableIntStateOf(0)
     var players by mutableStateOf<List<Player>>(emptyList())
@@ -148,6 +177,7 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
                 if (keepPos == null && route.startAt == null) ru.qmods.anixq.tv.data.Recap.adjust(title.id, ep.id, startAt).let { (a, n) -> startAt = a; recapNote = n }
                 startedOnce = true
                 if (chosen.isNative) startNative(chosen, startAt, qualityKey) else startKodik(chosen, startAt)
+                ru.qmods.anixq.tv.data.Room.sendState()
                 if (recapNote != null) say(recapNote!!) else if (startAt > 5 && keepPos == null) say("Продолжаем с ${fmt(startAt)}")
                 message = null
             } catch (e: Exception) {
@@ -261,6 +291,7 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
     fun toggle() {
         val e = engine ?: return
         if (playing) { e.pause(); playing = false; saveProgress(force = true) } else { e.play(); playing = true }
+        ru.qmods.anixq.tv.data.Room.sendState()
     }
 
     fun pause() { if (playing) toggle() }
@@ -274,6 +305,7 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
         val e = engine ?: return
         val target = t.coerceIn(0.0, if (dur > 0) dur - 1 else Double.MAX_VALUE)
         e.seek(target); pos = target
+        ru.qmods.anixq.tv.data.Room.sendState()
     }
 
     fun skipOpening(auto: Boolean = false) {

@@ -94,6 +94,8 @@ class MainActivity : ComponentActivity() {
         Store.init(applicationContext)
         ru.qmods.anixq.mobile.data.Downloads.init(applicationContext)
         NewEpisodes.schedule(applicationContext)
+        ru.qmods.anixq.mobile.data.Collections.init(applicationContext)
+        ru.qmods.anixq.tv.data.Room.myName = "Android (${Build.MODEL})"
         // Android 13+: ask once for notifications (new episodes).
         if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
             val p = getSharedPreferences("app", MODE_PRIVATE)
@@ -106,6 +108,16 @@ class MainActivity : ComponentActivity() {
         if (Store.libToken != null) lifecycleScope.launch { Api.loadProfile() }
         setContent {
             val n = remember { Nav().also { nav = it; handle(intent, it) } }
+            androidx.compose.runtime.DisposableEffect(n) {
+                // Joined a friend's room: the first state says what they're watching — open it.
+                ru.qmods.anixq.tv.data.Room.onStateWithoutPlayer = { m ->
+                    val slug = m.optString("slug")
+                    if (slug.isNotEmpty()) n.play(PlayerRoute(Title(id = slug.substringBefore("--").toIntOrNull() ?: 0, slug = slug,
+                        rusName = m.optString("titleName").ifEmpty { null }), m.optInt("episodeId").takeIf { it > 0 },
+                        m.optInt("teamId").takeIf { it > 0 }, startAt = m.optDouble("position", 0.0)))
+                }
+                onDispose { ru.qmods.anixq.tv.data.Room.onStateWithoutPlayer = null }
+            }
             AnixTheme { Root(n) }
         }
     }
@@ -124,6 +136,13 @@ class MainActivity : ComponentActivity() {
             "title" -> u.pathSegments.firstOrNull()?.let { slug -> nav.open(Title(id = slug.substringBefore("--").toIntOrNull() ?: 0, slug = slug)) }
             "continue" -> Store.continueList.firstOrNull()?.let { e -> nav.play(PlayerRoute(e.title, resume = true)) }
             "home" -> { nav.stack.clear(); nav.tab = Tab.HOME }
+            "room" -> u.pathSegments.firstOrNull()?.let { id ->
+                ru.qmods.anixq.tv.data.Room.join(id)
+                android.widget.Toast.makeText(this, "Заходим в комнату — серия включится сама", android.widget.Toast.LENGTH_LONG).show()
+            }
+            "list" -> u.pathSegments.firstOrNull()?.let { token ->
+                ru.qmods.anixq.mobile.data.Collections.import(token)?.let { c -> nav.push(ru.qmods.anixq.mobile.ui.CollectionRoute(c.id)) }
+            }
         }
         i.data = null
     }
@@ -175,6 +194,9 @@ fun Root(nav: Nav) {
             is CatalogRoute -> holder.SaveableStateProvider("cat-${top.title}-${nav.stack.size}") { CatalogListScreen(nav, top) }
             is FolderRoute -> FolderScreen(nav, top.status)
             ru.qmods.anixq.mobile.ui.DownloadsRoute -> ru.qmods.anixq.mobile.ui.DownloadsScreen(nav)
+            ru.qmods.anixq.mobile.ui.CollectionsRoute -> ru.qmods.anixq.mobile.ui.CollectionsScreen(nav)
+            is ru.qmods.anixq.mobile.ui.CollectionRoute -> ru.qmods.anixq.mobile.ui.CollectionScreen(nav, top.id)
+            ru.qmods.anixq.mobile.ui.ShikiLoginRoute -> ru.qmods.anixq.mobile.ui.ShikiLoginScreen(nav)
             HistoryRoute -> HistoryScreen(nav)
             RemoteRoute -> RemoteScreen(nav)
             SettingsRoute -> SettingsScreen(nav)

@@ -33,7 +33,12 @@ object Room {
     private var lastSent = 0L
     @Volatile private var connected = false
     @Volatile var applying = false; private set
-    private val me = "tv-" + (100000..999999).random()
+    private val me by lazy { Store.devicePrefix + "-" + (100000..999999).random() }
+    /** How we're shown to the others in the room. */
+    @Volatile var myName = "AnixQ TV"
+    /** A room was joined before any player was open: the first state tells what to open. */
+    @Volatile var onStateWithoutPlayer: ((JSONObject) -> Unit)? = null
+    private var joining = false
 
     data class ChatLine(val name: String, val text: String, val at: Long = System.currentTimeMillis())
     data class Poll(val id: String, val question: String, val options: List<String>, val votes: Map<String, Int> = emptyMap(), val closed: Boolean = false)
@@ -54,7 +59,35 @@ object Room {
         val id = (1..10).map { abc.random() }.joinToString("")
         leave(silently = true)
         roomId.value = id
+        joining = false
         connect()
+        startBeat()
+        return id
+    }
+
+    /** Join a friend's room (link qmurzik.github.io/AnixQ/room/#id or anixq://room/id). */
+    fun join(id: String) {
+        if (roomId.value == id) return
+        leave(silently = true)
+        roomId.value = id
+        joining = true
+        connect()
+        startBeat()
+    }
+
+    fun chat(text: String) {
+        val t = text.trim().take(200).ifEmpty { return }
+        chat.value = (chat.value + ChatLine("Вы", t)).takeLast(30)
+        send(JSONObject().put("type", "chat").put("text", t))
+    }
+
+    fun react(emoji: String) {
+        val now = System.currentTimeMillis()
+        reactions.value = (reactions.value.filter { now - it.second < 4000 } + (emoji to now)).takeLast(12)
+        send(JSONObject().put("type", "react").put("emoji", emoji))
+    }
+
+    private fun startBeat() {
         beat = scope.launch {
             while (isActive) {
                 delay(10_000)
@@ -64,7 +97,6 @@ object Room {
                 if (playing || now - lastSent > 25_000) sendState()
             }
         }
-        return id
     }
 
     fun leave(silently: Boolean = false) {
@@ -87,7 +119,7 @@ object Room {
                             connected = true
                             topic?.let { webSocket.send(Mqtt.subscribe(it).toByteString()) }
                             scope.launch { while (isActive && connected) { delay(15_000); webSocket.send(byteArrayOf(0xC0.toByte(), 0).toByteString()) } }
-                            sendState()
+                            if (joining) send(JSONObject().put("type", "join")) else sendState()
                         }
                         3 -> {
                             val (t, payload) = Mqtt.publishBody(body)
@@ -128,8 +160,10 @@ object Room {
             "state" -> {
                 people.value = people.value + (from to (m.optString("name") to System.currentTimeMillis()))
                 scope.launch(Dispatchers.Main) {
+                    val p = player
+                    if (p == null) { onStateWithoutPlayer?.invoke(m); return@launch }
                     applying = true
-                    try { player?.roomApply(m) } finally { applying = false }
+                    try { p.roomApply(m) } finally { applying = false }
                 }
             }
             else -> people.value = people.value + (from to (m.optString("name") to System.currentTimeMillis()))
@@ -147,7 +181,7 @@ object Room {
         val w = ws ?: return
         val t = topic ?: return
         if (!connected) return
-        m.put("from", me).put("name", "AnixQ TV").put("sentAt", System.currentTimeMillis() / 1000.0 + Sync.serverClockOffset)
+        m.put("from", me).put("name", myName).put("sentAt", System.currentTimeMillis() / 1000.0 + Sync.serverClockOffset)
         lastSent = System.currentTimeMillis()
         w.send(Mqtt.publish(t, m.toString().toByteArray()).toByteString())
     }

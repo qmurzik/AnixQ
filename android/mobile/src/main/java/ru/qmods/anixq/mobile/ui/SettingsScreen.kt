@@ -149,6 +149,13 @@ fun SettingsScreen(nav: Nav) {
             } else GroupRow("Войти в AnimeLib", icon = Icons.Default.AccountCircle, iconColor = Pal.orange, chevron = true, divider = false) { nav.push(LibLoginRoute) }
         }
 
+        Group("Shikimori", if (Store.shikiJson == null) "Просмотренные серии отмечаются в вашем профиле Shikimori — на телефоне, ТВ и iPhone." else null) {
+            if (Store.shikiJson != null) {
+                GroupRow(Store.shikiNickname ?: "Вы вошли", "Аккаунт Shikimori", Icons.Default.AccountCircle, Pal.blue)
+                GroupRow("Выйти", icon = Icons.AutoMirrored.Filled.Logout, iconColor = Pal.red, titleColor = Pal.red, divider = false) { Store.setShiki(null) }
+            } else GroupRow("Войти в Shikimori", icon = Icons.Default.AccountCircle, iconColor = Pal.blue, chevron = true, divider = false) { nav.push(ShikiLoginRoute) }
+        }
+
         Group("Плеер") {
             ToggleRow("Пропускать опенинги", Icons.Default.FastForward, Pal.purple, Store.autoSkipOpening) { Store.autoSkipOpening = it }
             ToggleRow("Следующая серия сама", Icons.Default.SkipNext, Pal.green, Store.autoNext) { Store.autoNext = it }

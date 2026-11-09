@@ -365,6 +365,16 @@ fun BookmarkMenu(title: Title, open: Boolean, onDismiss: () -> Unit) {
             HorizontalDivider(color = Color.White.copy(alpha = 0.1f))
             DropdownMenuItem({ Text("Удалить из закладок", color = Pal.red) }, onClick = { onDismiss(); Store.setBookmark(title, null) })
         }
+        // Own collections: add / remove this title.
+        val cols = ru.qmods.anixq.mobile.data.Collections.all.value
+        if (cols.isNotEmpty()) {
+            HorizontalDivider(color = Color.White.copy(alpha = 0.1f))
+            cols.forEach { c ->
+                val inside = ru.qmods.anixq.mobile.data.Collections.contains(c, title)
+                DropdownMenuItem({ Text("${c.emoji} ${c.name}") }, onClick = { onDismiss(); ru.qmods.anixq.mobile.data.Collections.toggle(c.id, title) },
+                    trailingIcon = { if (inside) Icon(Icons.Default.CheckCircle, null, tint = Pal.pink) })
+            }
+        }
     }
 }
 

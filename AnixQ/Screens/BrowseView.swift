@@ -194,6 +194,7 @@ struct SearchView: View {
     @State private var task: Task<Void, Never>?
     @AppStorage("search.recent") private var recentRaw = ""
     @State private var showTrace = false
+    @State private var genre: Genre?
 
     private var recent: [String] { recentRaw.split(separator: "\n").map(String.init) }
 
@@ -224,10 +225,9 @@ struct SearchView: View {
                                 .frame(maxWidth: .infinity, minHeight: 54)
                                 .background(gradient(for: g.id), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                                 .foregroundStyle(.white)
-                            ZStack {
-                                tile
-                                NavigationLink(value: GenreRoute(genre: g)) { tile }.buttonStyle(.plain).opacity(0)
-                            }
+                            // Borderless button: only this tile reacts (two links in one row would both open).
+                            Button { genre = g } label: { tile.contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous)) }
+                                .buttonStyle(.borderless)
                         }
                     }
                     .listRowInsets(EdgeInsets(top: 10, leading: 12, bottom: 10, trailing: 12))
@@ -257,6 +257,9 @@ struct SearchView: View {
                     prompt: "Название, оригинал или английское")
         .onSubmit(of: .search) { remember(text) }
         .onChange(of: text) { q in schedule(q) }
+        .navigationDestination(isPresented: Binding(get: { genre != nil }, set: { if !$0 { genre = nil } })) {
+            if let g = genre { CatalogListView(title: g.name, query: CatalogQuery(genre: g.id)) }
+        }
         .appDestinations()
         .task { if genres.isEmpty { genres = await LibAPI.genres() } }
     }

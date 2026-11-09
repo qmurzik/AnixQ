@@ -13,6 +13,9 @@ struct LibraryView: View {
     @State private var showSettings = false
     @State private var showLibLogin = false
     @ObservedObject private var lock = AppLock.shared
+    /// Tiles are plain buttons, not links: several links in one list row all fire on a single tap.
+    private enum Tile: Hashable { case smart, downloads, stats, friends }
+    @State private var tile: Tile?
 
     var body: some View {
         List {
@@ -59,13 +62,10 @@ struct LibraryView: View {
 
             Section {
                 LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible())], spacing: 10) {
-                    LibraryTile(title: "Для меня", subtitle: "Сегодня и советы", icon: "sparkles", colors: [.pink, .purple], value: SmartRoute())
-                    LibraryTile(title: "Загрузки", subtitle: downloadsSubtitle, icon: "arrow.down.circle.fill", colors: [.blue, .cyan],
-                                value: LibraryRoute.downloads)
-                    LibraryTile(title: "Статистика", subtitle: "Итоги и достижения", icon: "chart.bar.fill", colors: [.orange, .yellow],
-                                value: LibraryRoute.stats)
-                    LibraryTile(title: "Друзья", subtitle: "Лента Shikimori", icon: "person.2.fill", colors: [.green, .teal],
-                                value: LibraryRoute.friends)
+                    LibraryTile(title: "Для меня", subtitle: "Сегодня и советы", icon: "sparkles", colors: [.pink, .purple]) { tile = .smart }
+                    LibraryTile(title: "Загрузки", subtitle: downloadsSubtitle, icon: "arrow.down.circle.fill", colors: [.blue, .cyan]) { tile = .downloads }
+                    LibraryTile(title: "Статистика", subtitle: "Итоги и достижения", icon: "chart.bar.fill", colors: [.orange, .yellow]) { tile = .stats }
+                    LibraryTile(title: "Друзья", subtitle: "Лента Shikimori", icon: "person.2.fill", colors: [.green, .teal]) { tile = .friends }
                 }
                 .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
                 .listRowBackground(Color.clear)
@@ -126,6 +126,15 @@ struct LibraryView: View {
             }
         }
         .libraryDestinations()
+        .navigationDestination(isPresented: Binding(get: { tile != nil }, set: { if !$0 { tile = nil } })) {
+            switch tile {
+            case .smart: SmartLibraryView()
+            case .downloads: DownloadsView()
+            case .stats: StatsView()
+            case .friends: FriendsView()
+            case nil: EmptyView()
+            }
+        }
         .sheet(isPresented: $showSettings) { SettingsView() }
         .sheet(isPresented: $showLibLogin) {
             LibLoginView { ok in if ok { Task { await library.syncBookmarks(force: true) } } }
@@ -667,35 +676,35 @@ struct LockGate<Content: View>: View {
 }
 
 /// Big colourful entry tile at the top of the library.
-struct LibraryTile<V: Hashable>: View {
+struct LibraryTile: View {
     let title: String
     let subtitle: String
     let icon: String
     let colors: [Color]
-    let value: V
+    let action: () -> Void
 
     var body: some View {
-        let label = VStack(alignment: .leading, spacing: 10) {
-            Image(systemName: icon).font(.system(size: 18, weight: .bold)).foregroundStyle(.white)
-                .frame(width: 38, height: 38)
-                .background(LinearGradient(colors: colors, startPoint: .topLeading, endPoint: .bottomTrailing),
-                            in: RoundedRectangle(cornerRadius: 11, style: .continuous))
-            VStack(alignment: .leading, spacing: 1) {
-                Text(title).font(.headline).foregroundStyle(.primary)
-                Text(subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+        // A borderless button reacts only to its own area inside a list row.
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: 10) {
+                Image(systemName: icon).font(.system(size: 18, weight: .bold)).foregroundStyle(.white)
+                    .frame(width: 38, height: 38)
+                    .background(LinearGradient(colors: colors, startPoint: .topLeading, endPoint: .bottomTrailing),
+                                in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(title).font(.headline).foregroundStyle(.primary)
+                    Text(subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(14)
+            .background(LinearGradient(colors: [colors[0].opacity(0.16), colors[colors.count - 1].opacity(0.05)],
+                                       startPoint: .topLeading, endPoint: .bottomTrailing),
+                        in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .background(Theme.card, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(14)
-        .background(LinearGradient(colors: [colors[0].opacity(0.16), colors[colors.count - 1].opacity(0.05)],
-                                   startPoint: .topLeading, endPoint: .bottomTrailing),
-                    in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .background(Theme.card, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        // Invisible link on top keeps list rows free of chevrons.
-        ZStack {
-            label
-            NavigationLink(value: value) { label }.buttonStyle(.plain).opacity(0)
-        }
+        .buttonStyle(.borderless)
     }
 }
 

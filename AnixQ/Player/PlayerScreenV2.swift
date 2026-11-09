@@ -155,7 +155,7 @@ struct PlayerScreenV2: View {
         // Portrait: settings slide up as a sheet.
         .sheet(item: Binding(get: { land ? nil : panel }, set: { panel = $0 })) { p in
             PanelSheet(title: panelTitle(p)) { panelContent(p) }
-                .presentationDetents(p == .episodes || p == .subtitles ? [.medium, .large] : [.medium])
+                .presentationDetents(p == .episodes || p == .subtitles || p == .picture ? [.medium, .large] : [.medium])
                 .environmentObject(library)
         }
         .sheet(item: Binding(get: { whoFrame.map(IdentifiedImage.init) }, set: { whoFrame = $0?.image })) { WhoIsThisView(frame: $0.image) }
@@ -469,6 +469,7 @@ struct PlayerScreenV2: View {
                 Toggle(isOn: Binding(get: { enhance }, set: { enhance = $0; c.setEnhance($0) })) {
                     Label("Улучшение чёткости", systemImage: "wand.and.stars")
                 }
+                Button { panel = .picture } label: { Label("Картинка и звук", systemImage: "slider.horizontal.3") }
             }
             if c.isNative && (sharePlay.isEligible || sharePlay.isActive) {
                 Button {
@@ -824,6 +825,7 @@ struct PlayerScreenV2: View {
         case .quality: return "Качество"
         case .subtitles: return "Субтитры"
         case .sleep: return "Таймер сна"
+        case .picture: return "Картинка и звук"
         }
     }
 
@@ -915,6 +917,8 @@ struct PlayerScreenV2: View {
             }
             .font(.subheadline)
             .padding()
+        case .picture:
+            PictureSoundPanel(c: c)
         case .sleep:
             row(selected: c.sleepAt == nil && !c.sleepAfterEpisode) { c.sleepAt = nil; c.sleepAfterEpisode = false; panel = nil } content: { Text("Выключен"); Spacer() }
             row(selected: c.sleepAfterEpisode) { c.sleepAt = nil; c.sleepAfterEpisode = true; panel = nil } content: { Text("После этой серии"); Spacer() }

@@ -37,7 +37,16 @@ interface Engine {
 /** AnimeLib's own player: plain MP4 from their mirrors, no ads. */
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 class ExoEngine(private val context: Context, private val onError: (String) -> Unit) : Engine {
-    val exo: ExoPlayer = ExoPlayer.Builder(context)
+    /** Smart sound (see SoundProcessor): in the audio chain before speed change, switchable live. */
+    private val sound = SoundProcessor()
+    private val renderers = object : androidx.media3.exoplayer.DefaultRenderersFactory(context) {
+        override fun buildAudioSink(context: Context, enableFloatOutput: Boolean, enableAudioTrackPlaybackParams: Boolean) =
+            androidx.media3.exoplayer.audio.DefaultAudioSink.Builder(context)
+                .setAudioProcessorChain(androidx.media3.exoplayer.audio.DefaultAudioSink.DefaultAudioProcessorChain(sound))
+                .build()
+    }
+
+    val exo: ExoPlayer = ExoPlayer.Builder(context, renderers)
         .setMediaSourceFactory(DefaultMediaSourceFactory(
             OkHttpDataSource.Factory(Api.http).setDefaultRequestProperties(mapOf("Referer" to "${Api.SITE}/", "Origin" to Api.SITE))))
         .setHandleAudioBecomingNoisy(true)
@@ -76,27 +85,35 @@ class ExoEngine(private val context: Context, private val onError: (String) -> U
      * 3 Anime4K neural ×2 · 4 Anime4K restore + ×2 · 5 Anime4K M (bigger network).
      */
     private var appliedMode = 0
+    /** Whether the colour stage is in the pipeline (it can only be added before prepare). */
+    private var appliedColor = false
     @Volatile var firstFrame = false; private set
     var loadedAt = 0L; private set
 
     /** Effects must be in place before the media is prepared (setting them on a running player stalls it). */
     private fun applyUpscale(mode: Int) {
-        if (mode == appliedMode) return
+        val color = !ColorTuning.value.isNeutral
+        if (mode == appliedMode && color == appliedColor) return
         exo.stop()
+        appliedColor = color
         setUpscale(mode)
         appliedMode = mode
     }
 
+    /** True when a colour change needs the pipeline rebuilt (neutral ↔ tuned); otherwise it applies live. */
+    fun colorNeedsReload(): Boolean = (!ColorTuning.value.isNeutral) != appliedColor
+
     private fun setUpscale(mode: Int) {
         val chain = upscaleMode(mode).chain
-        val effects = chain.mapIndexed { i, step ->
+        val effects: List<androidx.media3.common.Effect> = chain.mapIndexed { i, step ->
             when (step) {
                 "rcas" -> Upscaler.Sharpen()
                 "lanczos" -> Upscaler.Scale(screenHeight)
                 else -> Anime4K.Effect("anime4k/Anime4K_$step.glsl", screenHeight, compare = i == chain.lastIndex)
             }
-        }
+        } + (if (appliedColor) listOf(ColorTuning) else emptyList())
         if (mode == 0) Upscaler.lastInfo = ""
+        if (effects.isEmpty() && mode == 0) { runCatching { exo.setVideoEffects(emptyList()) }; return }
         runCatching { exo.setVideoEffects(effects) }.onFailure { android.util.Log.w("AnixQ", "upscaler: ${it.message}") }
     }
 
@@ -110,6 +127,7 @@ class ExoEngine(private val context: Context, private val onError: (String) -> U
     }
 
     init {
+        runCatching { ColorTuning.load(); SoundMode.load() }
         exo.addListener(object : Player.Listener {
             override fun onPlayerError(error: PlaybackException) { onError(error.errorCodeName) }
             override fun onRenderedFirstFrame() { firstFrame = true }

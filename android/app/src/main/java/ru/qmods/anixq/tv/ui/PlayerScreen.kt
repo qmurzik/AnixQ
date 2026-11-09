@@ -1,5 +1,7 @@
 package ru.qmods.anixq.tv.ui
 
+import kotlin.math.abs
+
 import android.content.Context
 import android.view.KeyEvent as AKey
 import androidx.activity.compose.BackHandler
@@ -199,6 +201,16 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
     /** Sleep timer: pause at this wall-clock time (0 = off), or when the episode ends. */
     var sleepAt by mutableLongStateOf(0L)
     var sleepAfterEpisode by mutableStateOf(false)
+
+    @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+    fun setPicture(p: Picture) {
+        ColorTuning.set(p)
+        // Neutral ↔ tuned needs the GPU pipeline rebuilt: reload at the same moment; otherwise it's live.
+        if (native && exo?.colorNeedsReload() == true) load(index, keepPos = pos)
+        say(if (p.isNeutral) "Цвет как в оригинале" else "Цвет изменён")
+    }
+
+    fun setSound(s: SoundMode) { SoundMode.set(s); say("Звук: ${s.title}") }
 
     fun applySpeed(f: Float) { speed = f; exo?.exo?.setPlaybackSpeed(f); say(if (f == 1f) "Обычная скорость" else "Скорость ${speedLabel(f)}") }
 
@@ -674,6 +686,8 @@ fun PlayerScreen(nav: Nav, route: PlayerRoute) {
             if (m.native && m.player?.subtitles?.isNotEmpty() == true) Choice("Субтитры", hint = if (m.subtitlesOn) "включены" else "выключены") else null,
             if (m.native) Choice("Апскейлер", hint = upscaleMode(m.upscale).name +
                 (Upscaler.lastInfo.takeIf { m.upscale == 2 && it.isNotEmpty() }?.let { " · $it" } ?: "")) else null,
+            if (m.native) Choice("Цвет картинки", hint = Picture.presets.firstOrNull { it.second == ColorTuning.value }?.first ?: "свой") else null,
+            if (m.native) Choice("Звук", hint = SoundMode.current.title) else null,
             Choice("Смотреть вместе", hint = if (ru.qmods.anixq.tv.data.Room.roomId.value != null) "комната открыта" else "друзья с телефона или браузера"),
             Choice("Таймер сна", hint = when {
                 m.sleepAfterEpisode -> "после этой серии"
@@ -682,13 +696,28 @@ fun PlayerScreen(nav: Nav, route: PlayerRoute) {
             }),
         ).let { opts -> opts }, { dialog = null }) { i ->
             val hasSubs = m.native && m.player?.subtitles?.isNotEmpty() == true
-            val keys = listOfNotNull(if (m.native) "speed" else null, if (hasSubs) "subs" else null, if (m.native) "upscale" else null, "room", "sleep")
+            val keys = listOfNotNull(if (m.native) "speed" else null, if (hasSubs) "subs" else null, if (m.native) "upscale" else null,
+                if (m.native) "color" else null, if (m.native) "sound" else null, "room", "sleep")
             when (val k = keys.getOrNull(i)) {
                 "subs" -> { dialog = null; m.toggleSubtitles() }
                 else -> dialog = k
             }
         }
         "room" -> RoomDialog(onClose = { dialog = null })
+        "color" -> {
+            // Presets, then finer saturation steps (sliders are awkward with a remote).
+            val cur = ColorTuning.value
+            val sats = listOf(0.8f, 0.9f, 1.1f, 1.2f, 1.35f, 1.5f)
+            val opts = Picture.presets.map { (n, p) -> Choice(n, p == cur) } +
+                sats.map { v -> Choice("Насыщенность ${"%+d".format(((v - 1) * 100).toInt())}%", abs(cur.saturation - v) < 0.01f && cur.copy(saturation = 1f) == Picture()) }
+            ChoiceDialog("Цвет картинки", opts, { dialog = null }) { i ->
+                dialog = null
+                m.setPicture(if (i < Picture.presets.size) Picture.presets[i].second else Picture(saturation = sats[i - Picture.presets.size]))
+            }
+        }
+        "sound" -> ChoiceDialog("Звук", SoundMode.entries.map { Choice(it.title, it == SoundMode.current, it.subtitle) }, { dialog = null }) { i ->
+            dialog = null; m.setSound(SoundMode.entries[i])
+        }
         "upscale" -> {
             val strong = !ru.qmods.anixq.tv.data.Store.weakDevice
             val modes = UPSCALE_MODES.filter { strong || !it.heavy || it.id == m.upscale }

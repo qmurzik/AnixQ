@@ -445,7 +445,8 @@ final class PlayerController: ObservableObject {
     }
 
     private func attach(_ item: AVPlayerItem, at time: Double?) {
-        if VideoEnhancer.enabled && !audioOnly { Task { await VideoEnhancer.apply(to: item) } }
+        if (VideoEnhancer.enabled || !VideoProcessing.live.isNeutral) && !audioOnly { Task { await VideoEnhancer.apply(to: item) } }
+        if SoundEnhancer.mode != .off { Task { await SoundEnhancer.apply(to: item) } }
         // 0 = the system decides: it starts quickly and then keeps minutes ahead, which rides out
         // mobile-network dips (a 60 s cap here caused long stalls on LTE).
         item.preferredForwardBufferDuration = 0
@@ -547,6 +548,23 @@ final class PlayerController: ObservableObject {
             play(q, at: currentTime)
         }
         updateNowPlaying()
+    }
+
+    /// Colour tuning: the pipeline reads it every frame; installed on the fly the first time it's needed.
+    func setPicture(_ t: PictureTuning) {
+        PictureTuning.save(t)
+        VideoProcessing.live = t
+        guard isNative, !audioOnly, let item = player.currentItem else { return }
+        if item.videoComposition == nil, !t.isNeutral { Task { await VideoEnhancer.apply(to: item) } }
+        // Paused: redraw the current frame so the change is visible right away.
+        if !isPlaying { player.seek(to: player.currentTime(), toleranceBefore: .zero, toleranceAfter: .zero) }
+    }
+
+    func setSound(_ m: SoundMode) {
+        SoundEnhancer.mode = m
+        DebugLog.log("player: sound mode \(m.rawValue)")
+        guard isNative, m != .off, let item = player.currentItem, item.audioMix == nil else { return }
+        Task { await SoundEnhancer.apply(to: item) }
     }
 
     func setEnhance(_ on: Bool) {

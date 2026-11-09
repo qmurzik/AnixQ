@@ -177,25 +177,37 @@ enum VideoEnhancer {
 
     /// Upscales low resolutions (Lanczos, up to 1080p) and sharpens line art — a light-weight
     /// take on Anime4K done with Core Image on the GPU. Works on MP4 streams and downloads.
+    /// Installs the frame pipeline: sharpening/upscale when "Улучшение чёткости" is on, plus the colour
+    /// tuning (read for every frame, so sliders work live).
     static func apply(to item: AVPlayerItem) async {
         let asset = item.asset
         guard let track = try? await asset.loadTracks(withMediaType: .video).first,
               let natural = try? await track.load(.naturalSize), natural.height > 0 else { return }
-        let scale = min(2, max(1, 1080 / abs(natural.height)))
+        let sharpen = enabled
+        let scale = sharpen ? min(2, max(1, 1080 / abs(natural.height))) : 1
         guard let comp = try? await AVMutableVideoComposition.videoComposition(with: asset, applyingCIFiltersWithHandler: { request in
             var img = request.sourceImage.clampedToExtent()
             if scale > 1.05 {
                 img = img.applyingFilter("CILanczosScaleTransform", parameters: ["inputScale": scale, "inputAspectRatio": 1])
             }
-            img = img.applyingFilter("CIUnsharpMask", parameters: ["inputRadius": 1.6 * scale, "inputIntensity": 0.55])
-                .applyingFilter("CIColorControls", parameters: ["inputSaturation": 1.06, "inputContrast": 1.03])
+            if sharpen {
+                img = img.applyingFilter("CIUnsharpMask", parameters: ["inputRadius": 1.6 * scale, "inputIntensity": 0.55])
+                    .applyingFilter("CIColorControls", parameters: ["inputSaturation": 1.06, "inputContrast": 1.03])
+            }
+            let t = VideoProcessing.live
+            if !t.isNeutral {
+                img = img.applyingFilter("CIColorControls", parameters: [kCIInputSaturationKey: t.saturation,
+                                                                         kCIInputBrightnessKey: t.brightness,
+                                                                         kCIInputContrastKey: t.contrast])
+                if t.vibrance > 0.01 { img = img.applyingFilter("CIVibrance", parameters: ["inputAmount": t.vibrance]) }
+            }
             let size = request.renderSize
             request.finish(with: img.cropped(to: CGRect(origin: .zero, size: size)), context: nil)
         }) else { return }
         let w = abs(natural.width) * scale, h = abs(natural.height) * scale
         comp.renderSize = CGSize(width: (w / 2).rounded() * 2, height: (h / 2).rounded() * 2)
         await MainActor.run { item.videoComposition = comp }
-        DebugLog.log(String(format: "player: enhance %.0fp -> %.0fp", abs(natural.height), h))
+        DebugLog.log(String(format: "player: picture pipeline %.0fp -> %.0fp (sharpen %@)", abs(natural.height), h, sharpen ? "on" : "off"))
     }
 }
 

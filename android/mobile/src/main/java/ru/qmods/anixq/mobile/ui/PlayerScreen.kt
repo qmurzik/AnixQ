@@ -48,6 +48,7 @@ import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Tv
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
@@ -107,6 +108,7 @@ fun PlayerScreen(nav: Nav, route: PlayerRoute) {
     var controls by remember { mutableStateOf(true) }
     var lastTouch by remember { mutableLongStateOf(System.currentTimeMillis()) }
     var episodesOpen by remember { mutableStateOf(false) }
+    var tuneOpen by remember { mutableStateOf(false) }
     var seekDrag by remember { mutableStateOf<Float?>(null) }
     var gesture by remember { mutableStateOf<Pair<ImageVector, Float>?>(null) }
     var gestureAt by remember { mutableLongStateOf(0L) }
@@ -156,7 +158,7 @@ fun PlayerScreen(nav: Nav, route: PlayerRoute) {
     LaunchedEffect(autoGo, m.index) {
         if (autoGo) { delay(6000); if (m.showNext && m.countdown) m.next() }
     }
-    BackHandler { if (episodesOpen) episodesOpen = false else nav.pop() }
+    BackHandler { if (episodesOpen) episodesOpen = false else if (tuneOpen) tuneOpen = false else nav.pop() }
 
     Box(Modifier.fillMaxSize().background(Color.Black)) {
         m.exo?.let { e -> if (m.native) AndroidView(factory = { e.view }, modifier = Modifier.fillMaxSize()) }
@@ -223,7 +225,7 @@ fun PlayerScreen(nav: Nav, route: PlayerRoute) {
                 if (m.native) Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(130.dp)
                     .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.75f)))))
                 Column(Modifier.fillMaxSize().safeDrawingPadding()) {
-                    PlayerTopBar(m, onBack = { nav.pop() }, onEpisodes = { episodesOpen = true; touched() }, onTv = {
+                    PlayerTopBar(m, onBack = { nav.pop() }, onEpisodes = { episodesOpen = true; touched() }, onTune = { tuneOpen = true; touched() }, onTv = {
                         m.sendToTv()
                         Toast.makeText(context, "Продолжаем на телевизоре с ${fmt(m.pos)}", Toast.LENGTH_SHORT).show()
                         nav.pop(); nav.push(RemoteRoute)
@@ -274,11 +276,12 @@ fun PlayerScreen(nav: Nav, route: PlayerRoute) {
                 .clip(RoundedCornerShape(20.dp)).background(Color.Black.copy(alpha = 0.65f)).padding(horizontal = 14.dp, vertical = 8.dp))
         }
         if (episodesOpen) EpisodesPanel(m) { episodesOpen = false }
+        if (tuneOpen) TunePanel(m) { tuneOpen = false }
     }
 }
 
 @Composable
-private fun PlayerTopBar(m: PlayerModel, onBack: () -> Unit, onEpisodes: () -> Unit, onTv: () -> Unit, touched: () -> Unit) {
+private fun PlayerTopBar(m: PlayerModel, onBack: () -> Unit, onEpisodes: () -> Unit, onTune: () -> Unit, onTv: () -> Unit, touched: () -> Unit) {
     var menu by remember { mutableStateOf<String?>(null) }
     Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
         IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Назад", tint = Color.White) }
@@ -289,6 +292,7 @@ private fun PlayerTopBar(m: PlayerModel, onBack: () -> Unit, onEpisodes: () -> U
         }
         if (Store.remoteChannel.isNotEmpty()) IconButton(onClick = onTv) { Icon(Icons.Default.Tv, "Смотреть на ТВ", tint = Color.White) }
         IconButton(onClick = onEpisodes) { Icon(Icons.Default.FormatListNumbered, "Серии", tint = Color.White) }
+        if (m.native) IconButton(onClick = onTune) { Icon(Icons.Default.Tune, "Картинка и звук", tint = Color.White) }
         val teams = m.players.distinctBy { it.team.id }
         if (teams.size > 1) Box {
             IconButton(onClick = { menu = "dub"; touched() }) { Icon(Icons.Default.RecordVoiceOver, "Озвучка", tint = Color.White) }
@@ -349,5 +353,59 @@ private fun EpisodesPanel(m: PlayerModel, onClose: () -> Unit) {
                 }
             }
         }
+    }
+}
+
+
+/** Colour presets and sliders (live) plus the sound mode — same choices as on the iPhone. */
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+@Composable
+private fun TunePanel(m: PlayerModel, onClose: () -> Unit) {
+    var p by remember { mutableStateOf(ru.qmods.anixq.tv.ui.ColorTuning.value) }
+    var sound by remember { mutableStateOf(ru.qmods.anixq.tv.ui.SoundMode.current) }
+    fun change(n: ru.qmods.anixq.tv.ui.Picture, commit: Boolean) { p = n; m.setPicture(n, commit) }
+    Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.3f)).clickable(onClick = onClose)) {
+        LazyColumn(
+            Modifier.align(Alignment.CenterEnd).fillMaxHeight().width(340.dp).background(Pal.bg.copy(alpha = 0.94f))
+                .safeDrawingPadding().clickable(enabled = false) {}.padding(horizontal = 16.dp),
+        ) {
+            item { Text("Картинка", fontWeight = FontWeight.Bold, fontSize = 18.sp, modifier = Modifier.padding(top = 14.dp, bottom = 8.dp)) }
+            item {
+                androidx.compose.foundation.lazy.LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(ru.qmods.anixq.tv.ui.Picture.presets.size) { i ->
+                        val (name, value) = ru.qmods.anixq.tv.ui.Picture.presets[i]
+                        Capsule(name, selected = p == value) { change(value, true) }
+                    }
+                }
+            }
+            item { TuneSlider("Насыщенность", p.saturation, 0.5f..1.6f, 1f, { change(p.copy(saturation = it), false) }) { change(p, true) } }
+            item { TuneSlider("Яркость", p.brightness, -0.15f..0.15f, 0f, { change(p.copy(brightness = it), false) }) { change(p, true) } }
+            item { TuneSlider("Контраст", p.contrast, 0.8f..1.3f, 1f, { change(p.copy(contrast = it), false) }) { change(p, true) } }
+            item { Text("Звук", fontWeight = FontWeight.Bold, fontSize = 18.sp, modifier = Modifier.padding(top = 18.dp, bottom = 6.dp)) }
+            items(ru.qmods.anixq.tv.ui.SoundMode.entries.size) { i ->
+                val s = ru.qmods.anixq.tv.ui.SoundMode.entries[i]
+                Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(if (s == sound) Color.White.copy(alpha = 0.1f) else Color.Transparent)
+                    .clickable { sound = s; m.setSound(s) }.padding(10.dp)) {
+                    Text(s.title, fontWeight = FontWeight.SemiBold, fontSize = 15.sp, color = if (s == sound) Pal.pink else Pal.text)
+                    Text(s.subtitle, fontSize = 12.sp, color = Pal.muted)
+                }
+            }
+            item { Box(Modifier.height(16.dp)) }
+        }
+    }
+}
+
+@Composable
+private fun TuneSlider(title: String, value: Float, range: ClosedFloatingPointRange<Float>, neutral: Float, onChange: (Float) -> Unit, onDone: () -> Unit) {
+    Column(Modifier.padding(top = 10.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(title, fontSize = 14.sp, modifier = Modifier.weight(1f))
+            val span = maxOf(range.endInclusive - neutral, neutral - range.start)
+            val pct = ((value - neutral) / span * 100).toInt()
+            Text(if (pct == 0) "0" else "%+d".format(pct), fontSize = 12.sp, color = Pal.muted,
+                modifier = Modifier.clickable { onChange(neutral); onDone() })
+        }
+        Slider(value, onChange, valueRange = range, onValueChangeFinished = onDone,
+            colors = SliderDefaults.colors(thumbColor = Pal.pink, activeTrackColor = Pal.pink, inactiveTrackColor = Color.White.copy(alpha = 0.2f)))
     }
 }

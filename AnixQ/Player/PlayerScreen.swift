@@ -5,7 +5,7 @@ import MediaPlayer
 import WebKit
 
 enum PlayerPanel: String, Identifiable {
-    case episodes, teams, speed, quality, subtitles, sleep
+    case episodes, teams, speed, quality, subtitles, sleep, picture
     var id: String { rawValue }
 }
 
@@ -13,6 +13,7 @@ struct PlayerScreen: View {
     @StateObject private var c: PlayerController
     @EnvironmentObject private var library: LibraryStore
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
     let background: URL?
 
     @State private var showControls = true
@@ -123,6 +124,8 @@ struct PlayerScreen: View {
             OrientationController.set(.portrait)
         }
         .onChange(of: c.isPlaying) { playing in if playing { scheduleHide() } }
+        // A swipe cut off by leaving the app never "ends": reset it, or the controls stay hidden.
+        .onChange(of: scenePhase) { _ in resetGestures() }
         .modifier(SubtitleTranslation(c: c))
         .userActivity(HandoffSeek.activityType, isActive: c.isNative && c.duration > 0) { a in
             a.title = "\(c.title.title) — серия \(c.episode.number)"
@@ -311,6 +314,7 @@ struct PlayerScreen: View {
                 ripple = (left, UUID())
             }
             .onTapGesture {
+                if dragMode != nil { resetGestures(); return }
                 if locked { showControls.toggle(); scheduleHide(); return }
                 if panel != nil { panel = nil; return }
                 showControls.toggle()
@@ -439,6 +443,7 @@ struct PlayerScreen: View {
                     Toggle(isOn: Binding(get: { enhance }, set: { enhance = $0; c.setEnhance($0) })) {
                         Label("Улучшение чёткости", systemImage: "wand.and.stars")
                     }
+                    Button { panel = .picture } label: { Label("Картинка и звук", systemImage: "slider.horizontal.3") }
                 } label: {
                     Image(systemName: "ellipsis.circle").font(.system(size: 17, weight: .semibold))
                         .frame(width: 43, height: 43).foregroundStyle(.white)
@@ -670,6 +675,7 @@ struct PlayerScreen: View {
         case .quality: return "Качество"
         case .subtitles: return "Субтитры"
         case .sleep: return "Таймер сна"
+        case .picture: return "Картинка и звук"
         }
     }
 
@@ -772,6 +778,8 @@ struct PlayerScreen: View {
                 Toggle("Подложка", isOn: $subtitleBackground).font(.subheadline)
             }
             .padding()
+        case .picture:
+            PictureSoundPanel(c: c)
         case .sleep:
             sleepPanel
         case .quality:
@@ -854,6 +862,14 @@ struct PlayerScreen: View {
     }
 
     // MARK: Helpers
+
+    private func resetGestures() {
+        dragMode = nil
+        seekPreview = nil
+        gestureHUD = nil
+        showControls = true
+        scheduleHide()
+    }
 
     private func scheduleHide() {
         hideTask?.cancel()

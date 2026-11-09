@@ -124,6 +124,14 @@ object Store {
         prefs.edit().putString("rc.channel", ch).putString("rc.key", key).putString("rc.at", at.toString()).commit()
     }
 
+    /** Colour tuning of the picture (JSON, see ui.Picture) and the sound mode (ui.SoundMode ordinal). */
+    var picture: String?
+        get() = prefs.getString("picture", null)
+        set(v) { prefs.edit().putString("picture", v).apply() }
+    var soundMode: Int
+        get() = prefs.getInt("soundMode", 0)
+        set(v) { prefs.edit().putInt("soundMode", v).apply() }
+
     var subtitles: Boolean
         get() = prefs.getBoolean("subtitles", true)
         set(v) { prefs.edit().putBoolean("subtitles", v).apply() }

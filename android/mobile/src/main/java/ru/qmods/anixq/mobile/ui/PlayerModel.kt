@@ -261,6 +261,14 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
     fun changeQuality(q: String) { Store.preferredQuality = q.removeSuffix("p").toIntOrNull() ?: Store.preferredQuality; load(index, keepPos = pos, qualityKey = q) }
     fun setTeam(id: Int) { players.firstOrNull { it.team.id == id }?.team?.name?.let { Store.useDub(it) }; load(index, teamId = id, keepPos = pos) }
 
+    /** Colour: live while the GPU stage is in place; neutral ↔ tuned reloads at the same moment. */
+    fun setPicture(p: ru.qmods.anixq.tv.ui.Picture, commit: Boolean) {
+        ru.qmods.anixq.tv.ui.ColorTuning.set(p)
+        if (commit && native && exo?.colorNeedsReload() == true) load(index, keepPos = pos)
+    }
+
+    fun setSound(s: ru.qmods.anixq.tv.ui.SoundMode) { ru.qmods.anixq.tv.ui.SoundMode.set(s); say("Звук: ${s.title}") }
+
     /** Hand the episode over to the TV at this exact second. */
     fun sendToTv() {
         val ep = episode ?: return

@@ -33,6 +33,7 @@ import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.HighQuality
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Language
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.LocalFireDepartment
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.QrCodeScanner
@@ -154,6 +155,16 @@ fun SettingsScreen(nav: Nav) {
             ToggleRow("Субтитры, где есть", Icons.Default.Subtitles, Pal.teal, Store.subtitles) { Store.subtitles = it }
             ToggleRow("Режим марафона", Icons.Default.LocalFireDepartment, Pal.orange, Store.marathon) { Store.marathon = it }
             ToggleRow("Без спойлеров", Icons.Default.VisibilityOff, Pal.indigo, Store.noSpoilers) { Store.noSpoilers = it }
+            GroupRow("Качество загрузок", icon = Icons.Default.Download, iconColor = Pal.indigo, trailing = {
+                var dq by remember { mutableStateOf(ru.qmods.anixq.mobile.data.Downloads.quality) }
+                Row(Modifier.clip(RoundedCornerShape(9.dp)).background(Pal.cardHi).padding(2.dp)) {
+                    listOf(480, 720, 1080).forEach { q ->
+                        Text("$q", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = if (dq == q) Color.Black else Pal.text,
+                            modifier = Modifier.clip(RoundedCornerShape(7.dp)).background(if (dq == q) Color.White else Color.Transparent)
+                                .clickable { dq = q; ru.qmods.anixq.mobile.data.Downloads.quality = q }.padding(horizontal = 10.dp, vertical = 5.dp))
+                    }
+                }
+            })
             GroupRow("Качество", icon = Icons.Default.HighQuality, iconColor = Pal.blue, divider = false, trailing = {
                 Row(Modifier.clip(RoundedCornerShape(9.dp)).background(Pal.cardHi).padding(2.dp)) {
                     listOf(480, 720, 1080).forEach { q ->

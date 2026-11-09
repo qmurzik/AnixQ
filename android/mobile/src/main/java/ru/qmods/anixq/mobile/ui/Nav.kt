@@ -27,6 +27,7 @@ data class PlayerRoute(
 data class CatalogRoute(val title: String, val query: CatalogQuery) : Route
 data class FolderRoute(val status: Bookmark) : Route
 data object HistoryRoute : Route
+data object DownloadsRoute : Route
 data object RemoteRoute : Route
 data object SettingsRoute : Route
 data object SyncRoute : Route

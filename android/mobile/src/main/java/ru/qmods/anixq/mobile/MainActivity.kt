@@ -92,6 +92,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge(SystemBarStyle.dark(android.graphics.Color.TRANSPARENT), SystemBarStyle.dark(android.graphics.Color.TRANSPARENT))
         Store.init(applicationContext)
+        ru.qmods.anixq.mobile.data.Downloads.init(applicationContext)
         Coil.setImageLoader(Images.loader(applicationContext))
         if (Store.libToken != null) lifecycleScope.launch { Api.loadProfile() }
         setContent {
@@ -161,6 +162,7 @@ fun Root(nav: Nav) {
             is TitleRoute -> holder.SaveableStateProvider("title-${top.title.id}-${nav.stack.size}") { TitleScreen(nav, top.title) }
             is CatalogRoute -> holder.SaveableStateProvider("cat-${top.title}-${nav.stack.size}") { CatalogListScreen(nav, top) }
             is FolderRoute -> FolderScreen(nav, top.status)
+            ru.qmods.anixq.mobile.ui.DownloadsRoute -> ru.qmods.anixq.mobile.ui.DownloadsScreen(nav)
             HistoryRoute -> HistoryScreen(nav)
             RemoteRoute -> RemoteScreen(nav)
             SettingsRoute -> SettingsScreen(nav)

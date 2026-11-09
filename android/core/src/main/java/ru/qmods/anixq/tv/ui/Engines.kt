@@ -47,8 +47,9 @@ class ExoEngine(private val context: Context, private val onError: (String) -> U
     }
 
     val exo: ExoPlayer = ExoPlayer.Builder(context, renderers)
-        .setMediaSourceFactory(DefaultMediaSourceFactory(
-            OkHttpDataSource.Factory(Api.http).setDefaultRequestProperties(mapOf("Referer" to "${Api.SITE}/", "Origin" to Api.SITE))))
+        // Network through OkHttp (with the site's Referer); file:// for downloaded episodes.
+        .setMediaSourceFactory(DefaultMediaSourceFactory(androidx.media3.datasource.DefaultDataSource.Factory(context,
+            OkHttpDataSource.Factory(Api.http).setDefaultRequestProperties(mapOf("Referer" to "${Api.SITE}/", "Origin" to Api.SITE)))))
         .setHandleAudioBecomingNoisy(true)
         // Start after ~1 s of video instead of 2.5 s; keep up to a minute buffered for shaky Wi-Fi.
         .setLoadControl(androidx.media3.exoplayer.DefaultLoadControl.Builder().setBufferDurationsMs(15_000, 60_000, 1_000, 2_500).build())

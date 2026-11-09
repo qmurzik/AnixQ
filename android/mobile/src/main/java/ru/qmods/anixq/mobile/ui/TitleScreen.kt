@@ -78,6 +78,9 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.DownloadDone
+import androidx.compose.material.icons.filled.Delete
 import ru.qmods.anixq.tv.data.Api
 import ru.qmods.anixq.tv.data.CatalogQuery
 import ru.qmods.anixq.tv.data.CatalogSort
@@ -149,7 +152,9 @@ fun TitleScreen(nav: Nav, start: Title) {
         launch { runCatching { Api.similar(start.slug) }.getOrNull()?.let { similar = it; TitleCache.similar[start.slug] = it } }
         launch { runCatching { Api.detail(start.slug) }.getOrNull()?.let { detail = it; TitleCache.detail[start.slug] = it } }
         try {
-            val eps = Api.episodes(start.slug)
+            val eps = runCatching { Api.episodes(start.slug) }.getOrElse { e ->
+                ru.qmods.anixq.mobile.data.Downloads.episodes(start.id) ?: throw e
+            }
             episodes = eps; TitleCache.episodes[start.slug] = eps
             if (eps.isEmpty()) return@LaunchedEffect
             // Teams can differ between early and recent episodes: look at both ends.
@@ -267,7 +272,13 @@ fun TitleScreen(nav: Nav, start: Title) {
             item(key = "episodes") {
                 Column(Modifier.padding(top = 26.dp)) {
                     SectionHeader("Серии", if (eps.size > 6) "Все ${eps.size}" else null) { allEpisodes = true }
-                    if (teams.isNotEmpty()) Box(Modifier.padding(horizontal = 16.dp).padding(top = 10.dp)) {
+                    val downloads by ru.qmods.anixq.mobile.data.Downloads.items.collectAsState()
+                    var dlMenu by remember { mutableStateOf(false) }
+                    fun download(list: List<Episode>) = ru.qmods.anixq.mobile.data.Downloads.enqueue(title, eps, list, teamId) {
+                        Toast.makeText(context, it, Toast.LENGTH_SHORT).show()
+                    }
+                    Row(Modifier.padding(top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    if (teams.isNotEmpty()) Box(Modifier.padding(start = 16.dp)) {
                         Row(Modifier.clip(CircleShape).background(Pal.cardHi).clickable { teamMenu = true }.padding(horizontal = 14.dp, vertical = 9.dp),
                             verticalAlignment = Alignment.CenterVertically) {
                             Icon(if (team?.team?.isSubtitles == true) Icons.Default.ClosedCaption else Icons.Default.GraphicEq, null, Modifier.size(16.dp))
@@ -283,6 +294,23 @@ fun TitleScreen(nav: Nav, start: Title) {
                             }
                         }
                     }
+                    if (eps.isNotEmpty()) Box(Modifier.padding(start = 8.dp)) {
+                        val saved = downloads.values.count { it.title.id == title.id }
+                        Row(Modifier.clip(CircleShape).background(Pal.cardHi).clickable { dlMenu = true }.padding(horizontal = 12.dp, vertical = 9.dp),
+                            verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Download, "Скачать", Modifier.size(16.dp))
+                            if (saved > 0) Text(" $saved", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                        }
+                        DropdownMenu(dlMenu, { dlMenu = false }, containerColor = Pal.cardHi) {
+                            DropdownMenuItem({ Text("Скачать непросмотренные") }, onClick = { dlMenu = false
+                                download(eps.filter { !Store.isWatched(title.id, it.number) }.take(30)) })
+                            DropdownMenuItem({ Text("Скачать следующие 3") }, onClick = { dlMenu = false; download(eps.drop(idx).take(3)) })
+                            DropdownMenuItem({ Text("Скачать все серии") }, onClick = { dlMenu = false; download(eps) })
+                            if (saved > 0) DropdownMenuItem({ Text("Удалить скачанные", color = Pal.red) }, onClick = { dlMenu = false
+                                ru.qmods.anixq.mobile.data.Downloads.removeTitle(title.id) })
+                        }
+                    }
+                    }
                     Spacer(Modifier.height(12.dp))
                     when {
                         episodes == null && error == null -> Loading(Modifier.fillMaxWidth().height(120.dp))
@@ -294,6 +322,7 @@ fun TitleScreen(nav: Nav, start: Title) {
                                 itemsIndexed(eps, key = { _, e -> e.id }) { i, ep ->
                                     Box {
                                         EpisodeCard(ep, detail?.background ?: title.poster, Store.progress(ep.id).toFloat(), Store.isWatched(title.id, ep.number),
+                                            downloads[ep.id]?.let { if (it.state == ru.qmods.anixq.mobile.data.Downloads.State.DONE) 1f else it.progress.coerceAtLeast(0.01f) },
                                             Modifier.combinedClickable(onClick = { play(i) }, onLongClick = { epMenu = ep }))
                                         DropdownMenu(epMenu == ep, { epMenu = null }, containerColor = Pal.cardHi) {
                                             if (hasTv) DropdownMenuItem({ Text("Смотреть на ТВ") }, leadingIcon = { Icon(Icons.Default.Tv, null) }, onClick = {
@@ -303,6 +332,10 @@ fun TitleScreen(nav: Nav, start: Title) {
                                                 leadingIcon = { Icon(Icons.Default.CheckCircle, null) }, onClick = { epMenu = null; Store.markWatched(title, ep) })
                                             DropdownMenuItem({ Text("Смотреть с начала") }, leadingIcon = { Icon(Icons.Default.PlayArrow, null) },
                                                 onClick = { epMenu = null; nav.play(PlayerRoute(title, ep.id, teamId, startAt = 0.0)) })
+                                            if (downloads[ep.id] == null) DropdownMenuItem({ Text("Скачать серию") }, leadingIcon = { Icon(Icons.Default.Download, null) },
+                                                onClick = { epMenu = null; download(listOf(ep)) })
+                                            else DropdownMenuItem({ Text("Удалить загрузку") }, leadingIcon = { Icon(Icons.Default.Delete, null) },
+                                                onClick = { epMenu = null; ru.qmods.anixq.mobile.data.Downloads.remove(ep.id) })
                                         }
                                     }
                                 }
@@ -379,7 +412,7 @@ object GenreIds {
 }
 
 @Composable
-fun EpisodeCard(ep: Episode, image: String?, progress: Float, watched: Boolean, modifier: Modifier = Modifier) {
+fun EpisodeCard(ep: Episode, image: String?, progress: Float, watched: Boolean, saved: Float? = null, modifier: Modifier = Modifier) {
     Column(Modifier.width(200.dp)) {
         Box(modifier.fillMaxWidth().height(112.dp).clip(RoundedCornerShape(10.dp)).background(Pal.card)) {
             Img(image, Modifier.fillMaxSize())
@@ -388,6 +421,12 @@ fun EpisodeCard(ep: Episode, image: String?, progress: Float, watched: Boolean, 
                 modifier = Modifier.align(Alignment.BottomStart).padding(10.dp))
             if (progress > 0.02f && progress < 0.95f) Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(3.dp).background(Color.White.copy(alpha = 0.3f))) {
                 Box(Modifier.fillMaxWidth(progress).height(3.dp).background(Color.White))
+            }
+            // Saved on the phone: a filled badge; still downloading: a progress ring.
+            if (saved != null) Box(Modifier.align(Alignment.TopStart).padding(6.dp).size(22.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.55f)),
+                contentAlignment = Alignment.Center) {
+                if (saved >= 1f) Icon(Icons.Default.DownloadDone, "Скачано", Modifier.size(15.dp), tint = Pal.green)
+                else CircularProgressIndicator(progress = { saved }, Modifier.size(16.dp), color = Pal.pink, strokeWidth = 2.dp)
             }
             if (watched) Box(Modifier.align(Alignment.TopEnd).padding(6.dp).size(20.dp).clip(CircleShape).background(Color.White), contentAlignment = Alignment.Center) {
                 Icon(Icons.Default.CheckCircle, "Просмотрено", Modifier.size(20.dp), tint = Pal.pink)

@@ -25,6 +25,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SettingsRemote
@@ -76,6 +77,12 @@ fun LibraryScreen(nav: Nav) {
         Row(Modifier.padding(horizontal = 16.dp).padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Tile("Статистика", "$eps ${plural(eps, "серия", "серии", "серий")} · $hours ч", Icons.Default.BarChart, listOf(Pal.orange, Pal.gold), Modifier.weight(1f)) {}
             Tile("История", "$titles ${plural(titles, "тайтл", "тайтла", "тайтлов")}", Icons.Default.History, listOf(Pal.green, Pal.teal), Modifier.weight(1f)) { nav.push(HistoryRoute) }
+        }
+        val dls by ru.qmods.anixq.mobile.data.Downloads.items.collectAsState()
+        Row(Modifier.padding(horizontal = 16.dp).padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            val active = dls.values.count { it.state == ru.qmods.anixq.mobile.data.Downloads.State.RUNNING || it.state == ru.qmods.anixq.mobile.data.Downloads.State.QUEUED }
+            Tile("Загрузки", when { active > 0 -> "Качается: $active"; dls.isNotEmpty() -> "${dls.size} ${plural(dls.size, "серия", "серии", "серий")} без интернета"; else -> "Смотрите офлайн" },
+                Icons.Default.Download, listOf(Pal.blue, Pal.indigo), Modifier.weight(1f)) { nav.push(DownloadsRoute) }
         }
         Group("Закладки") {
             Bookmark.entries.forEachIndexed { i, b ->

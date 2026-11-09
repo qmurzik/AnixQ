@@ -99,7 +99,9 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
         scope.launch {
             try {
                 Sync.pullFresh()
-                val eps = Api.episodes(title.slug)
+                // Offline: the episode list saved with the downloads.
+                val eps = runCatching { Api.episodes(title.slug) }.getOrNull()
+                    ?: ru.qmods.anixq.mobile.data.Downloads.episodes(title.id) ?: throw Exception("Нет связи с AnimeLib")
                 if (eps.isEmpty()) { message = "Серий нет"; failed = true; return@launch }
                 episodes = eps
                 val latest = if (route.resume) Store.lastEntry(title.id) else null
@@ -125,7 +127,10 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
         buffering = true
         loadJob = scope.launch {
             try {
-                val list = if (sameEpisode && players.isNotEmpty()) players else Api.players(ep.id)
+                // A downloaded episode plays from the phone: instant, no traffic, works offline.
+                val offline = ru.qmods.anixq.mobile.data.Downloads.offlinePlayer(ep.id)
+                val list = if (sameEpisode && players.isNotEmpty()) players else offline?.let { listOf(it) } ?: Api.players(ep.id)
+                if (offline != null && !sameEpisode) say("Скачанная серия — без интернета")
                 players = list
                 if (list.isEmpty()) { message = "Для этой серии нет видео"; failed = true; return@launch }
                 val forTeam = { id: Int? -> list.filter { it.team.id == id } }
@@ -157,7 +162,8 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
             ?: keys.firstOrNull { (it.removeSuffix("p").toIntOrNull() ?: 0) <= Store.preferredQuality } ?: keys.last()
         quality = q
         val href = p.hrefs.getValue(q)
-        servers = Api.rankServers(href)
+        val local = href.startsWith("file:")
+        servers = if (local) listOf("") else Api.rankServers(href)
         serverIdx = 0
         kodik?.release(); kodik = null
         native = true
@@ -166,7 +172,7 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
                 .setUsage(androidx.media3.common.C.USAGE_MEDIA).setContentType(androidx.media3.common.C.AUDIO_CONTENT_TYPE_MOVIE).build(), true)
             exo = it
         }
-        currentUrl = Api.videoUrl(servers[0], href)
+        currentUrl = if (local) href else Api.videoUrl(servers[0], href)
         e.load(currentUrl!!, startAt, p.subtitles, 0)
         e.setSubtitles(subtitlesOn)
         if (speed != 1f) e.exo.setPlaybackSpeed(speed)

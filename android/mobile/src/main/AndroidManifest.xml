@@ -2,6 +2,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <application
         android:label="@string/app_name"
         android:icon="@mipmap/ic_launcher"
@@ -34,7 +35,17 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="anixq" android:host="title" />
             </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="anixq" android:host="continue" />
+            </intent-filter>
         </activity>
+        <!-- "Продолжить" home-screen widget. -->
+        <receiver android:name=".ContinueWidget" android:exported="false" android:label="Продолжить просмотр">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/continue_widget" />
+        </receiver>
         <!-- Google code scanner: download the scanner module together with the app. -->
         <meta-data android:name="com.google.mlkit.vision.DEPENDENCIES" android:value="barcode_ui" />
     </application>

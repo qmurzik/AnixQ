@@ -93,6 +93,15 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge(SystemBarStyle.dark(android.graphics.Color.TRANSPARENT), SystemBarStyle.dark(android.graphics.Color.TRANSPARENT))
         Store.init(applicationContext)
         ru.qmods.anixq.mobile.data.Downloads.init(applicationContext)
+        NewEpisodes.schedule(applicationContext)
+        // Android 13+: ask once for notifications (new episodes).
+        if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            val p = getSharedPreferences("app", MODE_PRIVATE)
+            if (!p.getBoolean("askedNotifications", false)) {
+                p.edit().putBoolean("askedNotifications", true).apply()
+                requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 1)
+            }
+        }
         Coil.setImageLoader(Images.loader(applicationContext))
         if (Store.libToken != null) lifecycleScope.launch { Api.loadProfile() }
         setContent {
@@ -113,6 +122,8 @@ class MainActivity : ComponentActivity() {
         when (u.host) {
             "pair" -> { nav.stack.removeAll { it is PlayerRoute }; nav.push(SettingsRoute); PairFlow.run(u.toString(), lifecycleScope) }
             "title" -> u.pathSegments.firstOrNull()?.let { slug -> nav.open(Title(id = slug.substringBefore("--").toIntOrNull() ?: 0, slug = slug)) }
+            "continue" -> Store.continueList.firstOrNull()?.let { e -> nav.play(PlayerRoute(e.title, resume = true)) }
+            "home" -> { nav.stack.clear(); nav.tab = Tab.HOME }
         }
         i.data = null
     }
@@ -134,6 +145,7 @@ class MainActivity : ComponentActivity() {
     override fun onStop() {
         super.onStop()
         Sync.flush()
+        ContinueWidget.refresh(applicationContext)
         if (!Pip.inPip) Remote.stop()
     }
 

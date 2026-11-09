@@ -4,6 +4,12 @@ import SwiftUI
 struct StatsView: View {
     @EnvironmentObject private var library: LibraryStore
     @State private var year = Calendar.current.component(.year, from: Date())
+    /// Totals from the Shikimori profile (everything ever marked there, not only what was watched in AnixQ).
+    @State private var shiki: (minutes: Double, episodes: Int, completed: Int)? = {
+        let d = UserDefaults.standard
+        guard d.object(forKey: "stats.shiki.minutes") != nil else { return nil }
+        return (d.double(forKey: "stats.shiki.minutes"), d.integer(forKey: "stats.shiki.episodes"), d.integer(forKey: "stats.shiki.completed"))
+    }()
 
     private struct Stats {
         var seconds: Double = 0
@@ -67,13 +73,17 @@ struct StatsView: View {
                 }
             }
             Section {
+                let localTitles = Set(library.history.map(\.title.id)).union(library.bookmarks.values.map(\.title.id)).count
                 HStack(spacing: 0) {
-                    tile(hours(all.seconds), "часов")
-                    tile("\(all.episodes)", "серий")
-                    tile("\(Set(library.history.map(\.title.id)).union(library.bookmarks.values.map(\.title.id)).count)", "тайтлов")
+                    tile(hours(max(all.seconds, (shiki?.minutes ?? 0) * 60)), "часов")
+                    tile("\(max(all.episodes, shiki?.episodes ?? 0))", "серий")
+                    tile("\(max(localTitles, shiki?.completed ?? 0))", shiki != nil ? "просмотрено" : "тайтлов")
                 }
                 .listRowInsets(EdgeInsets(top: 12, leading: 0, bottom: 12, trailing: 0))
-            } header: { Text("За всё время") }
+            } header: { Text("За всё время") } footer: {
+                if shiki != nil { Text("С учётом всего, что отмечено в вашем профиле Shikimori: серии × длительность серии.") }
+                else if !ShikiSession.isLoggedIn { Text("Войдите в Shikimori — часы посчитаются по всему, что вы когда-либо смотрели.") }
+            }
 
             Section {
                 HStack(spacing: 0) {
@@ -117,6 +127,12 @@ struct StatsView: View {
         }
         .styledList()
         .navigationTitle("Статистика")
+        .task {
+            guard let uid = ShikiSession.userId, let t = await ShikiAPI.watchTotals(userId: uid) else { return }
+            shiki = t
+            let d = UserDefaults.standard
+            d.set(t.minutes, forKey: "stats.shiki.minutes"); d.set(t.episodes, forKey: "stats.shiki.episodes"); d.set(t.completed, forKey: "stats.shiki.completed")
+        }
     }
 
     private func hours(_ s: Double) -> String {

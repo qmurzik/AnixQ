@@ -226,7 +226,7 @@ struct SearchView: View {
                                 .foregroundStyle(.white)
                             ZStack {
                                 tile
-                                NavigationLink(value: GenreRoute(genre: g)) { tile }.opacity(0)
+                                NavigationLink(value: GenreRoute(genre: g)) { tile }.buttonStyle(.plain).opacity(0)
                             }
                         }
                     }

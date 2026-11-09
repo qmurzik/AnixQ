@@ -46,7 +46,12 @@ fun LibraryScreen(nav: Nav) {
         horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(20.dp),
     ) {
         item(span = { GridItemSpan(maxLineSpan) }) {
-            val (eps, hours, ts) = remember(version) { Store.stats() }
+            var shikiTotals by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(ru.qmods.anixq.tv.data.Shiki.totals) }
+            androidx.compose.runtime.LaunchedEffect(Unit) { if (Store.shikiJson != null) ru.qmods.anixq.tv.data.Shiki.loadTotals()?.let { shikiTotals = it } }
+            // Shikimori knows everything ever watched (not only in AnixQ): take the bigger numbers.
+            val (eps, hours, ts) = remember(version, shikiTotals) { Store.stats().let { (e, h, t) ->
+                val st = shikiTotals
+                if (st == null) Triple(e, h, t) else Triple(maxOf(e, st.episodes), maxOf(h, (st.minutes / 60).toInt()), maxOf(t, st.completed)) } }
             Column {
                 ScreenTitle("Моё")
                 Row(horizontalArrangement = Arrangement.spacedBy(14.dp), modifier = Modifier.padding(bottom = 18.dp)) {

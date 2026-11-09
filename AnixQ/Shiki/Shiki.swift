@@ -305,6 +305,27 @@ enum ShikiAPI {
     }
 
     /// The whole franchise in release order (Shikimori keeps franchises curated, no crossovers).
+    /// Time spent on anime by a Shikimori user: watched episodes × episode length (rewatches included),
+    /// from the GraphQL API (the REST profile has no durations). Minutes, episodes, completed titles.
+    static func watchTotals(userId: Int) async -> (minutes: Double, episodes: Int, completed: Int)? {
+        var minutes = 0.0, episodes = 0, completed = 0
+        for page in 1...60 {
+            let q = "{ userRates(userId: \(userId), targetType: Anime, limit: 50, page: \(page)) { episodes rewatches status anime { duration episodes } } }"
+            guard let json = try? await request("/api/graphql", method: "POST", json: ["query": q], auth: false) as? JSON,
+                  let rates = (json["data"] as? JSON)?["userRates"] as? [JSON] else { return page == 1 ? nil : (minutes, episodes, completed) }
+            for r in rates {
+                let a = r["anime"] as? JSON
+                let duration = Double(a?["duration"] as? Int ?? 24)
+                let watched = (r["episodes"] as? Int ?? 0) + (r["rewatches"] as? Int ?? 0) * (a?["episodes"] as? Int ?? 0)
+                episodes += watched
+                minutes += Double(watched) * (duration > 0 ? duration : 24)
+                if r["status"] as? String == "completed" { completed += 1 }
+            }
+            if rates.count < 50 { break }
+        }
+        return (minutes, episodes, completed)
+    }
+
     static func franchise(_ id: Int) async -> [FranchiseNode] {
         guard let json = try? await request("/api/animes/\(id)/franchise", auth: false) as? JSON else { return [] }
         return json.arr("nodes").compactMap { n -> FranchiseNode? in

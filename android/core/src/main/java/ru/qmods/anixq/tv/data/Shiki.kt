@@ -35,6 +35,33 @@ object Shiki {
         }
     }
 
+    /** Hours / episodes / completed titles from the Shikimori profile (episodes × episode length, rewatches included). */
+    data class Totals(val minutes: Double, val episodes: Int, val completed: Int)
+    @Volatile var totals: Totals? = null; private set
+
+    suspend fun loadTotals(): Totals? = kotlinx.coroutines.withContext(Dispatchers.IO) {
+        val uid = Store.shikiJson?.int("userId") ?: return@withContext null
+        var minutes = 0.0; var episodes = 0; var completed = 0
+        for (page in 1..60) {
+            val q = "{ userRates(userId: $uid, targetType: Anime, limit: 50, page: $page) { episodes rewatches status anime { duration episodes } } }"
+            val rates = runCatching {
+                Api.http.newCall(Request.Builder().url("$HOST/api/graphql").header("User-Agent", "AnixQ")
+                    .post(JSONObject().put("query", q).toString().toRequestBody("application/json".toMediaType())).build()).execute().use { r ->
+                    JSONObject(r.body!!.string()).getJSONObject("data").getJSONArray("userRates")
+                }
+            }.getOrNull() ?: return@withContext if (page == 1) null else Totals(minutes, episodes, completed).also { totals = it }
+            for (i in 0 until rates.length()) {
+                val x = rates.getJSONObject(i); val a = x.optJSONObject("anime")
+                val dur = (a?.optInt("duration") ?: 24).takeIf { it > 0 } ?: 24
+                val watched = x.optInt("episodes") + x.optInt("rewatches") * (a?.optInt("episodes") ?: 0)
+                episodes += watched; minutes += watched * dur.toDouble()
+                if (x.optString("status") == "completed") completed++
+            }
+            if (rates.length() < 50) break
+        }
+        Totals(minutes, episodes, completed).also { totals = it }
+    }
+
     private fun call(method: String, path: String, body: JSONObject? = null, retried: Boolean = false): Any? {
         val s = Store.shikiJson ?: return null
         val rb = Request.Builder().url(HOST + path).header("User-Agent", "AnixQ").header("Accept", "application/json")

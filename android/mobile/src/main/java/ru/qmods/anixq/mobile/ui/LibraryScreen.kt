@@ -37,6 +37,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -60,7 +61,12 @@ fun LibraryScreen(nav: Nav) {
     val online by Remote.online.collectAsState()
     val syncStatus by Sync.status.collectAsState()
     val history = remember(version) { Store.history.sortedByDescending { it.at }.take(30) }
-    val (eps, hours, titles) = remember(version) { Store.stats() }
+    var shikiTotals by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(ru.qmods.anixq.tv.data.Shiki.totals) }
+            androidx.compose.runtime.LaunchedEffect(Unit) { if (Store.shikiJson != null) ru.qmods.anixq.tv.data.Shiki.loadTotals()?.let { shikiTotals = it } }
+            // Shikimori knows everything ever watched (not only in AnixQ): take the bigger numbers.
+            val (eps, hours, titles) = remember(version, shikiTotals) { Store.stats().let { (e, h, t) ->
+                val st = shikiTotals
+                if (st == null) Triple(e, h, t) else Triple(maxOf(e, st.episodes), maxOf(h, (st.minutes / 60).toInt()), maxOf(t, st.completed)) } }
     Column(Modifier.fillMaxSize().statusBarsPadding().verticalScroll(rememberScrollState()).padding(bottom = 28.dp)) {
         LargeTitle("Медиатека") {
             IconButton(onClick = { nav.push(SettingsRoute) }) { Icon(Icons.Default.Settings, "Настройки", tint = Pal.pink) }

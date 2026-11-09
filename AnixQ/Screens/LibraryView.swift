@@ -694,7 +694,7 @@ struct LibraryTile<V: Hashable>: View {
         // Invisible link on top keeps list rows free of chevrons.
         ZStack {
             label
-            NavigationLink(value: value) { label }.opacity(0)
+            NavigationLink(value: value) { label }.buttonStyle(.plain).opacity(0)
         }
     }
 }

@@ -6,7 +6,7 @@
   "sourceLinkTitle": "Сайт",
   "sourceLinkUrl": "https://qmurzik.github.io/AnixQ/",
   "sourceImage": "https://raw.githubusercontent.com/qmurzik/AnixQ/gbox-source/icon.png",
-  "sourceUpdateTime": "2026-11-09T15:06:08+0000",
+  "sourceUpdateTime": "2026-11-09T15:38:39+0000",
   "sourceDescription": "AnixQ — аниме с AnimeLib: каталог, плеер без рекламы, синхронизация с Shikimori.",
   "appCategories": [
     "Приложения"
@@ -15,13 +15,13 @@
     {
       "appType": "SELF_SIGN",
       "appCateIndex": 0,
-      "appUpdateTime": "2026-11-09T15:06:08+0000",
+      "appUpdateTime": "2026-11-09T15:38:39+0000",
       "appName": "AnixQ",
-      "appVersion": "1.0.80",
+      "appVersion": "1.0.81",
       "appImage": "https://raw.githubusercontent.com/qmurzik/AnixQ/gbox-source/icon.png",
-      "appPackage": "https://github.com/qmurzik/AnixQ/releases/download/v1.0.80/AnixQ.ipa",
-      "appSize": 4868750,
-      "appDescription": "• iOS: в «Медиатеке» нажатие на плитку больше не открывает все четыре раздела подряд (то же у жанров в поиске); статистика берёт часы и серии из профиля Shikimori (серии × длительность), так же на Android и ТВ"
+      "appPackage": "https://github.com/qmurzik/AnixQ/releases/download/v1.0.81/AnixQ.ipa",
+      "appSize": 4873891,
+      "appDescription": "• iOS: плитки «Медиатеки» и жанры в поиске — обычные кнопки с отдельным переходом: нажатие открывает ровно один раздел"
     }
   ]
 }

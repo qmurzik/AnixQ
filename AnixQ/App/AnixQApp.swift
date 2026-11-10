@@ -248,17 +248,19 @@ struct RootView: View {
 
     private var tabView: some View {
         TabView(selection: $tab) {
-            NavigationStack {
-                if let slug = screenshotSlug {
-                    DebugTitleLoader(slug: slug).appDestinations()
-                } else {
-                    HomeView()
+            ZoomScope {
+                NavigationStack {
+                    if let slug = screenshotSlug {
+                        DebugTitleLoader(slug: slug).appDestinations()
+                    } else {
+                        HomeView()
+                    }
                 }
             }
             .tabItem { Label("Главная", systemImage: "play.rectangle.on.rectangle.fill") }
             .tag(AppTab.home)
 
-            NavigationStack { BrowseView() }
+            ZoomScope { NavigationStack { BrowseView() } }
                 .tabItem { Label("Каталог", systemImage: "square.grid.2x2.fill") }
                 .tag(AppTab.browse)
 
@@ -266,11 +268,11 @@ struct RootView: View {
                 .tabItem { Label("Расписание", systemImage: "calendar") }
                 .tag(AppTab.schedule)
 
-            NavigationStack { LibraryView() }
+            ZoomScope { NavigationStack { LibraryView() } }
                 .tabItem { Label("Медиатека", systemImage: "rectangle.stack.fill") }
                 .tag(AppTab.library)
 
-            NavigationStack { SearchView() }
+            ZoomScope { NavigationStack { SearchView() } }
                 .tabItem { Label("Поиск", systemImage: "magnifyingglass") }
                 .tag(AppTab.search)
         }

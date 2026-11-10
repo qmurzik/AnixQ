@@ -11,6 +11,7 @@ import androidx.activity.SystemBarStyle
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -185,12 +186,20 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+@OptIn(androidx.compose.animation.ExperimentalSharedTransitionApi::class)
 @Composable
 fun Root(nav: Nav) {
     val holder = rememberSaveableStateHolder()
-    val top = nav.top
-    BackHandler(enabled = top != null || nav.tab != Tab.HOME) { if (top != null) nav.pop() else nav.tab = Tab.HOME }
-    Box(Modifier.fillMaxSize().background(Pal.bg)) {
+    BackHandler(enabled = nav.top != null || nav.tab != Tab.HOME) { if (nav.top != null) nav.pop() else nav.tab = Tab.HOME }
+    // Screens cross-fade; a tapped poster grows into the title page (shared bounds).
+    androidx.compose.animation.SharedTransitionLayout(Modifier.fillMaxSize().background(Pal.bg)) {
+      androidx.compose.animation.AnimatedContent(nav.top, label = "route",
+        transitionSpec = { androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(260)) togetherWith
+            androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(200)) }) { top ->
+      androidx.compose.runtime.CompositionLocalProvider(
+          ru.qmods.anixq.mobile.ui.LocalSharedScope provides this@SharedTransitionLayout,
+          ru.qmods.anixq.mobile.ui.LocalRouteScope provides this@AnimatedContent) {
+      Box(Modifier.fillMaxSize().background(Pal.bg)) {
         when (top) {
             is PlayerRoute -> PlayerScreen(nav, top)
             is TitleRoute -> holder.SaveableStateProvider("title-${top.title.id}-${nav.stack.size}") { TitleScreen(nav, top.title) }
@@ -219,6 +228,9 @@ fun Root(nav: Nav) {
                 TabBar(nav)
             }
         }
+      }
+      }
+      }
     }
 }
 

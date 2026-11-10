@@ -141,8 +141,8 @@ fun PosterCard(t: Title, modifier: Modifier = Modifier, subtitle: String? = null
             awaitFirstDown(requireUnconsumed = false)
             ru.qmods.anixq.tv.data.Prefetch.title(t.slug)
         }
-    }.pressable(onClick = onClick)) {
-        Box(Modifier.shadow(6.dp, RoundedCornerShape(12.dp), ambientColor = Color.Black, spotColor = Color.Black)) {
+    }.pressable(onClick = { PickedPoster.id = t.id; onClick() })) {
+        Box(Modifier.sharedPoster(t.id).shadow(6.dp, RoundedCornerShape(12.dp), ambientColor = Color.Black, spotColor = Color.Black)) {
             PosterImage(t.thumb, Modifier.fillMaxWidth())
             t.rating?.takeIf { it > 0 }?.let { ScoreBadge(it, Modifier.padding(6.dp)) }
             if (progress != null && progress > 0.01f)
@@ -462,5 +462,28 @@ fun NowOnTvCard(nav: Nav, modifier: Modifier = Modifier) {
             Icon(Icons.Default.PlayArrow, null, Modifier.size(18.dp), tint = Color.Black)
             Text("Здесь", color = Color.Black, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
         }
+    }
+}
+
+
+// MARK: - Poster → title page transition
+
+@OptIn(androidx.compose.animation.ExperimentalSharedTransitionApi::class)
+val LocalSharedScope = compositionLocalOf<androidx.compose.animation.SharedTransitionScope?> { null }
+val LocalRouteScope = compositionLocalOf<androidx.compose.animation.AnimatedVisibilityScope?> { null }
+
+/** The poster that was tapped: only it takes part in the transition (the same title can be on several shelves). */
+object PickedPoster { var id by androidx.compose.runtime.mutableIntStateOf(0) }
+
+/** The tapped poster grows into the title page header (and shrinks back). */
+@OptIn(androidx.compose.animation.ExperimentalSharedTransitionApi::class)
+@Composable
+fun Modifier.sharedPoster(id: Int): Modifier {
+    val shared = LocalSharedScope.current ?: return this
+    val route = LocalRouteScope.current ?: return this
+    if (PickedPoster.id != id) return this
+    return with(shared) {
+        this@sharedPoster.sharedBounds(rememberSharedContentState("poster-$id"), route,
+            resizeMode = androidx.compose.animation.SharedTransitionScope.ResizeMode.RemeasureToBounds)
     }
 }

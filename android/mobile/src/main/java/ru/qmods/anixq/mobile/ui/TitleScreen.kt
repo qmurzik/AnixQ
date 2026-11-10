@@ -191,7 +191,7 @@ fun TitleScreen(nav: Nav, start: Title) {
     Box(Modifier.fillMaxSize().background(Pal.bg)) {
         LazyColumn(Modifier.fillMaxSize(), list, contentPadding = PaddingValues(bottom = 32.dp)) {
             item(key = "header") {
-                Box(Modifier.fillMaxWidth().height(520.dp)) {
+                Box(Modifier.fillMaxWidth().height(520.dp).sharedPoster(start.id)) {
                     val bg = detail?.background
                     if (bg != null) Img(bg, Modifier.fillMaxSize())
                     else Img(title.poster, Modifier.fillMaxSize().blur(18.dp), alpha = 0.8f)

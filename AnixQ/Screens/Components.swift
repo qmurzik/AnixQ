@@ -12,7 +12,7 @@ extension View {
     /// Push destinations shared by every tab.
     func appDestinations() -> some View {
         self
-            .navigationDestination(for: Title.self) { TitleView(title: $0) }
+            .navigationDestination(for: Title.self) { TitleView(title: $0).zoomDestination(id: $0.id) }
             .navigationDestination(for: GenreRoute.self) { r in
                 CatalogListView(title: r.genre.name, query: CatalogQuery(genre: r.genre.id))
             }
@@ -96,6 +96,7 @@ struct PosterCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             PosterImage(url: title.coverURL)
+                .zoomSource(id: title.id)
                 .shadow(color: .black.opacity(0.25), radius: 6, y: 3)
                 .overlay(alignment: .topLeading) {
                     if let s = title.score { ScoreBadge(score: s).padding(6) }
@@ -354,4 +355,45 @@ struct ResolveShikiView: View {
             }
         }
     }
+}
+
+
+// MARK: - Zoom transition (iOS 18): the poster grows into the title page
+
+private struct ZoomNamespaceKey: EnvironmentKey { static let defaultValue: Namespace.ID? = nil }
+
+extension EnvironmentValues {
+    /// Shared by the posters and the title pages of one tab.
+    var zoomNamespace: Namespace.ID? {
+        get { self[ZoomNamespaceKey.self] }
+        set { self[ZoomNamespaceKey.self] = newValue }
+    }
+}
+
+private struct ZoomSource: ViewModifier {
+    let id: Int
+    @Environment(\.zoomNamespace) private var ns
+    func body(content: Content) -> some View {
+        if #available(iOS 18.0, *), let ns { content.matchedTransitionSource(id: id, in: ns) } else { content }
+    }
+}
+
+private struct ZoomDestination: ViewModifier {
+    let id: Int
+    @Environment(\.zoomNamespace) private var ns
+    func body(content: Content) -> some View {
+        if #available(iOS 18.0, *), let ns { content.navigationTransition(.zoom(sourceID: id, in: ns)) } else { content }
+    }
+}
+
+/// Owns the namespace for one navigation stack.
+struct ZoomScope<Content: View>: View {
+    @Namespace private var ns
+    @ViewBuilder var content: () -> Content
+    var body: some View { content().environment(\.zoomNamespace, ns) }
+}
+
+extension View {
+    func zoomSource(id: Int) -> some View { modifier(ZoomSource(id: id)) }
+    func zoomDestination(id: Int) -> some View { modifier(ZoomDestination(id: id)) }
 }

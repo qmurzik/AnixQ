@@ -67,10 +67,18 @@ object Franchise {
     fun cached(shikiId: Int): Title? = titles[shikiId]
 
     /** The AnimeLib title for a Shikimori entry (search by name, matched by the Shikimori id). */
-    suspend fun title(node: Node): Title? {
-        if (titles.containsKey(node.shikiId)) return titles[node.shikiId]
-        val t = runCatching { Api.search(node.name).firstOrNull { it.shikiId == node.shikiId } }.getOrNull()
-        titles[node.shikiId] = t
+    suspend fun title(node: Node): Title? = titleFor(node.shikiId, listOf(node.name))
+
+    suspend fun titleFor(shikiId: Int, names: List<String>): Title? {
+        if (titles.containsKey(shikiId)) return titles[shikiId]
+        // Already in the library? No search needed.
+        (Store.history.map { it.title } + Store.bookmarks.values.map { it.title }).firstOrNull { it.shikiId == shikiId }?.let { titles[shikiId] = it; return it }
+        var t: Title? = null
+        for (n in names.filter { it.isNotBlank() }) {
+            t = runCatching { Api.search(n).firstOrNull { it.shikiId == shikiId } }.getOrNull()
+            if (t != null) break
+        }
+        titles[shikiId] = t
         return t
     }
 }
@@ -91,4 +99,48 @@ object Prefetch {
             }
         }
     }
+}
+
+
+/** Airing schedule (Shikimori calendar), the same source as the iPhone's "Расписание". */
+object Schedule {
+    data class Item(val shikiId: Int, val name: String, val russian: String?, val episode: Int, val at: Long,
+                    val image: String, val kind: String?, val score: Double?, val total: Int?, val aired: Int?) {
+        val title get() = russian?.takeIf { it.isNotBlank() } ?: name
+        /** Placeholder Title until the AnimeLib one is found (negative id = not resolved). */
+        fun asTitle() = Title(id = -shikiId, slug = "", rusName = title, cover = image, coverThumb = image, shikiId = shikiId, rating = score)
+    }
+
+    private var cache: Pair<Long, List<Item>>? = null
+
+    suspend fun load(): List<Item> {
+        cache?.let { if (System.currentTimeMillis() - it.first < 30 * 60_000) return it.second }
+        val list = withContext(Dispatchers.IO) {
+            runCatching {
+                val req = Request.Builder().url("https://shikimori.io/api/calendar").header("User-Agent", "AnixQ").build()
+                Api.http.newCall(req).execute().use { r ->
+                    val a = org.json.JSONArray(r.body!!.string())
+                    (0 until a.length()).mapNotNull { i ->
+                        val x = a.getJSONObject(i); val an = x.optJSONObject("anime") ?: return@mapNotNull null
+                        val id = an.int("id") ?: return@mapNotNull null
+                        val at = parseTime(x.str("next_episode_at") ?: return@mapNotNull null) ?: return@mapNotNull null
+                        Item(id, an.str("name") ?: "", an.str("russian"), x.int("next_episode") ?: 0, at,
+                            "https://shikimori.io/system/animes/preview/$id.jpg", an.str("kind"), an.dbl("score"), an.int("episodes"), an.int("episodes_aired"))
+                    }.sortedBy { it.at }
+                }
+            }.getOrDefault(emptyList())
+        }
+        if (list.isNotEmpty()) cache = System.currentTimeMillis() to list
+        return list
+    }
+
+    /** "2026-11-10T14:30:00.000+03:00" (no java.time on Android 6). */
+    private fun parseTime(s: String): Long? = runCatching {
+        val fixed = s.replace(Regex("([+-]\\d{2}):(\\d{2})$"), "$1$2")
+        java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSZ", java.util.Locale.US).parse(fixed)?.time
+    }.getOrNull()
+
+    /** Titles you follow (watching / planned / history) are marked in the schedule. */
+    fun isMine(shikiId: Int): Boolean =
+        Store.bookmarks.values.any { it.title.shikiId == shikiId && it.status != Bookmark.DROPPED } || Store.history.any { it.title.shikiId == shikiId }
 }

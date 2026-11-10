@@ -209,6 +209,7 @@ fun Root(nav: Nav) {
             ru.qmods.anixq.mobile.ui.CollectionsRoute -> ru.qmods.anixq.mobile.ui.CollectionsScreen(nav)
             is ru.qmods.anixq.mobile.ui.CollectionRoute -> ru.qmods.anixq.mobile.ui.CollectionScreen(nav, top.id)
             ru.qmods.anixq.mobile.ui.ShikiLoginRoute -> ru.qmods.anixq.mobile.ui.ShikiLoginScreen(nav)
+            ru.qmods.anixq.mobile.ui.ScheduleRoute -> ru.qmods.anixq.mobile.ui.ScheduleScreen(nav)
             HistoryRoute -> HistoryScreen(nav)
             RemoteRoute -> RemoteScreen(nav)
             SettingsRoute -> SettingsScreen(nav)

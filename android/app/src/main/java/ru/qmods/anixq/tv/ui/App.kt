@@ -24,6 +24,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Bookmarks
+import androidx.compose.material.icons.rounded.CalendarMonth
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.GridView
 import androidx.compose.material.icons.rounded.Home
@@ -79,7 +80,7 @@ import ru.qmods.anixq.tv.data.Title
 
 enum class Tab(val label: String, val icon: ImageVector) {
     HOME("Главная", Icons.Rounded.Home), CATALOG("Каталог", Icons.Rounded.GridView), SEARCH("Поиск", Icons.Rounded.Search),
-    LIBRARY("Моё", Icons.Rounded.Bookmarks), SETTINGS("Настройки", Icons.Rounded.Settings)
+    LIBRARY("Моё", Icons.Rounded.Bookmarks), SCHEDULE("Расписание", Icons.Rounded.CalendarMonth), SETTINGS("Настройки", Icons.Rounded.Settings)
 }
 
 sealed interface Route { val scope: String }
@@ -195,6 +196,7 @@ fun App(nav: Nav) {
                             Tab.CATALOG -> CatalogScreen(nav)
                             Tab.SEARCH -> SearchScreen(nav)
                             Tab.LIBRARY -> LibraryScreen(nav)
+                            Tab.SCHEDULE -> ScheduleScreen(nav)
                             Tab.SETTINGS -> SettingsScreen(nav)
                         }
                     }

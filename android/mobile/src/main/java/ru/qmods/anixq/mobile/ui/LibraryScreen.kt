@@ -26,6 +26,7 @@ import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.CollectionsBookmark
 import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.Settings
@@ -93,6 +94,9 @@ fun LibraryScreen(nav: Nav) {
             val cols by ru.qmods.anixq.mobile.data.Collections.all.collectAsState()
             Tile("Подборки", if (cols.isEmpty()) "Свои списки со ссылкой" else "${cols.size} · поделиться ссылкой",
                 Icons.Default.CollectionsBookmark, listOf(Pal.purple, Pal.pink), Modifier.weight(1f)) { nav.push(CollectionsRoute) }
+        }
+        Row(Modifier.padding(horizontal = 16.dp).padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Tile("Расписание", "Когда выйдут новые серии", Icons.Default.CalendarMonth, listOf(Pal.teal, Pal.blue), Modifier.weight(1f)) { nav.push(ScheduleRoute) }
         }
         Group("Закладки") {
             Bookmark.entries.forEachIndexed { i, b ->

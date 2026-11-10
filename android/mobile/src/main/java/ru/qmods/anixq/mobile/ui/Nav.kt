@@ -31,6 +31,7 @@ data object DownloadsRoute : Route
 data object CollectionsRoute : Route
 data class CollectionRoute(val id: String) : Route
 data object ShikiLoginRoute : Route
+data object ScheduleRoute : Route
 data object RemoteRoute : Route
 data object SettingsRoute : Route
 data object SyncRoute : Route

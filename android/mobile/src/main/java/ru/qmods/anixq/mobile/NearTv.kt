@@ -24,7 +24,7 @@ import ru.qmods.anixq.tv.data.Store
 /** The phone side of "phone next to the TV": Bluetooth beacon → offer to continue there; calls → pause the TV. */
 object NearTv {
     private const val CHANNEL = "near_tv"
-    private const val NOTE_ID = 7301
+    const val NOTE_ID = 7301
     const val ACTION_SEEN = "ru.qmods.anixq.mobile.NEAR_TV_SEEN"
     const val ACTION_PLAY = "ru.qmods.anixq.mobile.NEAR_TV_PLAY"
 
@@ -64,7 +64,9 @@ object NearTv {
             .setContentText("${e.title.title} · ${e.ep} серия, с ${min} мин")
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_RECOMMENDATION)
-            .setContentIntent(play)
+            .setContentIntent(PendingIntent.getActivity(context, 3,
+                Intent(Intent.ACTION_VIEW, android.net.Uri.parse("anixq://tv-continue"), context, MainActivity::class.java),
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE))
             .addAction(android.R.drawable.ic_media_play, "Включить на ТВ", play)
             .setAutoCancel(true)
             .setTimeoutAfter(20 * 60_000)

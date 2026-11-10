@@ -39,6 +39,8 @@ struct SyncDoc: Codable {
     /// Phone-remote channel created by the TV (see RemoteTV).
     struct Remote: Codable, Equatable { var channel: String; var key: String; var at: Double }
     var remote: Remote?
+    /// titleId → when it was removed from "Продолжить просмотр".
+    var hidden: [String: Double]?
 }
 
 // MARK: - Library <-> document
@@ -48,6 +50,11 @@ extension LibraryStore {
     static var removedBookmarks: [String: Double] {
         get { UserDefaults.standard.dictionary(forKey: "sync.removedBookmarks") as? [String: Double] ?? [:] }
         set { UserDefaults.standard.set(newValue, forKey: "sync.removedBookmarks") }
+    }
+    /// Titles removed from "Продолжить просмотр" (titleId as string → time), so another device doesn't bring them back.
+    static var hiddenHistory: [String: Double] {
+        get { UserDefaults.standard.dictionary(forKey: "sync.hiddenHistory") as? [String: Double] ?? [:] }
+        set { UserDefaults.standard.set(newValue, forKey: "sync.hiddenHistory") }
     }
 }
 

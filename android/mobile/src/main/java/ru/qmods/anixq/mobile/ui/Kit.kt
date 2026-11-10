@@ -11,6 +11,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -106,12 +107,14 @@ fun Img(url: String?, modifier: Modifier = Modifier, contentScale: ContentScale 
 
 // MARK: - Press feedback (the iPhone's PressableStyle)
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
-fun Modifier.pressable(enabled: Boolean = true, onClick: () -> Unit): Modifier {
+fun Modifier.pressable(enabled: Boolean = true, onLongClick: (() -> Unit)? = null, onClick: () -> Unit): Modifier {
     val src = remember { MutableInteractionSource() }
     val pressed by src.collectIsPressedAsState()
     val s by animateFloatAsState(if (pressed) 0.96f else 1f, label = "press")
-    return this.scale(s).clickable(src, null, enabled = enabled, onClick = onClick)
+    return if (onLongClick == null) this.scale(s).clickable(src, null, enabled = enabled, onClick = onClick)
+    else this.scale(s).combinedClickable(src, null, enabled = enabled, onLongClick = onLongClick, onClick = onClick)
 }
 
 // MARK: - Posters
@@ -228,7 +231,7 @@ fun PrimaryButton(modifier: Modifier = Modifier, enabled: Boolean = true, onClic
         modifier.heightIn(min = 50.dp).shadow(if (enabled) 14.dp else 0.dp, shape, ambientColor = Pal.pink, spotColor = Pal.pink)
             .clip(shape).background(if (enabled) Pal.accent else Brush.horizontalGradient(listOf(Pal.cardHi, Pal.cardHi)))
             .border(1.dp, Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.35f), Color.Transparent)), shape)
-            .pressable(enabled, onClick).padding(horizontal = 16.dp),
+            .pressable(enabled, onClick = onClick).padding(horizontal = 16.dp),
         horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically, content = content,
     )
 }
@@ -375,7 +378,7 @@ fun BookmarkMenu(title: Title, open: Boolean, onDismiss: () -> Unit) {
             DropdownMenuItem({ Text("Удалить из закладок", color = Pal.red) }, onClick = { onDismiss(); Store.setBookmark(title, null) })
         }
         // Own collections: add / remove this title.
-        val cols = ru.qmods.anixq.mobile.data.Collections.all.value
+        val cols by ru.qmods.anixq.mobile.data.Collections.all.collectAsState()
         if (cols.isNotEmpty()) {
             HorizontalDivider(color = Color.White.copy(alpha = 0.1f))
             cols.forEach { c ->

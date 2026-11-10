@@ -41,6 +41,8 @@ object Store {
     val watched = HashMap<Int, MutableSet<String>>()
     val bookmarks = HashMap<String, BookmarkEntry>()
     val removedBookmarks = HashMap<String, Double>()
+    /** titleId → when it was removed from "Продолжить просмотр" (synced, so it doesn't come back from another device). */
+    val hiddenHistory = HashMap<Int, Double>()
     var dubs: List<String> = emptyList(); private set
     private var dubsAt = 0.0
 
@@ -214,7 +216,7 @@ object Store {
         val n = name ?: run { Profiles.init(context); Profiles.prefsName(Profiles.current.value!!) }
         if (n == loadedName) return
         loadedName = n
-        positions.clear(); history.clear(); watched.clear(); bookmarks.clear(); removedBookmarks.clear()
+        positions.clear(); history.clear(); watched.clear(); bookmarks.clear(); removedBookmarks.clear(); hiddenHistory.clear()
         dubs = emptyList(); dubsAt = 0.0
         prefs = context.getSharedPreferences(n, Context.MODE_PRIVATE)
         prefs.getString("library", null)?.let { runCatching { load(JSONObject(it)) } }
@@ -269,6 +271,7 @@ object Store {
             b.put(slug, JSONObject().put("status", JSONObject.NULL).put("at", at)) }
         return JSONObject().put("v", 1).put("device", deviceName).put("updated", 0)
             .put("titles", titles).put("progress", progress).put("watched", w).put("bookmarks", b)
+            .put("hidden", JSONObject().apply { hiddenHistory.forEach { (tid, at) -> put(tid.toString(), at) } })
     }
 
     private fun live(titleId: Int) { runCatching { Remote.publishLive(exportFor(titleId)) } }
@@ -304,7 +307,12 @@ object Store {
 
     fun useDub(name: String) { if (name !in dubs) setDubs(dubs + name) }
 
-    fun clearHistory() { history.clear(); changed() }
+    fun clearHistory() { history.forEach { hiddenHistory[it.title.id] = now() }; history.clear(); changed() }
+
+    /** Remove a title from "Продолжить просмотр" (positions and watched marks stay). */
+    fun removeFromHistory(titleId: Int) {
+        if (history.removeAll { it.title.id == titleId }) { hiddenHistory[titleId] = now(); changed() }
+    }
 
     /** Local changes not yet pushed to the gist (true at start so the first sync pushes once). */
     @Volatile var dirty = true
@@ -362,6 +370,16 @@ object Store {
         d.optJSONObject("titles")?.let { t -> t.keys().forEach { k -> t.optJSONObject(k)?.let(Title::fromSync)?.let { titles[it.id] = it } } }
         fun title(id: Int?): Title? = id?.let { titles[it] ?: history.firstOrNull { e -> e.title.id == it }?.title ?: bookmarks.values.firstOrNull { b -> b.title.id == it }?.title }
 
+        d.optJSONObject("hidden")?.let { h ->
+            h.keys().forEach { k ->
+                val tid = k.toIntOrNull() ?: return@forEach
+                val at = h.optDouble(k, 0.0)
+                if (at > (hiddenHistory[tid] ?: 0.0)) {
+                    hiddenHistory[tid] = at
+                    if (history.removeAll { it.title.id == tid && it.at <= at }) changed = true
+                }
+            }
+        }
         d.optJSONObject("progress")?.let { pr ->
             pr.keys().forEach { k ->
                 val eid = k.toIntOrNull() ?: return@forEach
@@ -372,7 +390,7 @@ object Store {
                 val ep = p.str("ep"); val team = p.int("team")
                 if (t != null && ep != null && team != null) {
                     val local = history.firstOrNull { it.title.id == t.id }
-                    if ((local?.at ?: 0.0) < at) {
+                    if ((local?.at ?: 0.0) < at && at > (hiddenHistory[t.id] ?: 0.0)) {
                         history.removeAll { it.title.id == t.id }
                         history.add(WatchEntry(t, eid, ep, p.str("epName") ?: "", team, p.str("teamName") ?: "", pos, dur, at))
                         changed = true

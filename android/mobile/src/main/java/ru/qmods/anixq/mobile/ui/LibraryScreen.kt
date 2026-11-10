@@ -1,5 +1,6 @@
 package ru.qmods.anixq.mobile.ui
 
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -115,6 +116,9 @@ fun LibraryScreen(nav: Nav) {
                             Text(e.title.title, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             Text("Серия ${e.ep}" + (if (e.teamName.isNotBlank()) " · ${e.teamName}" else ""), fontSize = 12.sp, color = Pal.muted, maxLines = 1)
                             ProgressLine(e.progress.toFloat(), Modifier.padding(top = 7.dp), 3.dp)
+                        }
+                        androidx.compose.material3.IconButton({ Store.removeFromHistory(e.title.id) }) {
+                            androidx.compose.material3.Icon(androidx.compose.material.icons.Icons.Default.Close, "Убрать из истории", tint = Pal.faint)
                         }
                     }
                     if (i < history.lastIndex) androidx.compose.material3.HorizontalDivider(Modifier.padding(start = 72.dp), thickness = 0.5.dp, color = Color.White.copy(alpha = 0.1f))

@@ -139,6 +139,12 @@ class MainActivity : ComponentActivity() {
             "title" -> u.pathSegments.firstOrNull()?.let { slug -> nav.open(Title(id = slug.substringBefore("--").toIntOrNull() ?: 0, slug = slug)) }
             "continue" -> Store.continueList.firstOrNull()?.let { e -> nav.play(PlayerRoute(e.title, resume = true)) }
             "home" -> { nav.stack.clear(); nav.tab = Tab.HOME }
+            // "Досмотреть на ТВ?" notification: start the episode on the TV and show the remote.
+            "tv-continue" -> Store.continueList.firstOrNull()?.let { e ->
+                androidx.core.app.NotificationManagerCompat.from(this).cancel(NearTv.NOTE_ID)
+                Remote.playOnTv(e.title, e.episodeId, e.teamId, e.pos)
+                nav.push(ru.qmods.anixq.mobile.ui.RemoteRoute)
+            }
             "room" -> u.pathSegments.firstOrNull()?.let { id ->
                 ru.qmods.anixq.tv.data.Room.join(id)
                 android.widget.Toast.makeText(this, "Заходим в комнату — серия включится сама", android.widget.Toast.LENGTH_LONG).show()

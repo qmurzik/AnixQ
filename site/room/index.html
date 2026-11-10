@@ -105,7 +105,7 @@
       <form id="chatForm" autocomplete="off"><input id="chatInput" placeholder="Сообщение" maxlength="300"><button>➤</button></form>
     </div>
     <div class="note" id="kodikNote" hidden>
-      В браузере видео идёт через плеер Kodik — в начале может быть реклама. После неё нажмите «Синхронизировать», и серия перемотается к остальным. Пауза из браузера общая, а перематывает серию тот, кто смотрит в приложении. В AnixQ рекламы нет.
+      В браузере эта озвучка идёт через плеер Kodik — в начале может быть реклама. (С озвучкой AniLibria браузер играет их собственный плеер — без рекламы и точно в такт.) После неё нажмите «Синхронизировать», и серия перемотается к остальным. Пауза из браузера общая, а перематывает серию тот, кто смотрит в приложении. В AnixQ рекламы нет.
     </div>
   </section>
 </div>
@@ -218,6 +218,8 @@
   function localChange(kind) {
     if (applying || !current || needsSync) return;
     var off = Math.abs(currentTime() - target(current));
+    // A real video has no ads: the browser's own seek moves everyone. Kodik's seeks (ads, buffering) don't.
+    if (kind === 'seek' && mode === 'video') { send('state'); return; }
     if (kind === 'seek' || off > 6) { if (current.playing || kind === 'seek') apply(current); return; }
     send('state');
   }
@@ -316,13 +318,104 @@
 
   // ---------- players ----------
   function clearStage() {
+    if (hls) { try { hls.destroy(); } catch (e) {} hls = null; }
     if (video) { video.remove(); video = null; }
     if (iframe) { iframe.remove(); iframe = null; }
     $('wait').hidden = true;
   }
 
+  // ---------- AniLibria: their own stream, so the browser plays a real <video> (exact sync, no ads) ----------
+  var LIBRIA = 'https://anilibria.top/api/v1';
+  function isLibria(team) { return /ani\s*libria|анилибри/i.test(team || ''); }
+  function norm(s) { return (s || '').toLowerCase().replace(/ё/g, 'е').replace(/[^a-zа-я0-9]+/g, ''); }
+  function getJson(u) { return fetch(u).then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); }); }
+  function libriaRelease(m) {
+    // The AnimeLib slug ("123--jujutsu-kaisen") is usually AniLibria's alias; otherwise search by the Russian name.
+    var alias = (m.slug || '').replace(/^\d+--/, '').replace(/-anime$/, '');
+    var want = norm(m.titleName);
+    var byAlias = alias ? getJson(LIBRIA + '/anime/releases/' + encodeURIComponent(alias)).then(function (r) {
+      // Same alias but another season / film: trust the name over the alias.
+      if (want && r.name && norm(r.name.main) !== want && norm(r.name.english) !== want) throw new Error('other');
+      return r;
+    }) : Promise.reject();
+    return byAlias.catch(function () {
+      return getJson(LIBRIA + '/app/search/releases?query=' + encodeURIComponent(m.titleName || alias)).then(function (list) {
+        if (!list || !list.length) throw new Error('not found');
+        var hit = list.filter(function (r) { return r.name && (norm(r.name.main) === want || norm(r.name.english) === want); })[0];
+        if (!hit) throw new Error('no exact match');  // a wrong release would be worse than Kodik
+        return getJson(LIBRIA + '/anime/releases/' + hit.id);
+      });
+    });
+  }
+  function libriaStream(m) {
+    return libriaRelease(m).then(function (r) {
+      var n = parseFloat(m.episodeNumber);
+      var ep = (r.episodes || []).filter(function (e) { return Number(e.ordinal) === n; })[0];
+      var url = ep && (ep.hls_1080 || ep.hls_720 || ep.hls_480);
+      if (!url) throw new Error('no episode');
+      return url;
+    });
+  }
+  var hlsLib = null, hls = null;
+  function loadHlsJs() {
+    if (window.Hls) return Promise.resolve(window.Hls);
+    if (hlsLib) return hlsLib;
+    hlsLib = new Promise(function (ok, fail) {
+      var s = document.createElement('script');
+      s.src = 'https://cdn.jsdelivr.net/npm/hls.js@1.5.17/dist/hls.min.js';
+      s.onload = function () { ok(window.Hls); }; s.onerror = fail;
+      document.head.appendChild(s);
+    });
+    return hlsLib;
+  }
+
+  function makeVideo(onFail) {
+    mode = 'video';
+    video = document.createElement('video');
+    video.controls = true; video.playsInline = true; video.preload = 'auto';
+    video.setAttribute('referrerpolicy', 'no-referrer');
+    video.addEventListener('error', onFail, { once: true });
+    video.addEventListener('play', function () { localChange('play'); });
+    video.addEventListener('pause', function () { localChange('pause'); });
+    video.addEventListener('seeked', function () { localChange('seek'); });
+    video.addEventListener('loadedmetadata', function () { if (current) apply(current); });
+    $('stage').appendChild(video);
+    $('kodikNote').hidden = true;
+    return video;
+  }
+
+  function loadLibria(m) {
+    $('wait').hidden = false; $('wait').textContent = 'Открываем плеер AniLibria…';
+    var episode = m.episodeId;
+    libriaStream(m).then(function (url) {
+      if (!current || current.episodeId !== episode) return;
+      $('wait').hidden = true;
+      var failed = false;
+      var fail = function () { if (failed) return; failed = true; toast('AniLibria не отвечает — включаем Kodik'); fallback(m); };
+      var v = makeVideo(fail);
+      if (v.canPlayType('application/vnd.apple.mpegurl')) { v.src = url; }
+      else return loadHlsJs().then(function (Hls) {
+        if (!Hls || !Hls.isSupported()) throw new Error('hls');
+        hls = new Hls({ maxBufferLength: 60 });
+        hls.on(Hls.Events.ERROR, function (_, d) { if (d && d.fatal) fail(); });
+        hls.loadSource(url); hls.attachMedia(v);
+      });
+    }).then(function () {
+      if (video) toast('Плеер AniLibria: без рекламы, точная синхронизация');
+    }).catch(function () {
+      if (current && current.episodeId === episode && !video) fallback(m);
+    });
+  }
+
+  function fallback(m) {
+    clearStage();
+    if (m.kodik) { loadKodik(m); }
+    else { $('wait').hidden = false; $('wait').textContent = 'Видео не открывается в браузере. Установите AnixQ.'; }
+  }
+
   function load(m) {
     clearStage();
+    if (!m.stream && isLibria(m.team)) { loadLibria(m); return; }
     if (m.stream) {
       mode = 'video';
       video = document.createElement('video');

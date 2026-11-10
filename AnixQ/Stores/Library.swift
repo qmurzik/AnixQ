@@ -213,7 +213,9 @@ final class LibraryStore: ObservableObject {
 
     func removeFromHistory(_ entry: WatchEntry) {
         history.removeAll { $0.title.id == entry.title.id }
+        Self.hiddenHistory[String(entry.title.id)] = Date().timeIntervalSince1970
         save()
+        GistSync.shared.flush()
     }
 
     func clearHistory() {
@@ -496,6 +498,8 @@ extension LibraryStore {
         let dubsAt = UserDefaults.standard.double(forKey: "dubs.at")
         doc.prefs = SyncDoc.Prefs(dubs: DubPreferences.favorites, at: dubsAt)
         if let ch = RemoteTV.channel, let k = RemoteTV.keyB64 { doc.remote = SyncDoc.Remote(channel: ch, key: k, at: RemoteTV.at) }
+        let hidden = Self.hiddenHistory
+        if !hidden.isEmpty { doc.hidden = hidden }
         return doc
     }
 
@@ -531,6 +535,16 @@ extension LibraryStore {
             return d.titles[String(id)] ?? history.first { $0.title.id == id }?.title
                 ?? bookmarks.values.first { $0.title.id == id }?.title
         }
+        var hidden = Self.hiddenHistory
+        for (key, at) in d.hidden ?? [:] where at > (hidden[key] ?? 0) {
+            hidden[key] = at
+            if let tid = Int(key) {
+                let before = history.count
+                history.removeAll { $0.title.id == tid && $0.date.timeIntervalSince1970 <= at }
+                if history.count != before { changed = true }
+            }
+        }
+        if hidden != Self.hiddenHistory { Self.hiddenHistory = hidden }
         for (key, p) in d.progress {
             guard let eid = Int(key) else { continue }
             let date = Date(timeIntervalSince1970: p.at)
@@ -541,7 +555,7 @@ extension LibraryStore {
             // Continue watching: the other device's latest episode of a title.
             if let t = title(p.title), let ep = p.ep, let team = p.team {
                 let local = history.first { $0.title.id == t.id }
-                if (local?.date ?? .distantPast) < date {
+                if (local?.date ?? .distantPast) < date, p.at > (hidden[String(t.id)] ?? 0) {
                     history.removeAll { $0.title.id == t.id }
                     history.append(WatchEntry(title: t, episodeId: eid, episodeNumber: ep, episodeName: p.epName ?? "",
                                               teamId: team, teamName: p.teamName ?? "", position: p.pos, duration: p.dur,

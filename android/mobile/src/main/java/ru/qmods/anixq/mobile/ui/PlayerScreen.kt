@@ -148,6 +148,13 @@ fun PlayerScreen(nav: Nav, route: PlayerRoute) {
             // Leaving the app (not into picture-in-picture): pause and save, so the TV/iPhone get the exact moment.
             // "Звук в фоне" keeps the AnimeLib player going (not Kodik's web page); otherwise pause.
             if (e == Lifecycle.Event.ON_STOP) { if (!(Store.backgroundAudio && m.native)) m.pause(); m.saveProgress(force = true); Sync.flush() }
+            // Back in the app: some phones bring the status / navigation bars back over the video — hide them again.
+            if (e == Lifecycle.Event.ON_RESUME && !Pip.inPip) {
+                WindowCompat.getInsetsController(activity.window, activity.window.decorView).apply {
+                    systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                    hide(WindowInsetsCompat.Type.systemBars())
+                }
+            }
         }
         lifecycle.addObserver(obs)
         onDispose { lifecycle.removeObserver(obs) }
@@ -180,7 +187,7 @@ fun PlayerScreen(nav: Nav, route: PlayerRoute) {
             val w = constraints.maxWidth.toFloat()
             val h = constraints.maxHeight.toFloat()
             Box(Modifier.fillMaxSize()
-                .pointerInput(m) {
+                .pointerInput(m, w, h) {
                     detectTapGestures(
                         onTap = { controls = !controls; touched() },
                         onDoubleTap = { o ->
@@ -192,9 +199,23 @@ fun PlayerScreen(nav: Nav, route: PlayerRoute) {
                         },
                     )
                 }
-                .pointerInput(m) {
+                .pointerInput(m, w, h) {
                     var left = true
-                    detectVerticalDragGestures(onDragStart = { o -> left = o.x < w / 2 }) { _, dy ->
+                    var active = false
+                    // Swipes that start at the screen edges belong to Android (notification shade, home / back
+                    // gestures): never turn them into brightness / volume — same rule as the iPhone player.
+                    val edgeY = maxOf(48.dp.toPx(), h * 0.12f)
+                    val edgeX = 28.dp.toPx()
+                    detectVerticalDragGestures(
+                        onDragStart = { o ->
+                            left = o.x < w / 2
+                            active = o.y > edgeY && o.y < h - edgeY && o.x > edgeX && o.x < w - edgeX && activity.hasWindowFocus()
+                        },
+                        onDragEnd = { active = false }, onDragCancel = { active = false },
+                    ) { change, dy ->
+                        // The shade or the recents screen took over mid-swipe.
+                        if (!active || !activity.hasWindowFocus()) { active = false; return@detectVerticalDragGestures }
+                        change.consume()
                         val delta = -dy / (h * 0.8f)
                         if (left) {
                             brightness = (brightness + delta).coerceIn(0.02f, 1f)

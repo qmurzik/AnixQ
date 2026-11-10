@@ -1,5 +1,9 @@
 package ru.qmods.anixq.mobile.ui
 
+import androidx.compose.foundation.clickable
+import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -136,7 +140,11 @@ fun HomeScreen(nav: Nav) {
                 SectionHeader("Продолжить просмотр")
                 Spacer(Modifier.height(10.dp))
                 LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                    items(cont, key = { it.title.id }) { e -> ContinueCard(e, onOpen = { nav.open(e.title) }) { nav.play(PlayerRoute(e.title, resume = true)) } }
+                    items(cont, key = { it.title.id }) { e ->
+                        ContinueCard(e, Modifier.animateItem(), onOpen = { nav.open(e.title) }, onRemove = { Store.removeFromHistory(e.title.id) }) {
+                            nav.play(PlayerRoute(e.title, resume = true))
+                        }
+                    }
                 }
             }
         }
@@ -229,11 +237,14 @@ private fun DiscoverStrip(nav: Nav) {
 
 /** 16:9 "Up Next" card with progress, like the iPhone's. Tap plays; the title opens the page. */
 @Composable
-fun ContinueCard(e: WatchEntry, width: Int = 260, onOpen: () -> Unit, onPlay: () -> Unit) {
+fun ContinueCard(e: WatchEntry, modifier: Modifier = Modifier, width: Int = 260, onOpen: () -> Unit, onRemove: (() -> Unit)? = null, onPlay: () -> Unit) {
     val finished = e.progress > 0.92
-    Column(Modifier.width(width.dp)) {
+    var menu by remember { mutableStateOf(false) }
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
+    Column(modifier.width(width.dp)) {
         Box(Modifier.fillMaxWidth().height((width * 9 / 16).dp).clip(RoundedCornerShape(14.dp)).background(Pal.card)
-            .border(0.5.dp, Pal.stroke, RoundedCornerShape(14.dp)).pressable(onClick = onPlay)) {
+            .border(0.5.dp, Pal.stroke, RoundedCornerShape(14.dp))
+            .pressable(onLongClick = onRemove?.let { { haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress); menu = true } }, onClick = onPlay)) {
             Img(e.title.poster, Modifier.fillMaxSize())
             Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.5f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.78f))))
             Box(Modifier.align(Alignment.Center).size(44.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.4f))
@@ -249,6 +260,18 @@ fun ContinueCard(e: WatchEntry, width: Int = 260, onOpen: () -> Unit, onPlay: ()
                         color = Color.White.copy(alpha = 0.75f), maxLines = 1)
                 }
                 if (!finished) ProgressLine(e.progress.toFloat(), Modifier.padding(top = 6.dp))
+            }
+            if (onRemove != null) {
+                Box(Modifier.align(Alignment.TopEnd).padding(6.dp).size(30.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.45f))
+                    .clickable { menu = true }, contentAlignment = Alignment.Center) {
+                    Icon(Icons.Default.MoreVert, "Ещё", tint = Color.White, modifier = Modifier.size(18.dp))
+                }
+                androidx.compose.material3.DropdownMenu(menu, { menu = false }, containerColor = Pal.cardHi) {
+                    androidx.compose.material3.DropdownMenuItem(text = { Text("Открыть тайтл") }, onClick = { menu = false; onOpen() },
+                        leadingIcon = { Icon(Icons.Default.Info, null) })
+                    androidx.compose.material3.DropdownMenuItem(text = { Text("Убрать из «Продолжить»") }, onClick = { menu = false; onRemove() },
+                        leadingIcon = { Icon(Icons.Default.VisibilityOff, null) })
+                }
             }
         }
         Text(e.title.title, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis,

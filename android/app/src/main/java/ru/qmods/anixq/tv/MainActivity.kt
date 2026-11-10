@@ -25,6 +25,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         Updater.versionCode = BuildConfig.VERSION_CODE
         Store.init(applicationContext)
+        Api.diskDir = cacheDir
         ru.qmods.anixq.tv.data.WatchNext.init(applicationContext)
         Coil.setImageLoader(Images.loader(applicationContext))
         if (Store.libToken != null) lifecycleScope.launch { Api.loadProfile() }

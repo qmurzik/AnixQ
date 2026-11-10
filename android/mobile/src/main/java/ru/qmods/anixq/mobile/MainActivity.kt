@@ -92,6 +92,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge(SystemBarStyle.dark(android.graphics.Color.TRANSPARENT), SystemBarStyle.dark(android.graphics.Color.TRANSPARENT))
         Store.init(applicationContext)
+        Api.diskDir = cacheDir
         ru.qmods.anixq.mobile.data.Downloads.init(applicationContext)
         NewEpisodes.schedule(applicationContext)
         ru.qmods.anixq.mobile.data.Collections.init(applicationContext)

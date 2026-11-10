@@ -76,6 +76,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -132,7 +135,13 @@ fun ScoreBadge(score: Double, modifier: Modifier = Modifier) {
 
 @Composable
 fun PosterCard(t: Title, modifier: Modifier = Modifier, subtitle: String? = null, progress: Float? = null, onClick: () -> Unit) {
-    Column(modifier.pressable(onClick = onClick)) {
+    // The moment a finger touches the poster, its page starts loading (it's open by the time the tap ends).
+    Column(modifier.pointerInput(t.slug) {
+        awaitEachGesture {
+            awaitFirstDown(requireUnconsumed = false)
+            ru.qmods.anixq.tv.data.Prefetch.title(t.slug)
+        }
+    }.pressable(onClick = onClick)) {
         Box(Modifier.shadow(6.dp, RoundedCornerShape(12.dp), ambientColor = Color.Black, spotColor = Color.Black)) {
             PosterImage(t.thumb, Modifier.fillMaxWidth())
             t.rating?.takeIf { it > 0 }?.let { ScoreBadge(it, Modifier.padding(6.dp)) }

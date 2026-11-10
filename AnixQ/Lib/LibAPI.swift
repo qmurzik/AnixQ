@@ -53,7 +53,9 @@ enum LibError: LocalizedError {
 enum LibAPI {
     /// All official API addresses (the site's own list); the fastest working one is used first.
     /// api.imglib.info is geo-limited by DDoS-Guard (often the fastest from Russia), hapi.* is the same API.
-    static let hosts = ["https://api.cdnlibs.org", "https://api.lib.social", "https://api.imglib.info", "https://hapi.hentaicdn.org"]
+    /// First: AnixQ's own cache on Cloudflare (edge/worker.js) — instant answers, survives AnimeLib outages.
+    /// If it's unreachable (blocked, down) the host ranking moves it to the back automatically.
+    static let hosts = ["https://anixq-edge.qmurzik7.workers.dev", "https://api.cdnlibs.org", "https://api.lib.social", "https://api.imglib.info", "https://hapi.hentaicdn.org"]
     static let site = "https://anilib.me"
     static let userAgent = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1"
     private static let fallbackServers = ["https://video1.cdnlibs.org/.аs/", "https://video2.cdnlibs.org/",
@@ -63,15 +65,22 @@ enum LibAPI {
 
     @discardableResult
     static func request(_ path: String, query: [URLQueryItem] = [], auth: Bool = true,
-                        method: String = "GET", body: Any? = nil) async throws -> Any {
+                        method: String = "GET", body: Any? = nil, fresh: Bool = false) async throws -> Any {
         let cacheable = method == "GET" && !path.hasPrefix("/bookmarks") && !path.hasPrefix("/auth")
         let cacheKey = cacheable ? ResponseCache.key(path, query) : nil
-        if let cacheKey, let hit = ResponseCache.memory(cacheKey) { return hit }
+        if !fresh, let cacheKey, let hit = ResponseCache.memory(cacheKey) { return hit }
+        // Seen before: show the saved copy at once and refresh it in the background (stale-while-revalidate).
+        if !fresh, let cacheKey, let stale = ResponseCache.recent(cacheKey, path: path) {
+            ResponseCache.remember(cacheKey, stale)
+            Task.detached(priority: .utility) { _ = try? await LibAPI.request(path, query: query, auth: auth, fresh: true) }
+            return stale
+        }
         var lastError: Error = LibError.notFound
         let bodyData = try body.map { try JSONSerialization.data(withJSONObject: $0) }
         // GETs go to whichever API host answered fastest recently (re-checked in the background every
         // 5 minutes); a host that fails moves to the back, so one slow host can't stall every page.
-        let order = method == "GET" ? HostOrder.current() : hosts
+        // Writes go straight to AnimeLib (never through the cache, never waiting on an unreachable one).
+        let order = method == "GET" ? HostOrder.current() : Array(hosts.dropFirst())
         if method == "GET" { HostOrder.recheckIfStale(path: path, query: query) }
         for host in order {
             var comps = URLComponents(string: host + "/api" + path)!
@@ -599,6 +608,25 @@ enum ResponseCache {
         // Persist only title-level data; catalog pages change too often to be worth it.
         guard path.hasPrefix("/anime/") || path.hasPrefix("/episodes") else { return }
         try? data.write(to: file(key), options: .atomic)
+    }
+
+    /// A saved answer young enough to show while a fresh one loads: title pages for a week,
+    /// episode lists for 30 minutes (new episodes), players for a day.
+    static func recent(_ key: String, path: String) -> Any? {
+        let maxAge: TimeInterval
+        if path.hasPrefix("/anime/") { maxAge = 7 * 86_400 }
+        else if path == "/episodes" { maxAge = 30 * 60 }
+        else if path.hasPrefix("/episodes/") { maxAge = 86_400 }
+        else { return nil }
+        let url = file(key)
+        guard let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),
+              let date = attrs[.modificationDate] as? Date, Date().timeIntervalSince(date) < maxAge,
+              let data = try? Data(contentsOf: url) else { return nil }
+        return try? JSONSerialization.jsonObject(with: data)
+    }
+
+    static func remember(_ key: String, _ json: Any) {
+        lock.lock(); mem[key] = (Date(), json); lock.unlock()
     }
 
     /// Last known response from disk (any age).

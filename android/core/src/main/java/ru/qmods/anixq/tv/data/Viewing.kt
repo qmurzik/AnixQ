@@ -1,6 +1,7 @@
 package ru.qmods.anixq.tv.data
 
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.Request
 import org.json.JSONObject
@@ -71,5 +72,23 @@ object Franchise {
         val t = runCatching { Api.search(node.name).firstOrNull { it.shikiId == node.shikiId } }.getOrNull()
         titles[node.shikiId] = t
         return t
+    }
+}
+
+/** Loads a title page and its episode list ahead (cursor resting on it, finger touching it): opens instantly. */
+object Prefetch {
+    private val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + Dispatchers.IO)
+    private val recent = java.util.concurrent.ConcurrentHashMap<String, Long>()
+
+    fun title(slug: String) {
+        val now = System.currentTimeMillis()
+        if ((recent[slug] ?: 0) > now - 5 * 60_000) return
+        recent[slug] = now
+        scope.launch {
+            kotlinx.coroutines.coroutineScope {
+                launch { runCatching { Api.detail(slug) } }
+                launch { runCatching { Api.episodes(slug) } }
+            }
+        }
     }
 }

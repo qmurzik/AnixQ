@@ -1,5 +1,7 @@
 package ru.qmods.anixq.tv.data
 
+import kotlinx.coroutines.launch
+
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -22,7 +24,8 @@ class ApiException(message: String) : Exception(message)
 object Api {
     /** All official API addresses; one that fails moves to the back (see [demote]). */
     private val hostOrder = java.util.concurrent.CopyOnWriteArrayList(listOf(
-        "https://api.cdnlibs.org", "https://api.lib.social", "https://api.imglib.info", "https://hapi.hentaicdn.org"))
+        // AnixQ's own cache on Cloudflare first (edge/worker.js); demoted automatically if unreachable.
+        "https://anixq-edge.qmurzik7.workers.dev", "https://api.cdnlibs.org", "https://api.lib.social", "https://api.imglib.info", "https://hapi.hentaicdn.org"))
     private fun demote(h: String) { if (hostOrder.remove(h)) hostOrder.add(h) }
     const val SITE = "https://anilib.me"
     private const val UA = "Mozilla/5.0 (Linux; Android 12; AndroidTV) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36"
@@ -34,13 +37,43 @@ object Api {
         .build()
 
     private val cache = HashMap<String, Pair<Long, Any>>()
+    /** Set by the app: where answers are saved to open instantly next time. */
+    @Volatile var diskDir: java.io.File? = null
+    private val bg = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + Dispatchers.IO)
+
+    /** How long a saved answer may be shown while a fresh one loads (null = not saved). */
+    private fun keepFor(path: String): Long? = when {
+        path.startsWith("/anime/") -> 7 * 86_400_000L
+        path == "/episodes" -> 30 * 60_000L
+        path.startsWith("/episodes/") -> 86_400_000L
+        else -> null
+    }
+
+    private fun diskFile(key: String): java.io.File? = diskDir?.let { d ->
+        java.io.File(d, "api").apply { mkdirs() }.let { java.io.File(it, Integer.toHexString(key.hashCode()) + "_" + key.length + ".json") }
+    }
+
+    private fun parse(text: String): Any = when {
+        text.isBlank() -> JSONObject()
+        text.trimStart().startsWith("[") -> JSONArray(text)
+        else -> JSONObject(text)
+    }
 
     private suspend fun request(
         path: String, query: List<Pair<String, String>> = emptyList(), method: String = "GET",
-        body: JSONObject? = null, auth: Boolean = true, retried: Boolean = false,
+        body: JSONObject? = null, auth: Boolean = true, retried: Boolean = false, fresh: Boolean = false,
     ): Any = withContext(Dispatchers.IO) {
-        val key = path + query.joinToString("&") { "${it.first}=${it.second}" }
-        if (method == "GET") synchronized(cache) { cache[key]?.let { if (System.currentTimeMillis() - it.first < 5 * 60_000) return@withContext it.second } }
+        val key = path + query.joinToString("&") { "${it.first}=${it.second}" } + (if (Store.libToken != null) "#u" else "")
+        if (method == "GET" && !fresh) synchronized(cache) { cache[key]?.let { if (System.currentTimeMillis() - it.first < 5 * 60_000) return@withContext it.second } }
+        // Seen before: answer from the saved copy at once, refresh it in the background.
+        val keep = if (method == "GET") keepFor(path) else null
+        if (keep != null && !fresh) diskFile(key)?.takeIf { it.exists() && System.currentTimeMillis() - it.lastModified() < keep }?.let { f ->
+            runCatching { parse(f.readText()) }.getOrNull()?.let { stale ->
+                synchronized(cache) { cache[key] = System.currentTimeMillis() to stale }
+                bg.launch { runCatching { request(path, query, method, body, auth, retried, fresh = true) } }
+                return@withContext stale
+            }
+        }
         var last: Exception = ApiException("Нет связи с AnimeLib")
         for (host in hostOrder.toList()) {
             try {
@@ -66,12 +99,9 @@ object Api {
                     val html = resp.header("Content-Type")?.contains("html") == true
                     if (resp.code >= 500 || html) { demote(host); last = ApiException("AnimeLib ответил ${resp.code}"); return@use null }
                     if (resp.code !in 200..299) throw ApiException("AnimeLib ответил ${resp.code}")
-                    val parsed: Any = when {
-                        text.isBlank() -> JSONObject()
-                        text.trimStart().startsWith("[") -> JSONArray(text)
-                        else -> JSONObject(text)
-                    }
+                    val parsed: Any = parse(text)
                     if (method == "GET") synchronized(cache) { cache[key] = System.currentTimeMillis() to parsed }
+                    if (keep != null) runCatching { diskFile(key)?.writeText(text) }
                     return@withContext parsed
                 }
             } catch (e: ApiException) {

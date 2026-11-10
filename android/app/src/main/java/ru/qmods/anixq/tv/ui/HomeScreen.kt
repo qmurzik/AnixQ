@@ -241,6 +241,8 @@ private fun Hero(spot: MutableState<Title?>, fallback: Title?) {
     val shown by produceState(target, target?.id) { delay(if (value == null) 0 else 260); value = target }
     val t = shown ?: return
     val detail by produceState(Spotlight.cached(t.slug), t.slug) { value = Spotlight.get(t.slug) }
+    // Cursor rested on it: get its episodes too, so the title page opens without waiting.
+    LaunchedEffect(t.slug) { delay(500); ru.qmods.anixq.tv.data.Prefetch.title(t.slug) }
     val area = TopBarHeight + HeroHeight + 130.dp
     // Everything is drawn only over the hero area; below it the plain background shows (less overdraw).
     Box(Modifier.fillMaxWidth().height(area)) {

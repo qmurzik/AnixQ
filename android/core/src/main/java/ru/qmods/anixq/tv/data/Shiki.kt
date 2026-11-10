@@ -35,6 +35,22 @@ object Shiki {
         }
     }
 
+    /** Your score (1–10) on Shikimori; the title becomes "completed" if it wasn't in the list. */
+    fun setScore(malId: Int?, score: Int, onDone: (Boolean) -> Unit = {}) {
+        if (malId == null || Store.shikiJson == null) { onDone(false); return }
+        scope.launch {
+            val ok = try {
+                val uid = Store.shikiJson?.int("userId") ?: throw Exception("no user")
+                val existing = (call("GET", "/api/v2/user_rates?user_id=$uid&target_id=$malId&target_type=Anime") as? JSONArray)?.optJSONObject(0)
+                if (existing != null) call("PATCH", "/api/v2/user_rates/${existing.int("id")}", JSONObject().put("user_rate", JSONObject().put("score", score)))
+                else call("POST", "/api/v2/user_rates", JSONObject().put("user_rate", JSONObject().put("user_id", uid).put("target_id", malId)
+                    .put("target_type", "Anime").put("status", "completed").put("score", score)))
+                true
+            } catch (e: Exception) { Log.d("AnixQ", "shiki score: ${e.message}"); false }
+            kotlinx.coroutines.withContext(Dispatchers.Main) { onDone(ok) }
+        }
+    }
+
     /** Hours / episodes / completed titles from the Shikimori profile (episodes × episode length, rewatches included). */
     data class Totals(val minutes: Double, val episodes: Int, val completed: Int)
     @Volatile var totals: Totals? = null; private set

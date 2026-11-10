@@ -265,6 +265,8 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
     val countdown get() = (Store.autoNext || Store.marathon) && !sleepAfterEpisode && !breakPrompt && (ended || inEnding || remaining <= 12)
     /** Marathon: a break is suggested instead of the next episode every few in a row. */
     var breakPrompt by mutableStateOf(false)
+    /** "Как вам?" at the end of the last episode of a finished title (like Kinopoisk after a film). */
+    var ratePrompt by mutableStateOf(false)
     private var marathonRun = 0
     private var endingSkipped = false
 
@@ -444,6 +446,11 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
         if ((Store.autoSkipOpening || Store.marathon) && op != null && !openingSkipped && pos >= op.from && pos < op.to - 3) skipOpening(auto = true)
         // Marathon: straight on once the ending (and preview) begins.
         val ed = ending
+        if (!hasNext && !ratePrompt && dur > 300 && (ended || inEnding || dur - pos <= 45) && title.statusId == 2
+            && Store.rating(title.id) == null && !Store.ratePrompted(title.id)) {
+            Store.markRatePrompted(title.id)
+            ratePrompt = true
+        }
         if (Store.marathon && hasNext && ed != null && !endingSkipped && !breakPrompt && !sleepAfterEpisode && pos >= ed.from + 1 && pos < ed.to) {
             endingSkipped = true
             if (!viewedSent) episode?.let { ep -> viewedSent = true; Store.markWatched(title, ep); scope.launch { Api.markViewed(ep.id, player?.playerId) } }
@@ -795,6 +802,14 @@ fun PlayerScreen(nav: Nav, route: PlayerRoute) {
         listOf(Choice("Ещё одну", hint = "следующая серия"), Choice("Перерыв", hint = "пауза, продолжите когда захотите")),
         { m.breakPrompt = false }) { i -> m.breakPrompt = false; if (i == 0) m.next() }
 
+    if (m.ratePrompt) RateDialog(m.title, { m.ratePrompt = false }) { score ->
+        m.ratePrompt = false
+        Store.setRating(m.title.id, score)
+        if (Store.shikiJson != null && m.title.shikiId != null) {
+            ru.qmods.anixq.tv.data.Shiki.setScore(m.title.shikiId, score) { ok -> m.say(if (ok) "Оценка $score — в профиле Shikimori" else "Оценка $score сохранена") }
+        } else m.say("Оценка $score сохранена")
+    }
+
     when (dialog) {
         "dub" -> {
             val teams = m.players.groupBy { it.team.id }.values.map { ps -> ps.first().team to ps }
@@ -1050,6 +1065,43 @@ private fun RoomDialog(onClose: () -> Unit) {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 PillButton("Готово", primary = true, modifier = Modifier.memo("room", "ok", initial = true)) { onClose() }
                 PillButton("Закрыть комнату") { ru.qmods.anixq.tv.data.Room.leave(); onClose() }
+            }
+        }
+    }
+}
+
+/** End of the title: score 1–10 with the remote, the middle one focused (like Kinopoisk). */
+@Composable
+private fun RateDialog(title: ru.qmods.anixq.tv.data.Title, onClose: () -> Unit, onRate: (Int) -> Unit) {
+    var focused by remember { mutableIntStateOf(8) }
+    androidx.compose.ui.window.Dialog(onDismissRequest = onClose) {
+        Row(Modifier.background(C.card, RoundedCornerShape(24.dp)).padding(28.dp), verticalAlignment = Alignment.CenterVertically) {
+            Cover(title.cover ?: title.coverThumb, Modifier.width(120.dp).height(170.dp).clip(RoundedCornerShape(12.dp)))
+            Spacer(Modifier.width(26.dp))
+            Column {
+                Text("Как вам «${title.title}»?", fontSize = 26.sp, fontWeight = FontWeight.Bold, maxLines = 2)
+                Spacer(Modifier.height(6.dp))
+                Text(if (Store.shikiJson != null && title.shikiId != null) "Оценка попадёт в ваш профиль Shikimori" else "Оценка сохранится в AnixQ",
+                    fontSize = 16.sp, color = C.muted)
+                Spacer(Modifier.height(20.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    for (n in 1..10) {
+                        // Red → yellow → green, like the rating colours everywhere.
+                        val tint = when { n <= 4 -> Color(0xFFE5484D); n <= 6 -> Color(0xFF9BA1A6); n <= 7 -> Color(0xFFF5B83D); else -> Color(0xFF3DD68C) }
+                        Focusable(onClick = { onRate(n) }, modifier = Modifier.size(52.dp).memo("rate", "$n", initial = n == 8)
+                            .onFocusChanged { if (it.isFocused) focused = n }, radius = 26.dp, scale = 1.15f,
+                            container = Color.White.copy(alpha = 0.08f), focusedContainer = tint) {
+                            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                Text("$n", fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
+                Spacer(Modifier.height(12.dp))
+                Text(when (focused) { in 1..3 -> "Не понравилось"; in 4..5 -> "Так себе"; 6 -> "Нормально"; 7 -> "Хорошо"; 8 -> "Отлично"; 9 -> "Великолепно"; else -> "Шедевр" },
+                    fontSize = 18.sp, color = C.muted)
+                Spacer(Modifier.height(16.dp))
+                PillButton("Не сейчас") { onClose() }
             }
         }
     }

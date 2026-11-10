@@ -162,6 +162,13 @@ object Store {
         set(v) { prefs.edit().putBoolean("hoverPreview", v).apply(); bump() }
 
     /** The screensaver plays muted clips of episodes (otherwise a slideshow of covers). */
+    /** Your score for a title (1–10), set at the end of the last episode; also sent to Shikimori. */
+    fun rating(titleId: Int): Int? = prefs.getInt("rating.$titleId", 0).takeIf { it > 0 }
+    fun setRating(titleId: Int, score: Int) { prefs.edit().putInt("rating.$titleId", score).apply(); bump() }
+    /** The end-of-title "Как вам?" was offered already (once per title, whatever the answer). */
+    fun ratePrompted(titleId: Int) = prefs.getBoolean("ratePrompted.$titleId", false)
+    fun markRatePrompted(titleId: Int) { prefs.edit().putBoolean("ratePrompted.$titleId", true).apply() }
+
     /** AniLibria dub from AniLibria's own servers when they have the episode. */
     var libriaDirect: Boolean
         get() = prefs.getBoolean("libriaDirect", true)

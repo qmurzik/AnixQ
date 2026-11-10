@@ -81,7 +81,7 @@ final class NearTV: NSObject, ObservableObject, CBCentralManagerDelegate {
         let now = Date().timeIntervalSince1970
         guard now - d.double(forKey: "nearTV.notifiedAt") > 45 * 60, let e = Self.candidate() else { return }
         // Already playing there — nothing to offer.
-        if let s = RemoteTV.shared.tv, s.slug == e.title.slug, s.ep == e.episodeNumber, s.isActive { return }
+        if let s = RemoteTV.shared.tv, s.slug == e.title.slugURL, s.ep == e.episodeNumber, s.isActive { return }
         d.set(now, forKey: "nearTV.notifiedAt")
 
         let content = UNMutableNotificationContent()

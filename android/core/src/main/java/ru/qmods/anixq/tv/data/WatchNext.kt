@@ -44,7 +44,7 @@ object WatchNext {
                     .setWatchNextType(if (done) TvContractCompat.WatchNextPrograms.WATCH_NEXT_TYPE_NEXT else TvContractCompat.WatchNextPrograms.WATCH_NEXT_TYPE_CONTINUE)
                     .setLastEngagementTimeUtcMillis(now)
                     .setTitle(title.title)
-                    .setEpisodeTitle(if (done) "Следующая серия" else "Серия ${ep.number}")
+                    .setEpisodeTitle(if (done) "Следующая серия · после ${ep.number}" else "Серия ${ep.number}")
                     .setEpisodeNumber(ep.numberValue.toInt())
                     .setDurationMillis((dur * 1000).toInt())
                     .setLastPlaybackPositionMillis(if (done) 0 else (pos * 1000).toInt())
@@ -60,6 +60,26 @@ object WatchNext {
                     }
                 }
             } catch (e: Exception) { Log.d("AnixQ", "watch next: ${e.message}") }   // boxes without the TV provider
+        }
+    }
+
+    private var lastRefresh = 0L
+
+    /**
+     * Fill the row from the whole library (also what was watched on the phone / iPhone): unfinished
+     * episodes to continue, and the next episode of finished ones — including newly released ones.
+     */
+    fun refreshFromLibrary() {
+        if (app == null || Build.VERSION.SDK_INT < 26) return
+        val now = System.currentTimeMillis()
+        if (now - lastRefresh < 3 * 3600_000L) return
+        lastRefresh = now
+        scope.launch {
+            for (e in Store.continueList.take(8)) {
+                val eps = runCatching { Api.episodes(e.title.slug) }.getOrNull() ?: continue
+                val i = eps.indexOfFirst { it.id == e.episodeId }.takeIf { it >= 0 } ?: eps.indexOfFirst { it.number == e.ep }.takeIf { it >= 0 } ?: continue
+                update(e.title, eps[i], e.teamId, e.pos, e.dur, hasNext = i + 1 < eps.size, force = true)
+            }
         }
     }
 

@@ -57,7 +57,8 @@ private val ru = listOf("абвгде", "ёжзийк", "лмнопр", "сту�
 private val en = listOf("abcdef", "ghijkl", "mnopqr", "stuvwx", "yz1234", "567890")
 
 /** Voice search from the system ("Окей, Google, найди … в AnixQ"). */
-object SearchRequest { var pending: String? = null; var playFirst = false }
+/** A query from voice search or the phone; observable, so it also works while Search is already open. */
+object SearchRequest { var pending by androidx.compose.runtime.mutableStateOf<String?>(null); var playFirst = false }
 
 private object SearchState {
     var popular: List<Title> = emptyList()

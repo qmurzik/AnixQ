@@ -33,6 +33,8 @@ import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Tv
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
@@ -87,6 +89,7 @@ fun RemoteScreen(nav: Nav) {
             }
             return@Column
         }
+        Box(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) { TvSearchBar() }
         if (tv == null) {
             Column(Modifier.fillMaxWidth().padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 Icon(Icons.Default.Tv, null, Modifier.size(64.dp), tint = Pal.muted)
@@ -147,4 +150,38 @@ private fun Key(icon: ImageVector, size: Int, enabled: Boolean = true, accent: B
         Modifier.size(size.dp).clip(CircleShape).background(if (accent) Pal.pink else Pal.card).clickable(enabled = enabled, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) { Icon(icon, null, Modifier.size((size * 0.5f).dp), tint = if (enabled) Color.White else Pal.faint) }
+}
+
+/** Type or say what to find — the TV opens its search with it (no typing with the remote). */
+@Composable
+fun TvSearchBar() {
+    var text by remember { mutableStateOf("") }
+    val view = LocalView.current
+    fun send(q: String) {
+        if (q.isBlank()) return
+        view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+        Remote.send("search", JSONObject().put("q", q.trim()))
+        text = ""
+    }
+    val voice = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()) { r ->
+        r.data?.getStringArrayListExtra(android.speech.RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()?.let { send(it) }
+    }
+    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Pal.card).padding(start = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.weight(1f)) {
+            if (text.isEmpty()) Text("Найти на ТВ…", color = Pal.muted, fontSize = 15.sp)
+            androidx.compose.foundation.text.BasicTextField(text, { text = it }, singleLine = true,
+                textStyle = androidx.compose.ui.text.TextStyle(color = Pal.text, fontSize = 15.sp), cursorBrush = androidx.compose.ui.graphics.SolidColor(Pal.pink),
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Search),
+                keyboardActions = androidx.compose.foundation.text.KeyboardActions(onSearch = { send(text) }), modifier = Modifier.fillMaxWidth())
+        }
+        IconButton(onClick = {
+            runCatching {
+                voice.launch(android.content.Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+                    .putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL, android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                    .putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE, "ru-RU")
+                    .putExtra(android.speech.RecognizerIntent.EXTRA_PROMPT, "Что найти на ТВ?"))
+            }
+        }) { Icon(Icons.Default.Mic, "Сказать", tint = Pal.pink) }
+        if (text.isNotBlank()) IconButton(onClick = { send(text) }) { Icon(Icons.Default.Search, "Найти", tint = Pal.text) }
+    }
 }

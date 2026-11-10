@@ -34,7 +34,11 @@ class MainActivity : ComponentActivity() {
             val nav = remember { Nav().also { applyLaunchExtras(it); this.nav = it } }
             androidx.compose.runtime.DisposableEffect(nav) {
                 Remote.navigator = { m -> nav.playFromPhone(m) }
-                onDispose { Remote.navigator = null }
+                Remote.searchHandler = { q ->
+                    ru.qmods.anixq.tv.ui.SearchRequest.pending = q
+                    nav.stack.clear(); nav.tab = Tab.SEARCH
+                }
+                onDispose { Remote.navigator = null; Remote.searchHandler = null }
             }
             AnixTheme { App(nav) }
         }
@@ -78,6 +82,8 @@ class MainActivity : ComponentActivity() {
         Remote.start(applicationContext)
         RemoteService.start(applicationContext)
         Updater.checkSometimes()
+        // Google TV "Продолжить просмотр": also what was watched on the phone / iPhone.
+        lifecycleScope.launch { kotlinx.coroutines.delay(15_000); ru.qmods.anixq.tv.data.WatchNext.refreshFromLibrary() }
     }
 
     override fun onStop() {

@@ -197,6 +197,7 @@ struct RemoteTVView: View {
                             .font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
                     }.padding(.top, 40)
                 }
+                if rc.isAvailable { TVSearchField() }
                 Spacer()
                 HStack(spacing: 6) {
                     Circle().fill(rc.connected ? Color.green : Color.orange).frame(width: 8, height: 8)
@@ -278,5 +279,26 @@ private struct ContentUnavailableHint: View {
             Text("Включите синхронизацию на iPhone (Настройки → Синхронизация устройств) и на ТВ (Настройки → Связать с iPhone). Через минуту пульт заработает — из любой сети и любого города.")
                 .font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
         }.padding(.top, 40)
+    }
+}
+
+
+/// Type (or dictate with the keyboard's mic) what to find — the TV opens its search with it.
+struct TVSearchField: View {
+    @State private var text = ""
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+            TextField("Найти на ТВ…", text: $text)
+                .submitLabel(.search)
+                .onSubmit {
+                    let q = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !q.isEmpty else { return }
+                    RemoteTV.shared.send("search", ["q": q])
+                    text = ""
+                }
+        }
+        .padding(12)
+        .background(Theme.card, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 }

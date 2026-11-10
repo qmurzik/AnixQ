@@ -55,6 +55,8 @@ object Remote {
     private val pendingCmds = java.util.concurrent.ConcurrentLinkedQueue<JSONObject>()
     /** The open player, if any. */
     @Volatile var target: RemoteTarget? = null
+    /** Opens the search screen with a query from the phone; null when the activity isn't on screen. */
+    @Volatile var searchHandler: ((String) -> Unit)? = null
     /** Opens a player in the running UI; null when the activity isn't on screen. */
     @Volatile var navigator: ((JSONObject) -> Unit)? = null
 
@@ -154,6 +156,16 @@ object Remote {
                 "volume" -> (app?.getSystemService(Context.AUDIO_SERVICE) as? AudioManager)?.adjustStreamVolume(
                     AudioManager.STREAM_MUSIC, if (m.optInt("dir") > 0) AudioManager.ADJUST_RAISE else AudioManager.ADJUST_LOWER, AudioManager.FLAG_SHOW_UI)
                 "ping" -> publishState()
+                // Search typed or dictated on the phone, shown on the TV.
+                "search" -> m.optString("q").trim().takeIf { it.isNotEmpty() }?.let { q ->
+                    val h = searchHandler
+                    if (h != null) h(q) else app?.let { ctx ->
+                        runCatching {
+                            ctx.startActivity(Intent(ctx, Class.forName("ru.qmods.anixq.tv.MainActivity")).setAction(Intent.ACTION_SEARCH)
+                                .putExtra(android.app.SearchManager.QUERY, q).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP))
+                        }
+                    }
+                }
                 else -> target?.remoteCommand(m)
             }
         }

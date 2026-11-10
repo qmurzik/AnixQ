@@ -65,8 +65,10 @@ object Nearby {
             }
         }
         advertising = cb
-        val settings = AdvertiseSettings.Builder().setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_LOW_POWER)
-            .setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_MEDIUM).setConnectable(false).setTimeout(0).build()
+        // Balanced (~4 times a second) at full power: the phone hears it within seconds, even through a wall.
+        // The box is plugged in, so the cost doesn't matter.
+        val settings = AdvertiseSettings.Builder().setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_BALANCED)
+            .setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_HIGH).setConnectable(false).setTimeout(0).build()
         val data = AdvertiseData.Builder().setIncludeDeviceName(false).setIncludeTxPowerLevel(false)
             .addServiceUuid(SERVICE).addServiceData(SERVICE, tag).build()
         runCatching { adv.startAdvertising(settings, data, cb) }.onFailure { beacon.value = Beacon.FAILED }
@@ -100,8 +102,12 @@ object Nearby {
         val scanner = (context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager)?.adapter
             ?.takeIf { it.isEnabled }?.bluetoothLeScanner ?: return false
         val filter = ScanFilter.Builder().setServiceData(SERVICE, tag).build()
-        val settings = ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_POWER)
+        // Balanced: the system listens about 40% of the time instead of 10% — seconds instead of a minute.
+        // Matching runs in the Bluetooth chip (hardware filter), so the phone isn't woken for other devices.
+        val settings = ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_BALANCED)
             .setCallbackType(ScanSettings.CALLBACK_TYPE_ALL_MATCHES).build()
+        // Restarted each time: Android quietly downgrades a scan that has run for 30 minutes.
+        runCatching { scanner.stopScan(intent) }
         return runCatching { scanner.startScan(listOf(filter), settings, intent) == 0 }.getOrDefault(false)
     }
 
@@ -115,7 +121,7 @@ object Nearby {
     fun candidate(): WatchEntry? {
         val e = Store.continueList.firstOrNull() ?: return null
         val ageMin = (System.currentTimeMillis() / 1000.0 - e.at) / 60
-        if (ageMin > 6 * 60 || ageMin < 0.5) return null
+        if (ageMin > 6 * 60 || ageMin < 10.0 / 60) return null
         if (e.dur > 0 && (e.progress > 0.92 || e.pos < 30)) return null
         return e
     }

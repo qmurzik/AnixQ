@@ -45,7 +45,7 @@ struct AnixQApp: App {
         .onChange(of: scenePhase) { phase in
             AppLock.shared.sceneChanged(phase)
             if phase == .background || phase == .inactive { GistSync.shared.flush() }
-            if phase == .background { RemoteTV.shared.stopLive() }
+            if phase == .background { RemoteTV.shared.stopLive(); NearTV.shared.rescan() }
             if phase == .background {
                 WatchingUpdater.scheduleBackgroundRefresh()
                 DownloadManager.shared.cleanupWatched()

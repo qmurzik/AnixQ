@@ -25,6 +25,10 @@ final class NearTV: NSObject, ObservableObject, CBCentralManagerDelegate {
     /// Called at launch (also when iOS relaunches the app in the background for a Bluetooth match).
     func resume() { if Self.isOn { start() } }
 
+    /// A fresh round of scanning: iOS reports a device only once per round in the background, so a TV seen
+    /// before you paused the episode would otherwise never be reported again.
+    func rescan() { if Self.isOn, let c = central { scan(c) } }
+
     func setOn(_ on: Bool) {
         Self.isOn = on
         if on {
@@ -45,8 +49,10 @@ final class NearTV: NSObject, ObservableObject, CBCentralManagerDelegate {
         switch c.state {
         case .poweredOn:
             guard Self.tag != nil else { status = "Сначала подключите ТВ"; return }
-            // A service filter is required for scanning in the background; duplicates are not needed.
-            c.scanForPeripherals(withServices: [Self.service], options: nil)
+            // A service filter is required for scanning in the background. Duplicates: while the app is open every
+            // sighting is reported (iOS ignores this in the background, where `rescan()` starts a fresh round).
+            c.stopScan()
+            c.scanForPeripherals(withServices: [Self.service], options: [CBCentralManagerScanOptionAllowDuplicatesKey: true])
             status = "Ждёт приставку рядом"
         case .unauthorized: status = "Нет доступа к Bluetooth — разрешите в Настройках"
         case .poweredOff: status = "Bluetooth выключен"
@@ -98,7 +104,9 @@ final class NearTV: NSObject, ObservableObject, CBCentralManagerDelegate {
     @MainActor static func candidate() -> WatchEntry? {
         guard let e = LibraryStore.current?.history.first else { return nil }
         let age = Date().timeIntervalSince(e.date)
-        guard age > 30, age < 6 * 3600 else { return nil }
+        // In the background iOS reports the TV once per round, so no "just paused" wait there.
+        let minAge: TimeInterval = UIApplication.shared.applicationState == .active ? 10 : 0
+        guard age >= minAge, age < 6 * 3600 else { return nil }
         if e.duration > 0 && (e.progress > 0.92 || e.position < 30) { return nil }
         return e
     }

@@ -133,6 +133,7 @@ fun PlayerScreen(nav: Nav, route: PlayerRoute) {
         ctl.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         ctl.hide(WindowInsetsCompat.Type.systemBars())
         onDispose {
+            ru.qmods.anixq.mobile.NearTv.sync(context)
             Pip.model = null
             if (ru.qmods.anixq.tv.data.Room.player === m) ru.qmods.anixq.tv.data.Room.player = null
             ru.qmods.anixq.mobile.PlaybackService.detach(context)
@@ -147,7 +148,11 @@ fun PlayerScreen(nav: Nav, route: PlayerRoute) {
         val obs = LifecycleEventObserver { _, e ->
             // Leaving the app (not into picture-in-picture): pause and save, so the TV/iPhone get the exact moment.
             // "Звук в фоне" keeps the AnimeLib player going (not Kodik's web page); otherwise pause.
-            if (e == Lifecycle.Event.ON_STOP) { if (!(Store.backgroundAudio && m.native)) m.pause(); m.saveProgress(force = true); Sync.flush() }
+            if (e == Lifecycle.Event.ON_STOP) {
+                if (!(Store.backgroundAudio && m.native)) m.pause(); m.saveProgress(force = true); Sync.flush()
+                // A fresh Bluetooth scan: if the TV is already near, the offer comes within seconds.
+                ru.qmods.anixq.mobile.NearTv.sync(context)
+            }
             // Back in the app: some phones bring the status / navigation bars back over the video — hide them again.
             if (e == Lifecycle.Event.ON_RESUME && !Pip.inPip) {
                 WindowCompat.getInsetsController(activity.window, activity.window.decorView).apply {

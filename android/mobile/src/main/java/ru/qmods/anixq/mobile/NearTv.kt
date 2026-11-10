@@ -36,7 +36,13 @@ object NearTv {
     /** Start or stop the background watch to match the setting (and the current pairing). */
     fun sync(context: Context) {
         val ctx = context.applicationContext
-        if (Store.nearbyTv && Store.remoteChannel.isNotEmpty()) Nearby.startScan(ctx, scanIntent(ctx)) else Nearby.stopScan(ctx, scanIntent(ctx))
+        val on = Store.nearbyTv && Store.remoteChannel.isNotEmpty()
+        if (on) Nearby.startScan(ctx, scanIntent(ctx)) else Nearby.stopScan(ctx, scanIntent(ctx))
+        // Re-armed every 15 minutes: Android slows a scan down after 30 minutes and drops it after updates.
+        val wm = androidx.work.WorkManager.getInstance(ctx)
+        if (on) wm.enqueueUniquePeriodicWork("near-tv", androidx.work.ExistingPeriodicWorkPolicy.KEEP,
+            androidx.work.PeriodicWorkRequestBuilder<NearTvWorker>(15, java.util.concurrent.TimeUnit.MINUTES).build())
+        else wm.cancelUniqueWork("near-tv")
     }
 
     /** The beacon of our TV was heard. */
@@ -141,5 +147,13 @@ class CallReceiver : BroadcastReceiver() {
                 delay(1_000)
             } finally { done.finish() }
         }
+    }
+}
+
+class NearTvWorker(context: Context, params: androidx.work.WorkerParameters) : androidx.work.Worker(context, params) {
+    override fun doWork(): Result {
+        Store.init(applicationContext)
+        NearTv.sync(applicationContext)
+        return Result.success()
     }
 }

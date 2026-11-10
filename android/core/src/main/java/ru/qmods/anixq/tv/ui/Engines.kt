@@ -142,10 +142,39 @@ class ExoEngine(private val context: Context, private val onError: (String) -> U
         })
     }
 
+    /** The next episode waiting in the player's queue (its start gets buffered near the end of this one). */
+    private var queuedUrl: String? = null
+
+    /** Put the next episode in the queue: the player loads its beginning in advance; "next" then starts at once. */
+    fun queueNext(url: String, subtitles: List<ru.qmods.anixq.tv.data.Subtitle> = emptyList()) {
+        if (queuedUrl == url || exo.mediaItemCount != 1) return
+        // Don't roll into it by itself: the app decides (countdown, marathon, sleep timer).
+        exo.pauseAtEndOfMediaItems = true
+        exo.addMediaItem(item(url, subtitles))
+        queuedUrl = url
+    }
+
     fun load(url: String, startAt: Double, subtitles: List<ru.qmods.anixq.tv.data.Subtitle> = emptyList(), upscale: Int = appliedMode) {
         applyUpscale(upscale)
         firstFrame = false
         loadedAt = System.currentTimeMillis()
+        if (url == queuedUrl && exo.mediaItemCount > 1) {
+            // Already buffering in the queue: jump straight to it.
+            exo.seekTo(1, (startAt * 1000).toLong())
+            exo.removeMediaItem(0)
+            queuedUrl = null
+            exo.pauseAtEndOfMediaItems = false
+            exo.playWhenReady = true
+            return
+        }
+        queuedUrl = null
+        exo.pauseAtEndOfMediaItems = false
+        exo.setMediaItem(item(url, subtitles), (startAt * 1000).toLong())
+        exo.prepare()
+        exo.playWhenReady = true
+    }
+
+    private fun item(url: String, subtitles: List<ru.qmods.anixq.tv.data.Subtitle>): MediaItem {
         val subs = subtitles.mapIndexed { i, s ->
             MediaItem.SubtitleConfiguration.Builder(android.net.Uri.parse(s.url))
                 .setMimeType(when (s.format) {
@@ -157,16 +186,16 @@ class ExoEngine(private val context: Context, private val onError: (String) -> U
                 .setSelectionFlags(if (i == 0) androidx.media3.common.C.SELECTION_FLAG_DEFAULT else 0)
                 .build()
         }
-        exo.setMediaItem(MediaItem.Builder().setUri(url).setSubtitleConfigurations(subs).build(), (startAt * 1000).toLong())
-        exo.prepare()
-        exo.playWhenReady = true
+        return MediaItem.Builder().setUri(url).setSubtitleConfigurations(subs).build()
     }
 
     override val position get() = exo.currentPosition / 1000.0
     override val duration get() = exo.duration.takeIf { it > 0 }?.div(1000.0) ?: 0.0
     override val isPlaying get() = exo.isPlaying || (exo.playWhenReady && exo.playbackState == Player.STATE_BUFFERING)
     override val isBuffering get() = exo.playbackState == Player.STATE_BUFFERING
-    override val ended get() = exo.playbackState == Player.STATE_ENDED
+    // With the next episode queued the player stops at the end of this one instead of "ENDED".
+    override val ended get() = exo.playbackState == Player.STATE_ENDED ||
+        (queuedUrl != null && exo.currentMediaItemIndex == 0 && exo.duration > 0 && exo.currentPosition >= exo.duration - 400 && !exo.playWhenReady)
     override fun play() { if (exo.playbackState == Player.STATE_ENDED) exo.seekTo(0); exo.play() }
     override fun pause() = exo.pause()
     override fun seek(seconds: Double) = exo.seekTo((seconds.coerceAtLeast(0.0) * 1000).toLong())

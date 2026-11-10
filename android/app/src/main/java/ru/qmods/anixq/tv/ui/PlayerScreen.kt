@@ -228,6 +228,9 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
     private var lastRemote = 0L
     private var viewedSent = false
     private var prefetched = false
+    private var nextLooked = false
+    /** Next episode's players, looked up early so switching doesn't wait for AnimeLib. */
+    private val playersCache = HashMap<Int, List<Player>>()
     private var startedOnce = false
     private var loadJob: Job? = null
 
@@ -295,13 +298,13 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
         val sameEpisode = i == index && episodes.isNotEmpty() && keepPos != null
         index = i
         val ep = episodes[i]
-        if (!sameEpisode) { endingSkipped = false; extraSegments = emptyList(); openingSkipped = false; nextDismissed = false; viewedSent = false; prefetched = false; pos = 0.0; dur = 0.0; ended = false }
+        if (!sameEpisode) { endingSkipped = false; extraSegments = emptyList(); openingSkipped = false; nextDismissed = false; viewedSent = false; prefetched = false; nextLooked = false; pos = 0.0; dur = 0.0; ended = false }
         message = if (sameEpisode) "Переключаем…" else "Серия ${ep.number}"
         failed = false
         buffering = true
         loadJob = scope.launch {
             try {
-                val list = if (sameEpisode && players.isNotEmpty()) players else Api.players(ep.id)
+                val list = if (sameEpisode && players.isNotEmpty()) players else playersCache.remove(ep.id) ?: Api.players(ep.id)
                 players = list
                 if (list.isEmpty()) { message = "Для этой серии нет видео"; failed = true; return@launch }
                 val forTeam = { id: Int? -> list.filter { it.team.id == id } }
@@ -328,7 +331,8 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
 
     private suspend fun startNative(p: Player, startAt: Double, qualityKey: String?) {
         val keys = p.hrefs.keys.sortedByDescending { it.removeSuffix("p").toIntOrNull() ?: 0 }
-        val q = qualityKey?.takeIf { it in keys }
+        // Keeps the quality of the previous episode (so the file queued in advance is the one played).
+        val q = qualityKey?.takeIf { it in keys } ?: quality?.takeIf { it in keys }
             ?: keys.firstOrNull { (it.removeSuffix("p").toIntOrNull() ?: 0) <= Store.preferredQuality } ?: keys.last()
         quality = q
         val href = p.hrefs.getValue(q)
@@ -430,14 +434,26 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
             lastStatePush = nowMs; lastPlaying = playing
             ru.qmods.anixq.tv.data.Remote.publishState()
         }
-        // Warm up the next episode a few minutes before the end, so "next" starts instantly.
-        if (hasNext && !prefetched && dur > 0 && dur - pos < 180) {
+        // Next episode: where it is (right after this one starts), then its video queued 3 minutes before the end.
+        if (hasNext && !nextLooked && native && pos > 15) {
+            nextLooked = true
+            val next = episodes[index + 1]
+            scope.launch { runCatching { Api.players(next.id) }.getOrNull()?.takeIf { it.isNotEmpty() }?.let { playersCache[next.id] = it } }
+        }
+        if (hasNext && !prefetched && native && dur > 0 && dur - pos < 180) {
             prefetched = true
             val next = episodes[index + 1]
             scope.launch {
                 runCatching {
-                    val ps = Api.players(next.id)
-                    ps.firstOrNull { it.team.id == player?.team?.id && it.isNative }?.hrefs?.values?.firstOrNull()?.let { Api.rankServers(it) }
+                    val ps = playersCache[next.id] ?: Api.players(next.id).also { playersCache[next.id] = it }
+                    val p = ps.firstOrNull { it.team.id == player?.team?.id && it.isNative } ?: return@runCatching
+                    val keys = p.hrefs.keys.sortedByDescending { it.removeSuffix("p").toIntOrNull() ?: 0 }
+                    // The same quality the player will pick, so the queued file is exactly the one played next.
+                    val q = quality?.takeIf { it in keys }
+                        ?: keys.firstOrNull { (it.removeSuffix("p").toIntOrNull() ?: 0) <= Store.preferredQuality } ?: keys.last()
+                    val href = p.hrefs.getValue(q)
+                    val server = Api.rankServers(href).firstOrNull() ?: return@runCatching
+                    exo?.queueNext(Api.videoUrl(server, href), p.subtitles)
                 }
             }
         }

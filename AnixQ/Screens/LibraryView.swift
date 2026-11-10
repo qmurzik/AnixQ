@@ -266,6 +266,7 @@ struct SettingsView: View {
     @State private var autoNext = PlayerPrefs.autoNext
     @State private var marathon = PlayerPrefs.marathon
     @State private var noSpoilers = PlayerPrefs.noSpoilers
+    @State private var libriaDirect = Libria.enabled
     @State private var opLength = PlayerPrefs.openingLength
     @State private var quality = PlayerPrefs.preferredHeight
     @State private var downloadQuality = PlayerPrefs.downloadHeight
@@ -398,6 +399,8 @@ struct SettingsView: View {
                         .onChange(of: marathon) { PlayerPrefs.marathon = $0 }
                     Toggle("Без спойлеров (скрывать названия новых серий)", isOn: $noSpoilers)
                         .onChange(of: noSpoilers) { PlayerPrefs.noSpoilers = $0 }
+                    Toggle("Озвучка AniLibria — с их сервера", isOn: $libriaDirect)
+                        .onChange(of: libriaDirect) { Libria.enabled = $0 }
                     Toggle("Пропускать опенинг автоматически", isOn: $autoSkip)
                         .onChange(of: autoSkip) { PlayerPrefs.autoSkipOpening = $0 }
                     Toggle("Пропускать эндинг и превью", isOn: $autoSkipEnd)

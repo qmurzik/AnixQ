@@ -105,7 +105,7 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
         .apply {
             // Browser viewers: the direct stream, plus the same dub's Kodik link to fall back to
             // (AnimeLib's video servers often refuse browsers).
-            if (native) currentUrl?.let { put("stream", it) }
+            if (native && player?.isLibria != true) currentUrl?.let { put("stream", it) }
             val k = if (!native) currentUrl else players.firstOrNull { it.team.id == player?.team?.id && it.isKodik }?.kodikSrc?.let { Api.kodikUrl(it) }
                 ?: players.firstOrNull { it.isKodik }?.kodikSrc?.let { Api.kodikUrl(it) }
             k?.let { put("kodik", it) }
@@ -309,7 +309,7 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
         val sameEpisode = i == index && episodes.isNotEmpty() && keepPos != null
         index = i
         val ep = episodes[i]
-        if (!sameEpisode) { recap = null; recapSkipped = false; endingSkipped = false; extraSegments = emptyList(); openingSkipped = false; nextDismissed = false; viewedSent = false; prefetched = false; nextLooked = false; pos = 0.0; dur = 0.0; ended = false }
+        if (!sameEpisode) { avoidLibria = false; recap = null; recapSkipped = false; endingSkipped = false; extraSegments = emptyList(); openingSkipped = false; nextDismissed = false; viewedSent = false; prefetched = false; nextLooked = false; pos = 0.0; dur = 0.0; ended = false }
         message = if (sameEpisode) "Переключаем…" else "Серия ${ep.number}"
         failed = false
         buffering = true
@@ -321,9 +321,13 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
                 val forTeam = { id: Int? -> list.filter { it.team.id == id } }
                 val favourite = list.firstOrNull { p -> Store.dubs.any { it.equals(p.team.name, true) } }?.team?.id
                 val candidates = forTeam(teamId).ifEmpty { forTeam(favourite) }.ifEmpty { list.filter { it.isNative }.ifEmpty { list } }
-                val chosen = (if (preferKodik) candidates.firstOrNull { it.isKodik } else null)
+                var chosen = (if (preferKodik) candidates.firstOrNull { it.isKodik } else null)
                     ?: candidates.firstOrNull { it.isNative } ?: candidates.firstOrNull { it.isKodik }
                     ?: list.firstOrNull { it.isNative } ?: list.first { it.isKodik || it.isNative }
+                // AniLibria dub: their own servers when they have the episode (no ads, often faster than AnimeLib).
+                if (!preferKodik && !avoidLibria && Store.libriaDirect && ru.qmods.anixq.tv.data.Libria.isLibria(chosen.team.name)) {
+                    ru.qmods.anixq.tv.data.Libria.player(title, ep.number, chosen)?.let { chosen = it; if (!sameEpisode) say("AniLibria: видео с их сервера") }
+                }
                 player = chosen
                 val local = Store.resume(ep.id)
                 val remote = chosen.serverTimecode?.takeIf { it > 5 && (route.episodeId != ep.id || local == null) }
@@ -347,12 +351,14 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
             ?: keys.firstOrNull { (it.removeSuffix("p").toIntOrNull() ?: 0) <= Store.preferredQuality } ?: keys.last()
         quality = q
         val href = p.hrefs.getValue(q)
-        servers = Api.rankServers(href)
+        // A full link (AniLibria) is played as is, no AnimeLib mirrors.
+        val direct = href.startsWith("http")
+        servers = if (direct) listOf("") else Api.rankServers(href)
         serverIdx = 0
         kodik?.release(); kodik = null
         native = true
         val e = exo ?: ExoEngine(context) { err -> onNativeError(err) }.also { exo = it }
-        currentUrl = Api.videoUrl(servers[0], href)
+        currentUrl = if (direct) href else Api.videoUrl(servers[0], href)
         e.load(currentUrl!!, startAt, p.subtitles, upscale)
         ru.qmods.anixq.tv.data.Room.sendState()
         e.setSubtitles(subtitlesOn)
@@ -369,9 +375,18 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
         ru.qmods.anixq.tv.data.Room.sendState()
     }
 
+    /** AniLibria's server failed for this episode: AnimeLib's copy of the same dub from here on. */
+    private var avoidLibria = false
+
     private fun onNativeError(err: String) {
         val p = player ?: return
         if (upscale > 0) { upscaleFailed("ошибка видео: $err"); return }
+        if (p.isLibria) {
+            avoidLibria = true
+            say("AniLibria не отвечает — берём видео с AnimeLib")
+            load(index, teamId = p.team.id, keepPos = exo?.position ?: pos)
+            return
+        }
         val href = quality?.let { p.hrefs[it] } ?: return
         val at = exo?.position ?: pos
         if (serverIdx + 1 < servers.size) {
@@ -462,12 +477,19 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
             scope.launch {
                 runCatching {
                     val ps = playersCache[next.id] ?: Api.players(next.id).also { playersCache[next.id] = it }
-                    val p = ps.firstOrNull { it.team.id == player?.team?.id && it.isNative } ?: return@runCatching
+                    var p = ps.firstOrNull { it.team.id == player?.team?.id && it.isNative }
+                    // AniLibria now: queue their file of the next episode (the one the player will pick).
+                    if (player?.isLibria == true) {
+                        val base = p ?: ps.firstOrNull { it.team.id == player?.team?.id } ?: return@runCatching
+                        p = ru.qmods.anixq.tv.data.Libria.player(title, next.number, base)
+                    }
+                    if (p == null) return@runCatching
                     val keys = p.hrefs.keys.sortedByDescending { it.removeSuffix("p").toIntOrNull() ?: 0 }
                     // The same quality the player will pick, so the queued file is exactly the one played next.
                     val q = quality?.takeIf { it in keys }
                         ?: keys.firstOrNull { (it.removeSuffix("p").toIntOrNull() ?: 0) <= Store.preferredQuality } ?: keys.last()
                     val href = p.hrefs.getValue(q)
+                    if (p.isLibria) { exo?.queueNext(href, p.subtitles); return@runCatching }
                     val server = Api.rankServers(href).firstOrNull() ?: return@runCatching
                     exo?.queueNext(Api.videoUrl(server, href), p.subtitles)
                 }
@@ -505,6 +527,7 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
             stallSince = 0
             val p = player ?: return
             val href = quality?.let { p.hrefs[it] } ?: return
+            if (p.isLibria) { onNativeError("stall"); return }
             if (href.startsWith("file:") || servers.size < 2) return
             serverIdx = (serverIdx + 1) % servers.size
             say("Видео подвисло — переподключаемся")

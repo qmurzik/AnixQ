@@ -93,6 +93,7 @@ fun SettingsScreen(nav: Nav) {
                 Toggle("Сразу включать следующую серию", Store.autoNext) { Store.autoNext = it }
                 Toggle("Режим марафона: без опенингов и эндингов, серии подряд", Store.marathon) { Store.marathon = it }
                 Toggle("Без спойлеров: скрывать названия новых серий", Store.noSpoilers) { Store.noSpoilers = it }
+                Toggle("Озвучка AniLibria — с их собственного сервера (если серия там есть)", Store.libriaDirect) { Store.libriaDirect = it }
                 Toggle("Звуки навигации пультом", Store.navSounds) { Store.navSounds = it }
                 Toggle("Видео-превью, когда задерживаешься на тайтле", Store.hoverPreview) { Store.hoverPreview = it }
                 Toggle("Заставка через 3 минуты без нажатий", Store.screensaver) { Store.screensaver = it }

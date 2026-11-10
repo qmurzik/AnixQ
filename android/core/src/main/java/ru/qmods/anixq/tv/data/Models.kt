@@ -98,7 +98,10 @@ data class Player(
     val playerId: Int?,
     val serverTimecode: Double?,
     val subtitles: List<Subtitle> = emptyList(),
+    /** Where the video comes from: AnimeLib's servers, or AniLibria's own (see Libria). */
+    val source: String = "animelib",
 ) {
+    val isLibria get() = source == Libria.SOURCE
     val isNative get() = player.equals("animelib", true) && hrefs.isNotEmpty()
     val isKodik get() = player.equals("kodik", true) && kodikSrc != null
 }

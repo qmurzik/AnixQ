@@ -73,6 +73,10 @@ final class PlayerController: ObservableObject {
     private var playerId: Int?
     private var lastServerSave = Date.distantPast
     private var hrefs: [String: String] = [:]
+    /// The AniLibria dub is playing from AniLibria's own servers (see Libria).
+    private(set) var usingLibria = false
+    /// AniLibria's server failed for this episode: AnimeLib's copy from here on.
+    private var avoidLibriaEpisode: Int?
     private var servers: [String] = []
     private var serverIndex = 0
     private var timeObserver: Any?
@@ -253,6 +257,7 @@ final class PlayerController: ObservableObject {
         markedWatched = false
         recap = nil
         recapSkipped = false
+        usingLibria = false
         isResolving = true
         startedAt = Date()
         let ep = episode
@@ -291,6 +296,27 @@ final class PlayerController: ObservableObject {
             guard token == loadToken else { return }
             let kodik = players.first { $0.team.id == team.id && $0.isKodik } ?? players.first { $0.isKodik }
             webKodikURL = kodik?.kodikSrc.flatMap(LibAPI.kodikURL)
+            // AniLibria dub: their own servers when they have the episode (no ads, often faster than AnimeLib).
+            if Libria.enabled, avoidLibriaEpisode != ep.id, Libria.isLibria(team.team.name),
+               let lib = await Libria.episode(title: title, number: ep.number) {
+                guard token == loadToken else { return }
+                usingLibria = true
+                let native = players.first { $0.team.id == team.id && $0.isNative }
+                hrefs = [:]
+                servers = []
+                playerId = native?.playerId ?? players.first { $0.team.id == team.id }?.playerId
+                segments = lib.segments.isEmpty ? (native?.segments ?? []) : lib.segments
+                setSubtitleTracks(native?.subtitles ?? [])
+                qualities = lib.qualities
+                var resume = HandoffSeek.take(episodeId: ep.id) ?? library?.resumePosition(episodeId: ep.id)
+                if resume == nil, let server = native?.serverTimecode, server > 15 { resume = server }
+                resume = rewindIfLongAgo(resume, episodeId: ep.id)
+                if let q = initialQuality() ?? qualities.first { play(q, at: resume) }
+                DebugLog.log("player: AniLibria stream for ep \(ep.number)")
+                isResolving = false
+                updateNowPlaying()
+                return
+            }
             if team.native, let p = players.first(where: { $0.team.id == team.id && $0.isNative }) {
                 hrefs = p.hrefs
                 playerId = p.playerId
@@ -351,6 +377,17 @@ final class PlayerController: ObservableObject {
         let sameKind = options.filter { $0.team.isSubtitles == team.team.isSubtitles }
         return DubPreferences.pick(sameKind) ?? sameKind.first { $0.native } ?? DubPreferences.pick(options)
             ?? options.first { $0.native } ?? options.first
+    }
+
+    /// AniLibria didn't play: the same dub from AnimeLib, from the same moment.
+    private func fallBackFromLibria(at: Double) {
+        avoidLibriaEpisode = episode.id
+        notice = "AniLibria не отвечает — видео с AnimeLib"
+        Task {
+            await load()
+            if at > 2 { seek(to: at) }
+            recovering = false
+        }
     }
 
     private func rebuildQualities() {
@@ -429,7 +466,9 @@ final class PlayerController: ObservableObject {
         DebugLog.log("player: recovering (\(reason)) at \(Int(at))s")
         Task {
             error = nil
-            if serverIndex + 1 < servers.count {
+            if usingLibria {
+                fallBackFromLibria(at: at)
+            } else if serverIndex + 1 < servers.count {
                 serverIndex += 1
                 let label = quality?.label
                 rebuildQualities()
@@ -507,6 +546,7 @@ final class PlayerController: ObservableObject {
             DebugLog.log(String(format: "player: ready after %.2fs", Date().timeIntervalSince(startedAt)))
         case .failed:
             DebugLog.log("player: item failed \(e ?? "?") on \(servers[safe: serverIndex] ?? "?")")
+            if usingLibria { fallBackFromLibria(at: currentTime); return }
             if serverIndex + 1 < servers.count {
                 serverIndex += 1
                 let label = quality?.label

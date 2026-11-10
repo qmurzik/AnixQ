@@ -186,7 +186,9 @@ class ExoEngine(private val context: Context, private val onError: (String) -> U
                 .setSelectionFlags(if (i == 0) androidx.media3.common.C.SELECTION_FLAG_DEFAULT else 0)
                 .build()
         }
-        return MediaItem.Builder().setUri(url).setSubtitleConfigurations(subs).build()
+        return MediaItem.Builder().setUri(url).setSubtitleConfigurations(subs)
+            .apply { if (url.substringBefore('?').endsWith(".m3u8")) setMimeType(androidx.media3.common.MimeTypes.APPLICATION_M3U8) }
+            .build()
     }
 
     override val position get() = exo.currentPosition / 1000.0

@@ -20,6 +20,7 @@ android {
 dependencies {
     api("androidx.core:core-ktx:1.13.1")
     api("androidx.media3:media3-exoplayer:1.5.1")
+    api("androidx.media3:media3-exoplayer-hls:1.5.1")
     api("androidx.media3:media3-ui:1.5.1")
     api("androidx.media3:media3-effect:1.5.1")
     api("androidx.media3:media3-datasource-okhttp:1.5.1")

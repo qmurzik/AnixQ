@@ -415,7 +415,8 @@
 
   function load(m) {
     clearStage();
-    if (!m.stream && isLibria(m.team)) { loadLibria(m); return; }
+    // AniLibria dub: their own stream, whatever the host plays (an AnimeLib file or their HLS).
+    if (isLibria(m.team)) { loadLibria(m); return; }
     if (m.stream) {
       mode = 'video';
       video = document.createElement('video');

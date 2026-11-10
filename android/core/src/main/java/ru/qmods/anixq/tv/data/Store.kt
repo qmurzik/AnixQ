@@ -162,6 +162,11 @@ object Store {
         set(v) { prefs.edit().putBoolean("hoverPreview", v).apply(); bump() }
 
     /** The screensaver plays muted clips of episodes (otherwise a slideshow of covers). */
+    /** AniLibria dub from AniLibria's own servers when they have the episode. */
+    var libriaDirect: Boolean
+        get() = prefs.getBoolean("libriaDirect", true)
+        set(v) { prefs.edit().putBoolean("libriaDirect", v).apply(); bump() }
+
     /** Phone: notice the TV nearby over Bluetooth and offer to continue there. */
     var nearbyTv: Boolean
         get() = prefs.getBoolean("nearbyTv", false)

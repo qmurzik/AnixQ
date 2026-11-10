@@ -6,7 +6,7 @@
   "sourceLinkTitle": "Сайт",
   "sourceLinkUrl": "https://qmurzik.github.io/AnixQ/",
   "sourceImage": "https://raw.githubusercontent.com/qmurzik/AnixQ/gbox-source/icon.png",
-  "sourceUpdateTime": "2026-11-10T06:18:35+0000",
+  "sourceUpdateTime": "2026-11-10T07:24:33+0000",
   "sourceDescription": "AnixQ — аниме с AnimeLib: каталог, плеер без рекламы, синхронизация с Shikimori.",
   "appCategories": [
     "Приложения"
@@ -15,13 +15,13 @@
     {
       "appType": "SELF_SIGN",
       "appCateIndex": 0,
-      "appUpdateTime": "2026-11-10T06:18:35+0000",
+      "appUpdateTime": "2026-11-10T07:24:33+0000",
       "appName": "AnixQ",
-      "appVersion": "1.0.83",
+      "appVersion": "1.0.84",
       "appImage": "https://raw.githubusercontent.com/qmurzik/AnixQ/gbox-source/icon.png",
-      "appPackage": "https://github.com/qmurzik/AnixQ/releases/download/v1.0.83/AnixQ.ipa",
-      "appSize": 4889504,
-      "appDescription": "• Переходы: на iPhone (iOS 18) обложка вырастает в страницу тайтла; на Android-телефоне экраны плавно сменяются, а нажатый постер раскрывается в шапку тайтла и сворачивается обратно"
+      "appPackage": "https://github.com/qmurzik/AnixQ/releases/download/v1.0.84/AnixQ.ipa",
+      "appSize": 4904264,
+      "appDescription": "• Пропуск пересказа «ранее в сериале» (разметка AniSkip) — кнопкой или сам вместе с опенингами; умный поиск: неверная раскладка, транслит, опечатка в конце и поиск Shikimori — на iPhone, Android и ТВ\n• Android и ТВ: расписание выхода серий (календарь Shikimori) — на телефоне в «Медиатеке», на ТВ отдельной вкладкой; ваши тайтлы отмечены, по нажатию открывается страница на AnimeLib"
     }
   ]
 }

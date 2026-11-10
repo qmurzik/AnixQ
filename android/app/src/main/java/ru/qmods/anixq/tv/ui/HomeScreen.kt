@@ -246,7 +246,8 @@ private fun Hero(spot: MutableState<Title?>, fallback: Title?) {
     val area = TopBarHeight + HeroHeight + 130.dp
     // Everything is drawn only over the hero area; below it the plain background shows (less overdraw).
     Box(Modifier.fillMaxWidth().height(area)) {
-        Crossfade(targetState = t.id to detail?.background, animationSpec = tween(300), label = "backdrop") { (_, bg) ->
+        // Weak boxes: no cross-fades while the cursor moves (each one redraws the whole screen twice).
+        Crossfade(targetState = t.id to detail?.background, animationSpec = tween(if (Store.weakDevice) 0 else 300), label = "backdrop") { (_, bg) ->
             Box(Modifier.fillMaxSize()) {
                 if (bg != null) {
                     Cover(bg, Modifier.align(Alignment.TopEnd).fillMaxWidth(0.78f).fillMaxHeight())
@@ -265,7 +266,7 @@ private fun Hero(spot: MutableState<Title?>, fallback: Title?) {
         })
     }
     Box(Modifier.fillMaxSize()) {
-        AnimatedContent(targetState = t, transitionSpec = { fadeIn(tween(220)) togetherWith fadeOut(tween(120)) }, label = "hero",
+        AnimatedContent(targetState = t, transitionSpec = { if (Store.weakDevice) fadeIn(tween(0)) togetherWith fadeOut(tween(0)) else fadeIn(tween(220)) togetherWith fadeOut(tween(120)) }, label = "hero",
             modifier = Modifier.padding(start = 56.dp, top = TopBarHeight + 14.dp).width(640.dp).height(HeroHeight - 14.dp)) { title ->
             Column {
                 Text(title.title, fontSize = 34.sp, lineHeight = 38.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)

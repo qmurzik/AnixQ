@@ -457,7 +457,43 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
                 }
             }
         }
+        watchStalls()
         saveProgress()
+    }
+
+    // Bad network: a stall of 8 s → another mirror from the same moment; two stalls in 90 s → one quality step down.
+    private var stallSince = 0L
+    private val stalls = ArrayList<Long>()
+    private var lastQualityDrop = 0L
+
+    private fun watchStalls() {
+        if (!native || message != null) { stallSince = 0; return }
+        val now = System.currentTimeMillis()
+        val stalled = buffering && (exo?.exo?.playWhenReady == true) && pos > 2
+        if (!stalled) { stallSince = 0; return }
+        if (stallSince == 0L) {
+            stallSince = now
+            stalls.removeAll { now - it > 90_000 }
+            stalls.add(now)
+            val p = player ?: return
+            val keys = p.hrefs.keys.sortedByDescending { it.removeSuffix("p").toIntOrNull() ?: 0 }
+            val i = keys.indexOf(quality)
+            if (stalls.size >= 2 && i >= 0 && i + 1 < keys.size && now - lastQualityDrop > 60_000 && !p.hrefs.getValue(keys[i]).startsWith("file:")) {
+                lastQualityDrop = now; stalls.clear()
+                say("Сеть медленная — включаем ${keys[i + 1]}")
+                load(index, keepPos = pos, qualityKey = keys[i + 1])
+            }
+            return
+        }
+        if (now - stallSince > 8_000) {
+            stallSince = 0
+            val p = player ?: return
+            val href = quality?.let { p.hrefs[it] } ?: return
+            if (href.startsWith("file:") || servers.size < 2) return
+            serverIdx = (serverIdx + 1) % servers.size
+            say("Видео подвисло — переподключаемся")
+            exo?.load(Api.videoUrl(servers[serverIdx], href), pos, p.subtitles)
+        }
     }
 
     fun saveProgress(force: Boolean = false) {

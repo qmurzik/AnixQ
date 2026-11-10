@@ -1,0 +1,4 @@
+# Startup / scrolling profile: compile AnixQ's own code ahead of time when the app is installed
+# (instead of interpreting it on the first runs). Compose and Media3 ship their own profiles.
+HSPLru/qmods/anixq/**->**(**)**
+Lru/qmods/anixq/**;

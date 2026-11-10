@@ -93,6 +93,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge(SystemBarStyle.dark(android.graphics.Color.TRANSPARENT), SystemBarStyle.dark(android.graphics.Color.TRANSPARENT))
         Store.init(applicationContext)
         Api.diskDir = cacheDir
+        ru.qmods.anixq.tv.data.Crashes.install(applicationContext, "AnixQ Android", BuildConfig.VERSION_NAME)
         ru.qmods.anixq.mobile.data.Downloads.init(applicationContext)
         NewEpisodes.schedule(applicationContext)
         ru.qmods.anixq.mobile.data.Collections.init(applicationContext)
@@ -152,6 +153,7 @@ class MainActivity : ComponentActivity() {
         super.onStart()
         Sync.start()
         Sync.syncNow()
+        ru.qmods.anixq.tv.data.Crashes.upload()
         Remote.start(applicationContext)
         Updater.checkSometimes()
     }

@@ -26,6 +26,7 @@ class MainActivity : ComponentActivity() {
         Updater.versionCode = BuildConfig.VERSION_CODE
         Store.init(applicationContext)
         Api.diskDir = cacheDir
+        ru.qmods.anixq.tv.data.Crashes.install(applicationContext, "AnixQ TV", BuildConfig.VERSION_NAME)
         ru.qmods.anixq.tv.data.WatchNext.init(applicationContext)
         Coil.setImageLoader(Images.loader(applicationContext))
         if (Store.libToken != null) lifecycleScope.launch { Api.loadProfile() }
@@ -73,6 +74,7 @@ class MainActivity : ComponentActivity() {
         super.onStart()
         Sync.start()
         Sync.syncNow()
+        ru.qmods.anixq.tv.data.Crashes.upload()
         Remote.start(applicationContext)
         RemoteService.start(applicationContext)
         Updater.checkSometimes()

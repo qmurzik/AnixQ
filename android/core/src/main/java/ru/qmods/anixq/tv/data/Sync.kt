@@ -269,6 +269,18 @@ object Sync {
             }
         }
 
+    /** Adds text to a separate file of the sync gist (crash reports); true when written. */
+    suspend fun appendFile(name: String, text: String): Boolean {
+        val gist = Store.gistId ?: return false
+        return runCatching {
+            val g = api("GET", "/gists/$gist") as? JSONObject
+            val old = g?.optJSONObject("files")?.optJSONObject(name)?.optString("content").orEmpty()
+            val content = (old + "\n" + text).takeLast(200_000)
+            api("PATCH", "/gists/$gist", JSONObject().put("files", JSONObject().put(name, JSONObject().put("content", content))))
+            true
+        }.getOrDefault(false)
+    }
+
     private suspend fun api(method: String, path: String, body: JSONObject? = null): Any? {
         val (code, text, _) = raw(method, path, body)
         if (code == 404 || text.isBlank()) return null

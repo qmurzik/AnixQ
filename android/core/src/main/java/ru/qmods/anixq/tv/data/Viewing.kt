@@ -144,3 +144,59 @@ object Schedule {
     fun isMine(shikiId: Int): Boolean =
         Store.bookmarks.values.any { it.title.shikiId == shikiId && it.status != Bookmark.DROPPED } || Store.history.any { it.title.shikiId == shikiId }
 }
+
+/**
+ * Search that forgives: wrong keyboard layout ("vfubxtcrfz" → "магическая"), Latin ↔ Cyrillic
+ * ("naruto" → "наруто"), a typo at the end ("narutp" → "narut"), and Shikimori's own search.
+ * Returns the titles and, when a variant was used, what was actually searched for.
+ */
+object SmartSearch {
+    private const val EN = "qwertyuiop[]asdfghjkl;'zxcvbnm,.`"
+    private const val RU = "йцукенгшщзхъфывапролджэячсмитьбюё"
+
+    fun swapLayout(s: String): String = s.map { ch ->
+        val lower = ch.lowercaseChar()
+        val i = EN.indexOf(lower); val j = RU.indexOf(lower)
+        when { i >= 0 -> RU[i]; j >= 0 -> EN[j]; else -> ch }
+    }.joinToString("")
+
+    private val latToCyr = listOf("shch" to "щ", "sch" to "щ", "zh" to "ж", "kh" to "х", "ts" to "ц", "ch" to "ч", "sh" to "ш", "yu" to "ю", "ya" to "я", "yo" to "ё",
+        "a" to "а", "b" to "б", "v" to "в", "g" to "г", "d" to "д", "e" to "е", "z" to "з", "i" to "и", "y" to "й", "k" to "к", "l" to "л", "m" to "м",
+        "n" to "н", "o" to "о", "p" to "п", "r" to "р", "s" to "с", "t" to "т", "u" to "у", "f" to "ф", "h" to "х", "c" to "к", "w" to "в", "x" to "кс", "j" to "дж", "q" to "к")
+    private val cyrToLat = mapOf('а' to "a", 'б' to "b", 'в' to "v", 'г' to "g", 'д' to "d", 'е' to "e", 'ё' to "yo", 'ж' to "zh", 'з' to "z", 'и' to "i", 'й' to "y",
+        'к' to "k", 'л' to "l", 'м' to "m", 'н' to "n", 'о' to "o", 'п' to "p", 'р' to "r", 'с' to "s", 'т' to "t", 'у' to "u", 'ф' to "f", 'х' to "h", 'ц' to "ts",
+        'ч' to "ch", 'ш' to "sh", 'щ' to "sch", 'ъ' to "", 'ы' to "y", 'ь' to "", 'э' to "e", 'ю' to "yu", 'я' to "ya")
+
+    fun translit(s: String): String {
+        val low = s.lowercase()
+        return if (low.any { it in 'а'..'я' || it == 'ё' }) low.map { cyrToLat[it] ?: it.toString() }.joinToString("")
+        else { var out = low; latToCyr.forEach { (a, b) -> out = out.replace(a, b) }; out }
+    }
+
+    suspend fun search(text: String): Pair<List<Title>, String?> {
+        val q = text.trim()
+        val first = runCatching { Api.search(q) }.getOrDefault(emptyList())
+        if (first.isNotEmpty() || q.length < 3) return first to null
+        val variants = LinkedHashSet<String>()
+        variants += swapLayout(q)
+        variants += translit(q)
+        if (q.length >= 5) { variants += q.dropLast(1); variants += translit(q.dropLast(1)) }
+        if (q.length >= 7) variants += q.dropLast(2)
+        for (v in variants.filter { it.isNotBlank() && it != q }) {
+            val r = runCatching { Api.search(v) }.getOrDefault(emptyList())
+            if (r.isNotEmpty()) return r to v
+        }
+        // Shikimori's search, then the matching AnimeLib titles.
+        val shiki = withContext(Dispatchers.IO) {
+            runCatching {
+                val url = "https://shikimori.io/api/animes?limit=6&search=" + java.net.URLEncoder.encode(q, "UTF-8")
+                Api.http.newCall(Request.Builder().url(url).header("User-Agent", "AnixQ").build()).execute().use { r ->
+                    val a = org.json.JSONArray(r.body!!.string())
+                    (0 until a.length()).map { a.getJSONObject(it) }
+                }
+            }.getOrDefault(emptyList())
+        }
+        val found = shiki.mapNotNull { x -> Franchise.titleFor(x.optInt("id"), listOfNotNull(x.str("russian"), x.str("name"))) }.distinctBy { it.id }
+        return found to found.firstOrNull()?.title
+    }
+}

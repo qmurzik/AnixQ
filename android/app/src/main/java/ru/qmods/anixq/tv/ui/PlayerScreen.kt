@@ -245,6 +245,17 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
     val opening: Segment? get() = segments.firstOrNull { it.isOpening }
     val ending: Segment? get() = segments.firstOrNull { it.isEnding }
     val inOpening get() = opening?.let { pos >= it.from - 0.5 && pos < it.to - 2 } == true
+    /** "Previously on…" (AniSkip), skippable like the opening. */
+    var recap by mutableStateOf<Segment?>(null)
+    private var recapAsked = -1
+    var recapSkipped by mutableStateOf(false)
+    val inRecap get() = recap?.let { pos >= it.from - 0.5 && pos < it.to - 2 } == true
+    fun skipRecap(auto: Boolean = false) {
+        val r = recap ?: return
+        engine?.seek(r.to); pos = r.to
+        recapSkipped = true
+        say(if (auto) "Пересказ пропущен" else "Пропущено")
+    }
     val inEnding get() = ending?.let { pos >= it.from } == true
     val remaining get() = if (dur > 0) dur - pos else Double.MAX_VALUE
     /** "Next episode" card: from the ending (or the last 90 s when we don't know where it starts). */
@@ -298,7 +309,7 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
         val sameEpisode = i == index && episodes.isNotEmpty() && keepPos != null
         index = i
         val ep = episodes[i]
-        if (!sameEpisode) { endingSkipped = false; extraSegments = emptyList(); openingSkipped = false; nextDismissed = false; viewedSent = false; prefetched = false; nextLooked = false; pos = 0.0; dur = 0.0; ended = false }
+        if (!sameEpisode) { recap = null; recapSkipped = false; endingSkipped = false; extraSegments = emptyList(); openingSkipped = false; nextDismissed = false; viewedSent = false; prefetched = false; nextLooked = false; pos = 0.0; dur = 0.0; ended = false }
         message = if (sameEpisode) "Переключаем…" else "Серия ${ep.number}"
         failed = false
         buffering = true
@@ -409,6 +420,11 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
         if (sleepAt > 0 && System.currentTimeMillis() >= sleepAt) { sleepAt = 0; e.pause(); playing = false; saveProgress(force = true); say("Таймер сна: пауза") }
         if (sleepAfterEpisode && ended) { sleepAfterEpisode = false; saveProgress(force = true); say("Таймер сна: серия закончилась") }
         // Auto-skip the opening once per episode.
+        if (ep0 != null && dur > 60 && recapAsked != ep0.id) {
+            recapAsked = ep0.id
+            title.shikiId?.let { mal -> scope.launch { recap = ru.qmods.anixq.tv.data.AniSkip.recap(mal, ep0.number, dur) } }
+        }
+        if ((Store.autoSkipOpening || Store.marathon) && !recapSkipped && inRecap) skipRecap(auto = true)
         val op = opening
         if ((Store.autoSkipOpening || Store.marathon) && op != null && !openingSkipped && pos >= op.from && pos < op.to - 3) skipOpening(auto = true)
         // Marathon: straight on once the ending (and preview) begins.
@@ -566,6 +582,7 @@ fun PlayerScreen(nav: Nav, route: PlayerRoute) {
     // Booleans derived from the playback position: the screen redraws when they flip, not 4× a second.
     val showNext by remember(m) { derivedStateOf { m.showNext } }
     val inOpening by remember(m) { derivedStateOf { m.inOpening && !m.openingSkipped } }
+    val inRecap by remember(m) { derivedStateOf { m.inRecap && !m.recapSkipped } }
     val countdown by remember(m) { derivedStateOf { m.countdown } }
 
     LaunchedEffect(m) { m.start() }
@@ -658,6 +675,7 @@ fun PlayerScreen(nav: Nav, route: PlayerRoute) {
                             m.kodikStuck -> m.kodikInteractive()
                             m.failed -> m.load(m.index)
                             showNext -> m.next()
+                            inRecap -> m.skipRecap()
                             inOpening -> m.skipOpening()
                             else -> { m.toggle(); if (!m.playing) show() }
                         }
@@ -717,6 +735,9 @@ fun PlayerScreen(nav: Nav, route: PlayerRoute) {
             enter = fadeIn(tween(500)), exit = fadeOut(tween(150)), modifier = Modifier.fillMaxSize()) { PauseScreen(m) }
 
         // Skip opening — big and obvious, OK does it
+        if (!controls && panel == Panel.NONE && inRecap && !Store.autoSkipOpening && !Store.marathon && seekAcc == 0.0) {
+            ActionCard("Пропустить пересказ", "нажмите OK", Modifier.align(Alignment.BottomEnd).padding(48.dp))
+        }
         if (!controls && panel == Panel.NONE && inOpening && !Store.autoSkipOpening && seekAcc == 0.0) {
             ActionCard("Пропустить опенинг", "нажмите OK", Modifier.align(Alignment.BottomEnd).padding(48.dp))
         }

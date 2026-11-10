@@ -269,6 +269,7 @@ fun PlayerScreen(nav: Nav, route: PlayerRoute) {
 
         // Skip opening / next episode
         Column(Modifier.align(Alignment.BottomEnd).safeDrawingPadding().padding(end = 16.dp, bottom = if (controls) 70.dp else 20.dp), horizontalAlignment = Alignment.End) {
+            if (m.inRecap && !m.recapSkipped) Pill("Пропустить пересказ") { m.skipRecap() }
             if (m.inOpening && !m.openingSkipped) Pill("Пропустить опенинг") { m.skipOpening() }
             if (m.showNext) {
                 Row(verticalAlignment = Alignment.CenterVertically) {

@@ -490,7 +490,9 @@ struct PlayerScreenV2: View {
         VStack(spacing: isLand ? 10 : 4) {
             if isLand {
                 HStack(spacing: 8) {
-                    if c.canSkipOpening && (c.opening != nil || c.currentTime < PlayerPrefs.openingLength + 60) {
+                    if c.canSkipRecap {
+                        actionPill("Пропустить пересказ", "forward.fill") { c.skipRecap() }
+                    } else if c.canSkipOpening && (c.opening != nil || c.currentTime < PlayerPrefs.openingLength + 60) {
                         actionPill("Пропустить опенинг", "forward.fill") { c.skipOpening() }
                     }
                     Spacer()

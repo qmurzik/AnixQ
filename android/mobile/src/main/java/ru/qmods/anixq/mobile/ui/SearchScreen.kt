@@ -64,6 +64,7 @@ private object Genres { var list: List<Pair<Int, String>> = emptyList() }
 fun SearchScreen(nav: Nav) {
     var text by rememberSaveable { mutableStateOf("") }
     var results by remember { mutableStateOf<List<Title>>(emptyList()) }
+    var corrected by remember { mutableStateOf<String?>(null) }
     var searching by remember { mutableStateOf(false) }
     var recent by remember { mutableStateOf(Store.recentSearches) }
     var genres by remember { mutableStateOf(Genres.list) }
@@ -74,7 +75,10 @@ fun SearchScreen(nav: Nav) {
         if (q.length < 2) { results = emptyList(); searching = false; return@LaunchedEffect }
         searching = true
         delay(350)
-        results = runCatching { Api.search(q) }.getOrDefault(emptyList())
+        // Forgiving search: layout, transliteration, a typo at the end, Shikimori.
+        val (found, used) = ru.qmods.anixq.tv.data.SmartSearch.search(q)
+        results = found
+        corrected = used
         searching = false
     }
     fun saveRecent(s: String) { if (s.isNotBlank()) { recent = (listOf(s) + recent.filter { !it.equals(s, true) }).take(8); Store.recentSearches = recent } }
@@ -119,6 +123,7 @@ fun SearchScreen(nav: Nav) {
             } else {
                 if (searching && results.isEmpty()) item { Loading() }
                 else if (!searching && results.isEmpty() && q.length >= 2) item { EmptyState(Icons.Default.SearchOff, "Ничего не найдено") }
+                corrected?.let { c -> item { Text("Показаны результаты по «$c»", color = Pal.muted, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) } }
                 items(results, key = { it.id }) { t ->
                     TitleRow(t) { saveRecent(q); nav.open(t) }
                 }

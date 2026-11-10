@@ -87,6 +87,9 @@ final class PlayerController: ObservableObject {
     private var startedAt = Date()
     private var lastSaved = Date.distantPast
     private var autoSkipped = false
+    /// "Previously on…" at the start (AniSkip community marks), skippable like the opening.
+    @Published private(set) var recap: SkipSegment?
+    private var recapSkipped = false
     private var endingSkipped = false
     private var videoOutput: AVPlayerItemVideoOutput?
     private var markedWatched = false
@@ -248,9 +251,17 @@ final class PlayerController: ObservableObject {
         autoSkipped = false
         endingSkipped = false
         markedWatched = false
+        recap = nil
+        recapSkipped = false
         isResolving = true
         startedAt = Date()
         let ep = episode
+        if let mal = title.shikiId, let n = Double(ep.number).map({ Int($0) }) {
+            Task { [weak self] in
+                let r = await AniSkipRecap.find(malId: mal, episode: n)
+                await MainActor.run { if self?.episode.id == ep.id { self?.recap = r } }
+            }
+        }
         timedComments = []
         if DanmakuPrefs.enabled {
             Task { [weak self] in
@@ -633,6 +644,16 @@ final class PlayerController: ObservableObject {
 
     func seek(by delta: Double) { seek(to: currentTime + delta) }
 
+    var canSkipRecap: Bool {
+        guard isNative, !recapSkipped, let r = recap else { return false }
+        return currentTime >= r.from - 0.5 && currentTime < r.to - 2
+    }
+
+    func skipRecap() {
+        recapSkipped = true
+        if let r = recap { seek(to: r.to) }
+    }
+
     func skipOpening() {
         autoSkipped = true
         if let op = opening { seek(to: op.to) } else { seek(by: PlayerPrefs.openingLength) }
@@ -810,6 +831,10 @@ final class PlayerController: ObservableObject {
             if text != subtitleText { subtitleText = text }
         }
         if duration <= 0, let d = player.currentItem?.duration.seconds, d.isFinite, d > 0 { duration = d }
+        if PlayerPrefs.autoSkipOpening || PlayerPrefs.marathon, canSkipRecap {
+            skipRecap()
+            notice = "Пересказ пропущен"
+        }
         if PlayerPrefs.autoSkipOpening || PlayerPrefs.marathon, !autoSkipped, isNative {
             if let op = opening {
                 if s >= op.from, s < op.to - 1 { skipOpening() }

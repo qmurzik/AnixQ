@@ -195,6 +195,7 @@ struct SearchView: View {
     @AppStorage("search.recent") private var recentRaw = ""
     @State private var showTrace = false
     @State private var genre: Genre?
+    @State private var corrected: String?
 
     private var recent: [String] { recentRaw.split(separator: "\n").map(String.init) }
 
@@ -238,6 +239,9 @@ struct SearchView: View {
                 } else if !searching && results.isEmpty {
                     Text("Ничего не найдено").foregroundStyle(.secondary)
                 }
+                if let corrected, !results.isEmpty {
+                    Text("Показаны результаты по «\(corrected)»").font(.footnote).foregroundStyle(.secondary)
+                }
                 ForEach(results) { t in
                     NavigationLink(value: t) { TitleRow(title: t) }
                 }
@@ -280,9 +284,10 @@ struct SearchView: View {
         task = Task {
             try? await Task.sleep(nanoseconds: 350_000_000)
             guard !Task.isCancelled else { return }
-            let r = (try? await LibAPI.search(q)) ?? []
+            let (r, used) = await SmartSearch.search(q)
             guard !Task.isCancelled else { return }
             results = r
+            corrected = used
             searching = false
         }
     }

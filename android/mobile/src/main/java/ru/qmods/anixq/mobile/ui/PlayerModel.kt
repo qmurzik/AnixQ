@@ -104,6 +104,17 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
     val opening: Segment? get() = segments.firstOrNull { it.isOpening }
     val ending: Segment? get() = segments.firstOrNull { it.isEnding }
     val inOpening get() = opening?.let { pos >= it.from - 0.5 && pos < it.to - 2 } == true
+    /** "Previously on…" (AniSkip), skippable like the opening. */
+    var recap by mutableStateOf<Segment?>(null)
+    private var recapAsked = -1
+    var recapSkipped by mutableStateOf(false)
+    val inRecap get() = recap?.let { pos >= it.from - 0.5 && pos < it.to - 2 } == true
+    fun skipRecap(auto: Boolean = false) {
+        val r = recap ?: return
+        engine?.seek(r.to); pos = r.to
+        recapSkipped = true
+        say(if (auto) "Пересказ пропущен" else "Пропущено")
+    }
     val inEnding get() = ending?.let { pos >= it.from } == true
     val remaining get() = if (dur > 0) dur - pos else Double.MAX_VALUE
     val showNext get() = hasNext && !nextDismissed && dur > 0 && (ended || inEnding || (ending == null && remaining <= 90) || remaining <= 15)
@@ -153,7 +164,7 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
         val sameEpisode = i == index && episodes.isNotEmpty() && keepPos != null
         index = i
         val ep = episodes[i]
-        if (!sameEpisode) { endingSkipped = false; extraSegments = emptyList(); openingSkipped = false; nextDismissed = false; viewedSent = false; prefetched = false; nextLooked = false; pos = 0.0; dur = 0.0; ended = false }
+        if (!sameEpisode) { recap = null; recapSkipped = false; endingSkipped = false; extraSegments = emptyList(); openingSkipped = false; nextDismissed = false; viewedSent = false; prefetched = false; nextLooked = false; pos = 0.0; dur = 0.0; ended = false }
         message = if (sameEpisode) "Переключаем…" else "Серия ${ep.number}"
         failed = false
         buffering = true
@@ -246,6 +257,11 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
             title.shikiId?.let { mal -> scope.launch { extraSegments = AniSkip.segments(mal, ep0.number, dur) } }
         }
         if (toast != null && System.currentTimeMillis() - toastAt > 2500) toast = null
+        if (ep0 != null && dur > 60 && recapAsked != ep0.id) {
+            recapAsked = ep0.id
+            title.shikiId?.let { mal -> scope.launch { recap = ru.qmods.anixq.tv.data.AniSkip.recap(mal, ep0.number, dur) } }
+        }
+        if ((Store.autoSkipOpening || Store.marathon) && !recapSkipped && inRecap) skipRecap(auto = true)
         val op = opening
         if ((Store.autoSkipOpening || Store.marathon) && op != null && !openingSkipped && pos >= op.from && pos < op.to - 3) skipOpening(auto = true)
         val ed = ending

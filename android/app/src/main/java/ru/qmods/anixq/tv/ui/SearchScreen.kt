@@ -47,6 +47,7 @@ import androidx.tv.material3.Icon
 import androidx.tv.material3.Text
 import kotlinx.coroutines.delay
 import ru.qmods.anixq.tv.data.Api
+import ru.qmods.anixq.tv.data.SmartSearch
 import ru.qmods.anixq.tv.data.CatalogQuery
 import ru.qmods.anixq.tv.data.CatalogSort
 import ru.qmods.anixq.tv.data.Title
@@ -91,12 +92,16 @@ fun SearchScreen(nav: Nav) {
         if (popular.isEmpty()) runCatching { Api.catalog(CatalogQuery(sort = CatalogSort.POPULAR, status = 1), 1).first }
             .getOrNull()?.let { popular = it; SearchState.popular = it }
     }
+    var corrected by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(text) {
         val q = text.trim()
         if (q.length < 2) { results = emptyList(); return@LaunchedEffect }
         delay(350)
         busy = true
-        results = runCatching { Api.search(q) }.getOrDefault(emptyList())
+        // Forgiving search: layout, transliteration, a typo at the end, Shikimori.
+        val (found, used) = SmartSearch.search(q)
+        results = found
+        corrected = used
         busy = false
         if (results.isNotEmpty()) SearchState.remember(q)
         // "Включи … в AnixQ": open the best match right away.
@@ -152,6 +157,7 @@ fun SearchScreen(nav: Nav) {
                         text.trim().length < 2 -> "Сейчас смотрят"
                         busy -> "Ищем «${text.trim()}»…"
                         results.isEmpty() -> "Ничего не нашлось по «${text.trim()}»"
+                        corrected != null -> "Показаны результаты по «$corrected» · ${results.size}"
                         else -> "Найдено: ${results.size}"
                     }, fontSize = 20.sp, fontWeight = FontWeight.Bold,
                 )

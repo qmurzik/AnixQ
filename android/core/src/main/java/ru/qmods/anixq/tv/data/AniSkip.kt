@@ -34,4 +34,22 @@ object AniSkip {
         val fit = all.filter { s -> s.source <= 0 || duration <= 0 || kotlin.math.abs(s.source - duration) < 25 }
         fit.groupBy { it.isOpening }.values.mapNotNull { it.firstOrNull() }
     }
+
+    /** "Previously on…" at the start of an episode, when the community marked it. */
+    suspend fun recap(malId: Int, episode: String, duration: Double): Segment? = withContext(Dispatchers.IO) {
+        val ep = episode.toDoubleOrNull()?.toInt() ?: return@withContext null
+        val key = "r$malId/$ep"
+        val all = cache[key] ?: runCatching {
+            Api.http.newCall(Request.Builder().url("https://api.aniskip.com/v2/skip-times/$malId/$ep?types[]=recap&episodeLength=0").build())
+                .execute().use { r ->
+                    if (!r.isSuccessful) return@use emptyList()
+                    val a = JSONObject(r.body!!.string()).optJSONArray("results") ?: return@use emptyList()
+                    (0 until a.length()).mapNotNull { i ->
+                        val iv = a.optJSONObject(i)?.optJSONObject("interval") ?: return@mapNotNull null
+                        Segment("recap", iv.optDouble("startTime"), iv.optDouble("endTime"), a.optJSONObject(i).optDouble("episodeLength", 0.0))
+                    }
+                }
+        }.getOrDefault(emptyList()).also { cache[key] = it }
+        all.firstOrNull { s -> s.source <= 0 || duration <= 0 || kotlin.math.abs(s.source - duration) < 25 }
+    }
 }

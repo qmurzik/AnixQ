@@ -429,6 +429,10 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
     func application(_ application: UIApplication,
                      didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
         UNUserNotificationCenter.current().delegate = self
+        NearTV.registerCategory()
+        // iOS relaunches the app in the background when the TV's Bluetooth beacon is heard.
+        NearTV.shared.resume()
+        if CallPause.isOn { CallPause.shared.start() }
         return true
     }
 
@@ -443,7 +447,9 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
                                 withCompletionHandler completionHandler: @escaping () -> Void) {
         let info = response.notification.request.content.userInfo
         Task { @MainActor in
-            if info["update"] != nil {
+            if info["nearTV"] != nil {
+                NearTV.playOnTV()
+            } else if info["update"] != nil {
                 UpdateChecker.openGBox()
             } else if let slug = info["slug"] as? String, let url = URL(string: "anixq://title/\(slug)") {
                 UIApplication.shared.open(url)

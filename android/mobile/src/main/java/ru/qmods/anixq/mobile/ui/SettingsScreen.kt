@@ -36,6 +36,8 @@ import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.LocalFireDepartment
 import androidx.compose.material.icons.filled.Headphones
+import androidx.compose.material.icons.filled.Bluetooth
+import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Refresh
@@ -139,8 +141,9 @@ fun SettingsScreen(nav: Nav) {
         Group("Телевизор", "На ТВ: Настройки → «Связать с телефоном» и отсканируйте QR. Телефон передаст свои входы или попросит вход с ТВ.") {
             GroupRow("Пульт ТВ", when { Store.remoteChannel.isEmpty() -> "Появится после синхронизации"; online -> "На связи"; else -> "Подключаемся…" },
                 Icons.Default.SettingsRemote, Pal.pink, chevron = Store.remoteChannel.isNotEmpty()) { if (Store.remoteChannel.isNotEmpty()) nav.push(RemoteRoute) }
-            GroupRow("Подключить ТВ по QR", icon = Icons.Default.Tv, iconColor = Pal.indigo, divider = false,
+            GroupRow("Подключить ТВ по QR", icon = Icons.Default.Tv, iconColor = Pal.indigo,
                 trailing = { if (PairFlow.busy) CircularProgressIndicator(Modifier.size(18.dp), color = Pal.pink, strokeWidth = 2.dp) }) { PairFlow.scan(context, scope) }
+            NearTvRows()
         }
 
         Group("AnimeLib", if (Store.libToken == null) "Вход нужен для части серий и сохранения отметок на сайте." else null) {
@@ -331,4 +334,50 @@ fun LibLoginScreen(nav: Nav) {
             }
         }, modifier = Modifier.fillMaxSize())
     }
+}
+
+/** "Досмотреть на ТВ" by Bluetooth and pausing the TV during calls — each asks for its permission when switched on. */
+@Composable
+private fun NearTvRows() {
+    val context = LocalContext.current
+    var near by remember { mutableStateOf(Store.nearbyTv) }
+    var call by remember { mutableStateOf(Store.callPause) }
+    val nearPerms = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions()) { r ->
+        val ok = r.values.all { it }
+        near = ok; Store.nearbyTv = ok; ru.qmods.anixq.mobile.NearTv.sync(context)
+        if (!ok) Toast.makeText(context, "Без разрешения «Устройства поблизости» телефон не услышит приставку", Toast.LENGTH_LONG).show()
+    }
+    val callPerm = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestPermission()) { ok ->
+        call = ok; Store.callPause = ok
+        if (!ok) Toast.makeText(context, "Без разрешения телефон не узнает о звонке", Toast.LENGTH_LONG).show()
+    }
+    fun has(p: String) = context.checkSelfPermission(p) == android.content.pm.PackageManager.PERMISSION_GRANTED
+
+    if (ru.qmods.anixq.tv.data.Nearby.canScan) {
+        GroupRow("Досмотреть на ТВ", "Телефон рядом с приставкой — предложит включить серию на телевизоре. По Bluetooth, Wi-Fi не нужен",
+            Icons.Default.Bluetooth, Pal.blue, onClick = null, trailing = {
+                Switch(near, { on ->
+                    if (!on) { near = false; Store.nearbyTv = false; ru.qmods.anixq.mobile.NearTv.sync(context) }
+                    else {
+                        val need = ru.qmods.anixq.tv.data.Nearby.scanPermissions().toList() +
+                            (if (android.os.Build.VERSION.SDK_INT >= 33) listOf(android.Manifest.permission.POST_NOTIFICATIONS) else emptyList())
+                        val missing = need.filterNot(::has)
+                        if (missing.isEmpty()) { near = true; Store.nearbyTv = true; ru.qmods.anixq.mobile.NearTv.sync(context) }
+                        else nearPerms.launch(missing.toTypedArray())
+                    }
+                }, colors = SwitchDefaults.colors(checkedTrackColor = Pal.green, checkedThumbColor = Color.White,
+                    uncheckedTrackColor = Pal.cardHi, uncheckedBorderColor = Pal.cardHi, uncheckedThumbColor = Color.White))
+            })
+    }
+    GroupRow("Пауза на ТВ при звонке", "Серия на телевизоре встанет на паузу, пока вы говорите, и продолжится после",
+        Icons.Default.Call, Pal.green, divider = false, onClick = null, trailing = {
+            Switch(call, { on ->
+                if (!on) { call = false; Store.callPause = false }
+                else if (has(android.Manifest.permission.READ_PHONE_STATE)) { call = true; Store.callPause = true }
+                else callPerm.launch(android.Manifest.permission.READ_PHONE_STATE)
+            }, colors = SwitchDefaults.colors(checkedTrackColor = Pal.green, checkedThumbColor = Color.White,
+                uncheckedTrackColor = Pal.cardHi, uncheckedBorderColor = Pal.cardHi, uncheckedThumbColor = Color.White))
+        })
 }

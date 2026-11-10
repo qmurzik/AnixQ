@@ -83,6 +83,7 @@ fun SettingsScreen(nav: Nav) {
                         PillButton("Выйти") { dialog = "signout" }
                     }
                 }
+                if (Store.remoteChannel.isNotEmpty()) BeaconRow()
             }
         }
 
@@ -277,5 +278,24 @@ private fun Toggle(label: String, value: Boolean, onChange: (Boolean) -> Unit) {
                 androidx.compose.foundation.layout.Box(Modifier.size(22.dp).background(Color.White, RoundedCornerShape(50)))
             }
         }
+    }
+}
+
+/** Bluetooth beacon status: lets the phone notice it is next to this TV ("Досмотреть на ТВ?"). */
+@Composable
+private fun BeaconRow() {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val state by ru.qmods.anixq.tv.data.Nearby.beacon.collectAsState()
+    LaunchedEffect(Unit) { ru.qmods.anixq.tv.data.Nearby.advertise(ctx.applicationContext) }
+    val ask = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestPermission()) { ru.qmods.anixq.tv.data.Nearby.advertise(ctx.applicationContext) }
+    Spacer(Modifier.height(12.dp))
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text("Bluetooth-метка для телефона: ${state.text}", fontSize = 18.sp,
+            color = if (state == ru.qmods.anixq.tv.data.Nearby.Beacon.ON) C.pink else C.muted, modifier = Modifier.weight(1f, fill = false))
+        val perm = ru.qmods.anixq.tv.data.Nearby.advertisePermission()
+        if (state == ru.qmods.anixq.tv.data.Nearby.Beacon.NO_PERMISSION && perm != null) PillButton("Разрешить") { ask.launch(perm) }
+        else if (state == ru.qmods.anixq.tv.data.Nearby.Beacon.BT_OFF || state == ru.qmods.anixq.tv.data.Nearby.Beacon.FAILED)
+            PillButton("Повторить") { ru.qmods.anixq.tv.data.Nearby.advertise(ctx.applicationContext) }
     }
 }

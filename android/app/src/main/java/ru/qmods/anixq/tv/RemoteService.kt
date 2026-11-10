@@ -30,8 +30,11 @@ class RemoteService : Service() {
         }
         if (Store.githubToken == null) { stopForegroundCompat(); stopSelf(); return START_NOT_STICKY }
         Remote.start(applicationContext)
+        ru.qmods.anixq.tv.data.Nearby.advertise(applicationContext)
         return START_STICKY
     }
+
+    override fun onDestroy() { ru.qmods.anixq.tv.data.Nearby.stopAdvertising(applicationContext); super.onDestroy() }
 
     @Suppress("DEPRECATION")
     private fun stopForegroundCompat() { if (Build.VERSION.SDK_INT >= 24) stopForeground(STOP_FOREGROUND_REMOVE) else stopForeground(true) }

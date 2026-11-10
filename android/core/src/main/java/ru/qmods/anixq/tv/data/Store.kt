@@ -160,6 +160,24 @@ object Store {
         set(v) { prefs.edit().putBoolean("hoverPreview", v).apply(); bump() }
 
     /** The screensaver plays muted clips of episodes (otherwise a slideshow of covers). */
+    /** Phone: notice the TV nearby over Bluetooth and offer to continue there. */
+    var nearbyTv: Boolean
+        get() = prefs.getBoolean("nearbyTv", false)
+        set(v) { prefs.edit().putBoolean("nearbyTv", v).apply(); bump() }
+
+    /** Phone: pause the TV while a call rings or is on. */
+    var callPause: Boolean
+        get() = prefs.getBoolean("callPause", false)
+        set(v) { prefs.edit().putBoolean("callPause", v).apply(); bump() }
+
+    var nearbyNotifiedAt: Long
+        get() = prefs.getLong("nearbyNotifiedAt", 0)
+        set(v) { prefs.edit().putLong("nearbyNotifiedAt", v).apply() }
+
+    var callPausedAt: Long
+        get() = prefs.getLong("callPausedAt", 0)
+        set(v) { prefs.edit().putLong("callPausedAt", v).apply() }
+
     var screensaverVideo: Boolean
         get() = prefs.getBoolean("screensaverVideo", true)
         set(v) { prefs.edit().putBoolean("screensaverVideo", v).apply(); bump() }

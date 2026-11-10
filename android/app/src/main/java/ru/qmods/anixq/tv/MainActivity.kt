@@ -81,6 +81,7 @@ class MainActivity : ComponentActivity() {
         ru.qmods.anixq.tv.data.Crashes.upload()
         Remote.start(applicationContext)
         RemoteService.start(applicationContext)
+        ru.qmods.anixq.tv.data.Nearby.advertise(applicationContext)
         Updater.checkSometimes()
         // Google TV "Продолжить просмотр": also what was watched on the phone / iPhone.
         lifecycleScope.launch { kotlinx.coroutines.delay(15_000); ru.qmods.anixq.tv.data.WatchNext.refreshFromLibrary() }

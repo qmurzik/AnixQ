@@ -523,8 +523,12 @@ struct SettingsView: View {
                             Label("Синхронизация устройств (iPhone ↔ ТВ)", systemImage: "tv.and.mediabox")
                         }
                     }
+                    NearTVToggle()
+                    CallPauseToggle()
                 } header: {
                     Text("Синхронизация")
+                } footer: {
+                    Text("«Досмотреть на ТВ»: когда iPhone рядом с приставкой AnixQ, придёт уведомление продолжить серию на телевизоре. Работает по Bluetooth, Wi-Fi не нужен. Пауза при звонке на iPhone срабатывает, пока AnixQ открыт или играет в фоне.")
                 }
 
                 Section {
@@ -731,5 +735,29 @@ extension BookmarkStatus {
         case .rewatching: return .teal
         case .onHold: return .orange
         }
+    }
+}
+
+/// Bluetooth "continue on TV" switch with its live status.
+private struct NearTVToggle: View {
+    @ObservedObject private var near = NearTV.shared
+    @State private var on = NearTV.isOn
+
+    var body: some View {
+        Toggle(isOn: $on) {
+            VStack(alignment: .leading, spacing: 2) {
+                Label("Досмотреть на ТВ", systemImage: "dot.radiowaves.left.and.right")
+                if on { Text(near.status).font(.caption).foregroundStyle(.secondary) }
+            }
+        }
+        .onChange(of: on) { NearTV.shared.setOn($0) }
+    }
+}
+
+private struct CallPauseToggle: View {
+    @State private var on = CallPause.isOn
+    var body: some View {
+        Toggle(isOn: $on) { Label("Пауза на ТВ при звонке", systemImage: "phone.arrow.down.left") }
+            .onChange(of: on) { CallPause.isOn = $0 }
     }
 }

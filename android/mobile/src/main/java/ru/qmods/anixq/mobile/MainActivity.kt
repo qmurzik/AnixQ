@@ -156,6 +156,7 @@ class MainActivity : ComponentActivity() {
         Sync.syncNow()
         ru.qmods.anixq.tv.data.Crashes.upload()
         Remote.start(applicationContext)
+        NearTv.sync(applicationContext)
         Updater.checkSometimes()
     }
 

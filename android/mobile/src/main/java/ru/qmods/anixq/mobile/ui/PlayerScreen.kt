@@ -135,6 +135,7 @@ fun PlayerScreen(nav: Nav, route: PlayerRoute) {
         onDispose {
             Pip.model = null
             if (ru.qmods.anixq.tv.data.Room.player === m) ru.qmods.anixq.tv.data.Room.player = null
+            ru.qmods.anixq.mobile.PlaybackService.detach(context)
             m.release()
             ctl.show(WindowInsetsCompat.Type.systemBars())
             activity.requestedOrientation = if (before == ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE) ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED else before
@@ -145,7 +146,8 @@ fun PlayerScreen(nav: Nav, route: PlayerRoute) {
     DisposableEffect(lifecycle) {
         val obs = LifecycleEventObserver { _, e ->
             // Leaving the app (not into picture-in-picture): pause and save, so the TV/iPhone get the exact moment.
-            if (e == Lifecycle.Event.ON_STOP) { m.pause(); m.saveProgress(force = true); Sync.flush() }
+            // "Звук в фоне" keeps the AnimeLib player going (not Kodik's web page); otherwise pause.
+            if (e == Lifecycle.Event.ON_STOP) { if (!(Store.backgroundAudio && m.native)) m.pause(); m.saveProgress(force = true); Sync.flush() }
         }
         lifecycle.addObserver(obs)
         onDispose { lifecycle.removeObserver(obs) }
@@ -164,6 +166,8 @@ fun PlayerScreen(nav: Nav, route: PlayerRoute) {
     LaunchedEffect(autoGo, m.index) {
         if (autoGo) { delay(if (Store.marathon) 3000 else 6000); if (m.showNext && m.countdown) m.autoAdvance() }
     }
+    // Lock-screen / headphone controls and sound with the screen off.
+    LaunchedEffect(m.exo) { m.exo?.let { if (Store.backgroundAudio) ru.qmods.anixq.mobile.PlaybackService.attach(context, it.exo) } }
     BackHandler { if (episodesOpen) episodesOpen = false else if (tuneOpen) tuneOpen = false else if (roomOpen) roomOpen = false else nav.pop() }
 
     Box(Modifier.fillMaxSize().background(Color.Black)) {
@@ -373,6 +377,7 @@ private fun EpisodesPanel(m: PlayerModel, onClose: () -> Unit) {
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 @Composable
 private fun TunePanel(m: PlayerModel, onClose: () -> Unit) {
+    val context = LocalContext.current
     var p by remember { mutableStateOf(ru.qmods.anixq.tv.ui.ColorTuning.value) }
     var sound by remember { mutableStateOf(ru.qmods.anixq.tv.ui.SoundMode.current) }
     fun change(n: ru.qmods.anixq.tv.ui.Picture, commit: Boolean) { p = n; m.setPicture(n, commit) }
@@ -400,6 +405,17 @@ private fun TunePanel(m: PlayerModel, onClose: () -> Unit) {
                     .clickable { sound = s; m.setSound(s) }.padding(10.dp)) {
                     Text(s.title, fontWeight = FontWeight.SemiBold, fontSize = 15.sp, color = if (s == sound) Pal.pink else Pal.text)
                     Text(s.subtitle, fontSize = 12.sp, color = Pal.muted)
+                }
+            }
+            item {
+                var bg by remember { mutableStateOf(Store.backgroundAudio) }
+                Row(Modifier.fillMaxWidth().padding(top = 16.dp).clickable { bg = !bg; Store.backgroundAudio = bg }, verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Звук в фоне", fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+                        Text("Серия играет с выключенным экраном, управление на экране блокировки", fontSize = 12.sp, color = Pal.muted)
+                    }
+                    androidx.compose.material3.Switch(bg, { bg = it; Store.backgroundAudio = it; m.exo?.let { e -> if (it) ru.qmods.anixq.mobile.PlaybackService.attach(context, e.exo) } },
+                        colors = androidx.compose.material3.SwitchDefaults.colors(checkedTrackColor = Pal.green))
                 }
             }
             item {

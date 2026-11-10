@@ -141,6 +141,11 @@ object Store {
         get() = prefs.getBoolean("noSpoilers", false)
         set(v) { prefs.edit().putBoolean("noSpoilers", v).apply(); bump() }
 
+    /** Phone: keep playing (sound) with the screen off / app in the background. */
+    var backgroundAudio: Boolean
+        get() = prefs.getBoolean("backgroundAudio", false)
+        set(v) { prefs.edit().putBoolean("backgroundAudio", v).apply(); bump() }
+
     var subtitles: Boolean
         get() = prefs.getBoolean("subtitles", true)
         set(v) { prefs.edit().putBoolean("subtitles", v).apply() }

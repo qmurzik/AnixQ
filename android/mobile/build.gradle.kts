@@ -65,4 +65,5 @@ dependencies {
     implementation("androidx.profileinstaller:profileinstaller:1.4.1")
     implementation("androidx.browser:browser:1.8.0")
     implementation("androidx.work:work-runtime-ktx:2.9.1")
+    implementation("androidx.media3:media3-session:1.5.1")
 }

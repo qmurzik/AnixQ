@@ -35,6 +35,7 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.LocalFireDepartment
+import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Refresh
@@ -161,6 +162,7 @@ fun SettingsScreen(nav: Nav) {
             ToggleRow("Следующая серия сама", Icons.Default.SkipNext, Pal.green, Store.autoNext) { Store.autoNext = it }
             ToggleRow("Субтитры, где есть", Icons.Default.Subtitles, Pal.teal, Store.subtitles) { Store.subtitles = it }
             ToggleRow("Режим марафона", Icons.Default.LocalFireDepartment, Pal.orange, Store.marathon) { Store.marathon = it }
+            ToggleRow("Звук в фоне (экран выключен)", Icons.Default.Headphones, Pal.purple, Store.backgroundAudio) { Store.backgroundAudio = it }
             ToggleRow("Без спойлеров", Icons.Default.VisibilityOff, Pal.indigo, Store.noSpoilers) { Store.noSpoilers = it }
             GroupRow("Качество загрузок", icon = Icons.Default.Download, iconColor = Pal.indigo, trailing = {
                 var dq by remember { mutableStateOf(ru.qmods.anixq.mobile.data.Downloads.quality) }

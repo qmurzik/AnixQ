@@ -3,6 +3,8 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <application
         android:label="@string/app_name"
         android:icon="@mipmap/ic_launcher"
@@ -49,6 +51,10 @@
                 <data android:scheme="anixq" android:host="list" />
             </intent-filter>
         </activity>
+        <!-- Sound with the screen off: lock-screen / headphone controls. -->
+        <service android:name=".PlaybackService" android:exported="true" android:foregroundServiceType="mediaPlayback">
+            <intent-filter><action android:name="androidx.media3.session.MediaSessionService" /></intent-filter>
+        </service>
         <!-- "Продолжить" home-screen widget. -->
         <receiver android:name=".ContinueWidget" android:exported="false" android:label="Продолжить просмотр">
             <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>

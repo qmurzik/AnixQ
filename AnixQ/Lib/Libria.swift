@@ -13,6 +13,36 @@ enum Libria {
         set { UserDefaults.standard.set(newValue, forKey: "libriaDirect") }
     }
 
+    /// After a failure AniLibria is skipped for a while (their servers may be unreachable from this network).
+    static var failedAt: Date? {
+        get { UserDefaults.standard.object(forKey: "libria.failedAt") as? Date }
+        set { UserDefaults.standard.set(newValue, forKey: "libria.failedAt") }
+    }
+    static var recentlyFailed: Bool { failedAt.map { Date().timeIntervalSince($0) < 3600 } ?? false }
+
+    /// Their server answers from this network right now: the playlist and the piece of video at `at`
+    /// arrive within 4 seconds. Checked before playing, so a dead server never shows up as a frozen picture.
+    static func reachable(_ playlist: URL, at: Double) async -> Bool {
+        var req = URLRequest(url: playlist); req.timeoutInterval = 4
+        let started = Date()
+        guard let (data, resp) = try? await URLSession.shared.data(for: req), (resp as? HTTPURLResponse)?.statusCode == 200,
+              let text = String(data: data, encoding: .utf8) else { return false }
+        var t = 0.0, segment: URL?
+        let lines = text.components(separatedBy: .newlines)
+        for (i, l) in lines.enumerated() where l.hasPrefix("#EXTINF:") {
+            let d = Double(l.dropFirst(8).split(separator: ",").first ?? "") ?? 0
+            if t + d > at || segment == nil, i + 1 < lines.count { segment = URL(string: lines[i + 1], relativeTo: playlist)?.absoluteURL }
+            if t + d > at { break }
+            t += d
+        }
+        guard let segment else { return false }
+        var seg = URLRequest(url: segment)
+        seg.timeoutInterval = max(1, 4 - Date().timeIntervalSince(started))
+        seg.setValue("bytes=0-65535", forHTTPHeaderField: "Range")
+        guard let (_, r2) = try? await URLSession.shared.data(for: seg), let code = (r2 as? HTTPURLResponse)?.statusCode else { return false }
+        return code == 200 || code == 206
+    }
+
     static func isLibria(_ team: String) -> Bool {
         team.range(of: #"ani\s*libria|анилибри"#, options: [.regularExpression, .caseInsensitive]) != nil
     }

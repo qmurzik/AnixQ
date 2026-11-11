@@ -8,7 +8,9 @@ enum VideoPrewarm {
     private static var assets: [URL: (asset: AVURLAsset, at: Date)] = [:]
 
     static func makeAsset(_ url: URL) -> AVURLAsset {
-        AVURLAsset(url: url, options: ["AVURLAssetHTTPHeaderFieldsKey": ["Referer": LibAPI.site + "/"]])
+        // AnimeLib's mirrors want their site as the referrer; other servers (AniLibria) get a plain request.
+        let lib = !(url.host?.contains("libria") ?? false)
+        return AVURLAsset(url: url, options: lib ? ["AVURLAssetHTTPHeaderFieldsKey": ["Referer": LibAPI.site + "/"]] : [:])
     }
 
     static func prepare(_ url: URL) {

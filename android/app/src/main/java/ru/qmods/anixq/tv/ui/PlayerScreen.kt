@@ -328,7 +328,7 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
                     ?: list.firstOrNull { it.isNative } ?: list.first { it.isKodik || it.isNative }
                 // AniLibria dub: their own servers when they have the episode (no ads, often faster than AnimeLib).
                 if (!preferKodik && !avoidLibria && Store.libriaDirect && ru.qmods.anixq.tv.data.Libria.isLibria(chosen.team.name)) {
-                    ru.qmods.anixq.tv.data.Libria.player(title, ep.number, chosen)?.let { chosen = it; if (!sameEpisode) say("AniLibria: видео с их сервера") }
+                    ru.qmods.anixq.tv.data.Libria.player(title, ep.number, chosen, probeAt = keepPos ?: Store.resume(ep.id) ?: 0.0)?.let { chosen = it; if (!sameEpisode) say("AniLibria: видео с их сервера") }
                 }
                 player = chosen
                 val local = Store.resume(ep.id)
@@ -385,6 +385,7 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
         if (upscale > 0) { upscaleFailed("ошибка видео: $err"); return }
         if (p.isLibria) {
             avoidLibria = true
+            ru.qmods.anixq.tv.data.Libria.markFailed()
             say("AniLibria не отвечает — берём видео с AnimeLib")
             load(index, teamId = p.team.id, keepPos = exo?.position ?: pos)
             return

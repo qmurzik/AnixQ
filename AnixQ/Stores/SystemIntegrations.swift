@@ -60,6 +60,11 @@ enum HandoffSeek {
     /// Position handed over from another device, used once when that episode loads.
     static func set(episodeId: Int, position: Double) { pending = (episodeId, position) }
 
+    static func peek(episodeId: Int) -> Double? {
+        guard let p = pending, p.episodeId == episodeId else { return nil }
+        return p.position
+    }
+
     static func take(episodeId: Int) -> Double? {
         guard let p = pending, p.episodeId == episodeId else { return nil }
         pending = nil

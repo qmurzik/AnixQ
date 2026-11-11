@@ -297,8 +297,19 @@ final class PlayerController: ObservableObject {
             let kodik = players.first { $0.team.id == team.id && $0.isKodik } ?? players.first { $0.isKodik }
             webKodikURL = kodik?.kodikSrc.flatMap(LibAPI.kodikURL)
             // AniLibria dub: their own servers when they have the episode (no ads, often faster than AnimeLib).
-            if Libria.enabled, avoidLibriaEpisode != ep.id, Libria.isLibria(team.team.name),
-               let lib = await Libria.episode(title: title, number: ep.number) {
+            let libriaStart = rewindIfLongAgo(HandoffSeek.peek(episodeId: ep.id) ?? library?.resumePosition(episodeId: ep.id), episodeId: ep.id) ?? 0
+            if Libria.enabled, !Libria.recentlyFailed, avoidLibriaEpisode != ep.id, Libria.isLibria(team.team.name),
+               let lib = await Libria.episode(title: title, number: ep.number),
+               let probe = lib.qualities.first(where: { $0.height <= 720 }) ?? lib.qualities.last {
+                guard token == loadToken else { return }
+                guard await Libria.reachable(probe.url, at: libriaStart) else {
+                    DebugLog.log("player: AniLibria server not reachable from this network — AnimeLib instead")
+                    Libria.failedAt = Date()
+                    avoidLibriaEpisode = ep.id
+                    isResolving = false
+                    await load()
+                    return
+                }
                 guard token == loadToken else { return }
                 usingLibria = true
                 let native = players.first { $0.team.id == team.id && $0.isNative }
@@ -382,6 +393,7 @@ final class PlayerController: ObservableObject {
     /// AniLibria didn't play: the same dub from AnimeLib, from the same moment.
     private func fallBackFromLibria(at: Double) {
         avoidLibriaEpisode = episode.id
+        Libria.failedAt = Date()
         notice = "AniLibria не отвечает — видео с AnimeLib"
         Task {
             await load()

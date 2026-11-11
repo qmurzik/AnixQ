@@ -1,5 +1,6 @@
 package ru.qmods.anixq.tv.data
 
+import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
@@ -16,6 +17,38 @@ object Libria {
     private const val API = "https://anilibria.top/api/v1"
     /** titleId → AniLibria release (episodes), or JSONObject.NULL when they don't have it. */
     private val releases = HashMap<Int, Any>()
+
+    /** After a failure AniLibria is skipped for an hour (their servers may be unreachable from this network). */
+    @Volatile private var failedAt = 0L
+    val recentlyFailed get() = System.currentTimeMillis() - failedAt < 3_600_000
+    fun markFailed() { failedAt = System.currentTimeMillis() }
+
+    /**
+     * Their server answers from this network right now: the playlist and the piece of video at [at] arrive
+     * within 4 seconds. Checked before playing, so a dead server never shows up as a frozen picture.
+     */
+    private fun reachable(playlist: String, at: Double): Boolean {
+        val started = System.currentTimeMillis()
+        val client = Api.http.newBuilder().callTimeout(4, java.util.concurrent.TimeUnit.SECONDS).build()
+        val text = runCatching {
+            client.newCall(Request.Builder().url(playlist).build()).execute().use { r -> if (r.isSuccessful) r.body?.string() else null }
+        }.getOrNull() ?: return false
+        val lines = text.lines()
+        var t = 0.0; var segment: String? = null
+        for ((i, l) in lines.withIndex()) {
+            if (!l.startsWith("#EXTINF:") || i + 1 >= lines.size) continue
+            val d = l.removePrefix("#EXTINF:").substringBefore(',').toDoubleOrNull() ?: 0.0
+            if (segment == null || t + d > at) segment = lines[i + 1].trim()
+            if (t + d > at) break
+            t += d
+        }
+        val seg = segment?.let { playlist.toHttpUrl().resolve(it)?.toString() } ?: return false
+        val left = (4_000 - (System.currentTimeMillis() - started)).coerceAtLeast(1_000)
+        return runCatching {
+            Api.http.newBuilder().callTimeout(left, java.util.concurrent.TimeUnit.MILLISECONDS).build()
+                .newCall(Request.Builder().url(seg).header("Range", "bytes=0-65535").build()).execute().use { it.code == 200 || it.code == 206 }
+        }.getOrDefault(false)
+    }
 
     fun isLibria(teamName: String?) = teamName != null && Regex("ani\\s*libria|анилибри", RegexOption.IGNORE_CASE).containsMatchIn(teamName)
 
@@ -50,8 +83,9 @@ object Libria {
      * The AniLibria version of [base] (AnimeLib's AniLibria player, native or Kodik) for this episode:
      * same team / ids for progress, hrefs are AniLibria HLS links. Null if they don't have it (or don't answer in 6 s).
      */
-    suspend fun player(title: Title, episodeNumber: String, base: Player): Player? = withContext(Dispatchers.IO) {
-        withTimeoutOrNull(6_000) {
+    suspend fun player(title: Title, episodeNumber: String, base: Player, probeAt: Double? = null): Player? = withContext(Dispatchers.IO) {
+        if (recentlyFailed) return@withContext null
+        withTimeoutOrNull(10_000) {
             val r = release(title) ?: return@withTimeoutOrNull null
             val n = episodeNumber.toDoubleOrNull() ?: return@withTimeoutOrNull null
             val eps = r.optJSONArray("episodes") ?: return@withTimeoutOrNull null
@@ -60,6 +94,11 @@ object Libria {
             val hrefs = linkedMapOf<String, String>()
             for (q in listOf("1080", "720", "480")) ep.optString("hls_$q").takeIf { it.startsWith("http") }?.let { hrefs["${q}p"] = it }
             if (hrefs.isEmpty()) return@withTimeoutOrNull null
+            // Playing now (not queueing the next one): make sure their server answers from here first.
+            if (probeAt != null) {
+                val probe = hrefs["720p"] ?: hrefs.values.last()
+                if (!reachable(probe, probeAt)) { Log.d("AnixQ", "libria: not reachable, AnimeLib instead"); markFailed(); return@withTimeoutOrNull null }
+            }
             // AniLibria's own marks fit their file exactly; AnimeLib's are for AnimeLib's copy.
             val segs = run {
                 listOfNotNull(ep.optJSONObject("opening")?.let { o ->

@@ -1,5 +1,6 @@
 package ru.qmods.anixq.mobile.ui
 
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -107,7 +108,9 @@ fun CatalogScreen(nav: Nav) {
     var query by remember { mutableStateOf(CatalogQuery()) }
     val loader = remember { CatalogLoader() }
     var sortMenu by remember { mutableStateOf(false) }
+    var filters by remember { mutableStateOf(false) }
     LaunchedEffect(query) { if (loader.query != query) loader.reset(query) }
+    if (filters) FilterSheet(query, { query = it }) { filters = false }
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     Column(Modifier.fillMaxSize().statusBarsPadding()) {
         LargeTitle("Каталог")
@@ -123,7 +126,8 @@ fun CatalogScreen(nav: Nav) {
             }
             statuses.forEach { (id, name) -> item { Capsule(name, selected = query.status == id) { query = query.copy(status = if (query.status == id) null else id) } } }
             types.forEach { (id, name) -> item { Capsule(name, selected = query.type == id) { query = query.copy(type = if (query.type == id) null else id) } } }
-            if (query.status != null || query.type != null) item { Capsule("Сбросить", Icons.Default.Close) { query = CatalogQuery(sort = query.sort) } }
+            item { Capsule(if (query.extraFilters > 0) "Фильтры · ${query.extraFilters}" else "Фильтры", Icons.Default.Tune, selected = query.extraFilters > 0) { filters = true } }
+            if (query.status != null || query.type != null || query.extraFilters > 0) item { Capsule("Сбросить", Icons.Default.Close) { query = CatalogQuery(sort = query.sort) } }
         }
         PosterGrid(loader, { nav.open(it) }, { scope.launch { loader.reset(query) } })
     }

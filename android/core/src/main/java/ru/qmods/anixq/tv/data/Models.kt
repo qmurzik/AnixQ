@@ -129,4 +129,10 @@ data class CatalogQuery(
     val type: Int? = null,        // 16 TV, 14 movie, 15 OVA ... (AnimeLib ids)
     val genre: Int? = null,
     val text: String = "",
-)
+    val yearFrom: Int? = null,
+    val yearTo: Int? = null,
+    val episodesMin: Int? = null,
+    val episodesMax: Int? = null,
+) {
+    val extraFilters get() = listOfNotNull(genre, yearFrom ?: yearTo, episodesMin ?: episodesMax).size
+}

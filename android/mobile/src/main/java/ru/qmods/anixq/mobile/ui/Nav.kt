@@ -36,6 +36,9 @@ data object RemoteRoute : Route
 data object SettingsRoute : Route
 data object SyncRoute : Route
 data object LibLoginRoute : Route
+data object TraceRoute : Route
+data object RandomRoute : Route
+data object SeasonRoute : Route
 data class PersonRoute(val id: Int, val isCharacter: Boolean, val name: String) : Route
 data class CommentsRoute(val postId: Int, val type: String, val title: String) : Route
 

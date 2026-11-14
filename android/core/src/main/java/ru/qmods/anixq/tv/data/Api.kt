@@ -148,6 +148,10 @@ object Api {
         q.status?.let { params += "status[]" to it.toString() }
         q.type?.let { params += "types[]" to it.toString() }
         q.genre?.let { params += "genres[]" to it.toString() }
+        q.yearFrom?.let { params += "year_min" to it.toString() }
+        q.yearTo?.let { params += "year_max" to it.toString() }
+        q.episodesMin?.let { params += "episodes_min" to it.toString() }
+        q.episodesMax?.let { params += "episodes_max" to it.toString() }
         val json = request("/anime", params) as JSONObject
         val items = (json.optJSONArray("data") ?: JSONArray()).let { a -> (0 until a.length()).mapNotNull { a.optJSONObject(it)?.let(Title::fromApi) } }
         val more = json.obj("meta")?.optBoolean("has_next_page", items.size >= 20) ?: (items.size >= 20)

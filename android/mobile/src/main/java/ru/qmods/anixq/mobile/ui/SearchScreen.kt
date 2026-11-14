@@ -1,5 +1,8 @@
 package ru.qmods.anixq.mobile.ui
 
+import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.Casino
+import androidx.compose.material.icons.filled.ImageSearch
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -58,7 +61,7 @@ import ru.qmods.anixq.tv.data.CatalogSort
 import ru.qmods.anixq.tv.data.Store
 import ru.qmods.anixq.tv.data.Title
 
-private object Genres { var list: List<Pair<Int, String>> = emptyList() }
+object Genres { var list: List<Pair<Int, String>> = emptyList() }
 
 @Composable
 fun SearchScreen(nav: Nav) {
@@ -99,6 +102,18 @@ fun SearchScreen(nav: Nav) {
         }
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
             if (q.isEmpty()) {
+                item(key = "tools") {
+                    Row(Modifier.padding(start = 16.dp, end = 16.dp, top = 14.dp).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        listOf(Triple("По кадру", Icons.Default.ImageSearch, TraceRoute), Triple("Случайное", Icons.Default.Casino, RandomRoute),
+                            Triple("Сезон", Icons.Default.CalendarMonth, SeasonRoute)).forEach { (n, icon, r) ->
+                            Column(Modifier.weight(1f).clip(RoundedCornerShape(14.dp)).background(Pal.card).pressable { nav.push(r) }.padding(vertical = 14.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally) {
+                                Icon(icon, null, tint = Pal.pink)
+                                Text(n, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 6.dp))
+                            }
+                        }
+                    }
+                }
                 if (recent.isNotEmpty()) item {
                     Row(Modifier.padding(start = 16.dp, end = 16.dp, top = 18.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text("Недавние", fontSize = 20.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))

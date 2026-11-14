@@ -224,6 +224,9 @@ fun Root(nav: Nav) {
             SyncRoute -> SyncLoginScreen(nav)
             LibLoginRoute -> LibLoginScreen(nav)
             is ru.qmods.anixq.mobile.ui.PersonRoute -> ru.qmods.anixq.mobile.ui.PersonScreen(nav, top)
+            ru.qmods.anixq.mobile.ui.TraceRoute -> ru.qmods.anixq.mobile.ui.TraceScreen(nav)
+            ru.qmods.anixq.mobile.ui.RandomRoute -> ru.qmods.anixq.mobile.ui.RandomScreen(nav)
+            ru.qmods.anixq.mobile.ui.SeasonRoute -> ru.qmods.anixq.mobile.ui.SeasonScreen(nav)
             is ru.qmods.anixq.mobile.ui.CommentsRoute -> ru.qmods.anixq.mobile.ui.CommentsScreen(nav, top)
             null -> Column(Modifier.fillMaxSize()) {
                 Box(Modifier.weight(1f)) {

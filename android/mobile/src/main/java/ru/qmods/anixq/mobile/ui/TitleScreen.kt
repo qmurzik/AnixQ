@@ -1,5 +1,7 @@
 package ru.qmods.anixq.mobile.ui
 
+import androidx.compose.material.icons.filled.ChatBubbleOutline
+import androidx.compose.material.icons.filled.Edit
 import android.content.Intent
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
@@ -131,6 +133,7 @@ fun TitleScreen(nav: Nav, start: Title) {
     var bookmarkMenu by remember { mutableStateOf(false) }
     var allEpisodes by remember { mutableStateOf(false) }
     var epMenu by remember { mutableStateOf<Episode?>(null) }
+    var noteEp by remember { mutableStateOf<Episode?>(null) }
     var reload by remember { mutableStateOf(0) }
     val title = detail?.title?.let { d -> d.copy(cover = d.cover ?: start.cover, coverThumb = d.coverThumb ?: start.coverThumb) } ?: start
     var franchise by remember { mutableStateOf<List<Pair<ru.qmods.anixq.tv.data.Franchise.Node, Title>>>(emptyList()) }
@@ -269,6 +272,7 @@ fun TitleScreen(nav: Nav, start: Title) {
                     }
                 }
             }
+            title.shikiId?.let { sid -> item(key = "shiki") { ShikiRateCard(sid, eps.size) } }
             item(key = "episodes") {
                 Column(Modifier.padding(top = 26.dp)) {
                     SectionHeader("Серии", if (eps.size > 6) "Все ${eps.size}" else null) { allEpisodes = true }
@@ -336,6 +340,10 @@ fun TitleScreen(nav: Nav, start: Title) {
                                                 onClick = { epMenu = null; download(listOf(ep)) })
                                             else DropdownMenuItem({ Text("Удалить загрузку") }, leadingIcon = { Icon(Icons.Default.Delete, null) },
                                                 onClick = { epMenu = null; ru.qmods.anixq.mobile.data.Downloads.remove(ep.id) })
+                                            DropdownMenuItem({ Text("Заметка к серии") }, leadingIcon = { Icon(Icons.Default.Edit, null) },
+                                                onClick = { epMenu = null; noteEp = ep })
+                                            DropdownMenuItem({ Text("Обсуждение серии") }, leadingIcon = { Icon(Icons.Default.ChatBubbleOutline, null) },
+                                                onClick = { epMenu = null; nav.push(CommentsRoute(ep.id, "episodes", "${title.title} · серия ${ep.number}")) })
                                         }
                                     }
                                 }
@@ -344,6 +352,7 @@ fun TitleScreen(nav: Nav, start: Title) {
                     }
                 }
             }
+            item(key = "notes") { NotesCard(title) }
             if (franchise.size > 1) item(key = "franchise") {
                 Column(Modifier.padding(top = 26.dp)) {
                     SectionHeader("Порядок просмотра")
@@ -367,7 +376,12 @@ fun TitleScreen(nav: Nav, start: Title) {
                     }
                 }
             }
+            title.shikiId?.let { sid ->
+                item(key = "videos") { VideosShelf(sid) }
+                item(key = "people") { PeopleShelves(sid, nav) }
+            }
             item(key = "similar") { Shelf("Похожие", similar) { nav.open(it) } }
+            item(key = "comments") { CommentsPreview(title, nav) }
         }
 
         // Floating bar: round buttons over the art; a solid bar with the name once scrolled.
@@ -381,6 +395,12 @@ fun TitleScreen(nav: Nav, start: Title) {
                 context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain")
                     .putExtra(Intent.EXTRA_TEXT, "${title.title} — https://anilib.me/ru/anime/${title.slug}"), null))
             }
+        }
+    }
+
+    noteEp?.let { ep ->
+        TextDialog("Заметка к серии ${ep.number}", ru.qmods.anixq.mobile.data.Notes.get(title.id).episodes[ep.number] ?: "", "Что запомнилось", { noteEp = null }) {
+            ru.qmods.anixq.mobile.data.Notes.setEpisode(title.id, ep.number, it); noteEp = null
         }
     }
 

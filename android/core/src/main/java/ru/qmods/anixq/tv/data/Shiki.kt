@@ -51,6 +51,55 @@ object Shiki {
         }
     }
 
+    /** Your list entry for a title on Shikimori (status / score / episodes), null when not in the list. */
+    data class Rate(val id: Int, val status: String, val score: Int, val episodes: Int, val rewatches: Int)
+
+    suspend fun rate(malId: Int): Rate? = kotlinx.coroutines.withContext(Dispatchers.IO) {
+        val uid = Store.shikiJson?.int("userId") ?: return@withContext null
+        runCatching {
+            (call("GET", "/api/v2/user_rates?user_id=$uid&target_id=$malId&target_type=Anime") as? JSONArray)?.optJSONObject(0)?.let {
+                Rate(it.int("id") ?: 0, it.str("status") ?: "planned", it.int("score") ?: 0, it.int("episodes") ?: 0, it.int("rewatches") ?: 0)
+            }
+        }.getOrNull()
+    }
+
+    /** Create or change your list entry; null fields stay as they are. Returns the entry or null on failure. */
+    suspend fun saveRate(malId: Int, status: String? = null, score: Int? = null, episodes: Int? = null): Rate? = kotlinx.coroutines.withContext(Dispatchers.IO) {
+        val uid = Store.shikiJson?.int("userId") ?: return@withContext null
+        runCatching {
+            val fields = JSONObject()
+            status?.let { fields.put("status", it) }; score?.let { fields.put("score", it) }; episodes?.let { fields.put("episodes", it) }
+            val existing = (call("GET", "/api/v2/user_rates?user_id=$uid&target_id=$malId&target_type=Anime") as? JSONArray)?.optJSONObject(0)
+            val r = if (existing != null) call("PATCH", "/api/v2/user_rates/${existing.int("id")}", JSONObject().put("user_rate", fields))
+            else call("POST", "/api/v2/user_rates", JSONObject().put("user_rate", fields.put("user_id", uid).put("target_id", malId)
+                .put("target_type", "Anime").apply { if (!has("status")) put("status", "planned") }))
+            (r as? JSONObject)?.let { Rate(it.int("id") ?: 0, it.str("status") ?: "planned", it.int("score") ?: 0, it.int("episodes") ?: 0, it.int("rewatches") ?: 0) }
+        }.getOrNull()
+    }
+
+    suspend fun removeRate(rateId: Int): Boolean = kotlinx.coroutines.withContext(Dispatchers.IO) {
+        runCatching { call("DELETE", "/api/v2/user_rates/$rateId"); true }.getOrDefault(false)
+    }
+
+    /** Every anime in your Shikimori list (for the MAL export). */
+    data class ListEntry(val malId: Int, val name: String, val status: String, val score: Int, val episodes: Int, val totalEpisodes: Int)
+    suspend fun allRates(): List<ListEntry> = kotlinx.coroutines.withContext(Dispatchers.IO) {
+        val uid = Store.shikiJson?.int("userId") ?: return@withContext emptyList()
+        val out = ArrayList<ListEntry>()
+        for (page in 1..20) {
+            val a = runCatching { call("GET", "/api/users/$uid/anime_rates?limit=500&page=$page") as? JSONArray }.getOrNull() ?: break
+            for (i in 0 until a.length()) {
+                val x = a.optJSONObject(i) ?: continue; val an = x.obj("anime") ?: continue
+                out += ListEntry(an.int("id") ?: continue, an.str("name") ?: "", x.str("status") ?: "planned", x.int("score") ?: 0,
+                    x.int("episodes") ?: 0, an.int("episodes") ?: 0)
+            }
+            if (a.length() < 500) break
+        }
+        out
+    }
+
+    val userId: Int? get() = Store.shikiJson?.int("userId")
+
     /** Hours / episodes / completed titles from the Shikimori profile (episodes × episode length, rewatches included). */
     data class Totals(val minutes: Double, val episodes: Int, val completed: Int)
     @Volatile var totals: Totals? = null; private set

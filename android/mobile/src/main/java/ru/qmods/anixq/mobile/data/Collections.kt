@@ -80,3 +80,51 @@ object Collections {
             .also { all.value = all.value + it; save() }
     }.getOrNull()
 }
+
+/** Your notes and own score per title, plus notes for single episodes — like the iPhone's "Мои заметки". */
+object Notes {
+    data class Note(val text: String = "", val rating: Int? = null, val episodes: Map<String, String> = emptyMap()) {
+        val isEmpty get() = text.isBlank() && rating == null && episodes.isEmpty()
+    }
+
+    private lateinit var app: Context
+    val all = MutableStateFlow<Map<Int, Note>>(emptyMap())
+
+    fun init(context: Context) {
+        if (::app.isInitialized) return
+        app = context.applicationContext
+        reload()
+    }
+
+    private fun reload() {
+        all.value = runCatching {
+            val o = JSONObject(app.getSharedPreferences("notes", Context.MODE_PRIVATE).getString("all", "{}")!!)
+            o.keys().asSequence().mapNotNull { k ->
+                val x = o.optJSONObject(k) ?: return@mapNotNull null
+                val eps = x.optJSONObject("episodes")?.let { e -> e.keys().asSequence().associateWith { e.optString(it) } } ?: emptyMap()
+                k.toIntOrNull()?.let { it to Note(x.optString("text"), x.optInt("rating").takeIf { r -> r > 0 }, eps) }
+            }.toMap()
+        }.getOrDefault(emptyMap())
+    }
+
+    fun get(titleId: Int) = all.value[titleId] ?: Note()
+
+    fun set(titleId: Int, n: Note) {
+        all.value = if (n.isEmpty) all.value - titleId else all.value + (titleId to n)
+        val o = JSONObject()
+        all.value.forEach { (id, x) ->
+            o.put(id.toString(), JSONObject().put("text", x.text).put("rating", x.rating ?: 0)
+                .put("episodes", JSONObject().apply { x.episodes.forEach { (k, v) -> put(k, v) } }))
+        }
+        app.getSharedPreferences("notes", Context.MODE_PRIVATE).edit().putString("all", o.toString()).apply()
+    }
+
+    fun setEpisode(titleId: Int, number: String, text: String) {
+        val n = get(titleId)
+        set(titleId, n.copy(episodes = if (text.isBlank()) n.episodes - number else n.episodes + (number to text.trim())))
+    }
+
+    /** For backups. */
+    fun export(): JSONObject = JSONObject(app.getSharedPreferences("notes", Context.MODE_PRIVATE).getString("all", "{}")!!)
+    fun import(o: JSONObject) { app.getSharedPreferences("notes", Context.MODE_PRIVATE).edit().putString("all", o.toString()).apply(); reload() }
+}

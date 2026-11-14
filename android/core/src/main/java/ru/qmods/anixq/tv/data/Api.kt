@@ -191,6 +191,26 @@ object Api {
         }
     } catch (e: Exception) { emptyList() }
 
+    /** AnimeLib comments: [type] "anime" for a title page, "episodes" for one episode. */
+    data class Comment(val id: Int, val rootId: Int?, val text: String, val date: Long, val user: String, val avatar: String?,
+                       val up: Int, val down: Int, val spoiler: Boolean)
+    data class Comments(val root: List<Comment>, val replies: List<Comment>, val hasMore: Boolean)
+
+    suspend fun comments(postId: Int, type: String, page: Int): Comments {
+        val json = request("/comments", listOf("post_id" to postId.toString(), "post_type" to type, "page" to page.toString()), auth = false) as? JSONObject
+            ?: return Comments(emptyList(), emptyList(), false)
+        val d = json.obj("data")
+        fun parse(x: JSONObject): Comment? {
+            val id = x.int("id") ?: return null
+            val html = x.str("comment") ?: ""
+            val u = x.obj("user")
+            return Comment(id, x.int("root_id"), ShikiExtras.plain(html), (x.dbl("created_at_ts") ?: 0.0).toLong(), u?.str("username") ?: "—",
+                u?.obj("avatar")?.str("url"), x.obj("votes")?.int("up") ?: 0, x.obj("votes")?.int("down") ?: 0, html.contains("spoiler"))
+        }
+        return Comments(d?.arr("root")?.mapNotNull(::parse) ?: emptyList(), d?.arr("replies")?.mapNotNull(::parse) ?: emptyList(),
+            json.obj("meta")?.optBoolean("has_next_page") ?: false)
+    }
+
     suspend fun similar(slug: String): List<Title> = try {
         val a = data(request("/anime/$slug/similar")) as? JSONArray ?: JSONArray()
         val seen = HashSet<Int>()

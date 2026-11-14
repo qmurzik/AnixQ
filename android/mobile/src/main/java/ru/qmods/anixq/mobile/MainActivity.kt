@@ -98,6 +98,7 @@ class MainActivity : ComponentActivity() {
         ru.qmods.anixq.mobile.data.Downloads.init(applicationContext)
         NewEpisodes.schedule(applicationContext)
         ru.qmods.anixq.mobile.data.Collections.init(applicationContext)
+        ru.qmods.anixq.mobile.data.Notes.init(applicationContext)
         ru.qmods.anixq.tv.data.Room.myName = "Android (${Build.MODEL})"
         // Android 13+: ask once for notifications (new episodes).
         if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
@@ -222,6 +223,8 @@ fun Root(nav: Nav) {
             SettingsRoute -> SettingsScreen(nav)
             SyncRoute -> SyncLoginScreen(nav)
             LibLoginRoute -> LibLoginScreen(nav)
+            is ru.qmods.anixq.mobile.ui.PersonRoute -> ru.qmods.anixq.mobile.ui.PersonScreen(nav, top)
+            is ru.qmods.anixq.mobile.ui.CommentsRoute -> ru.qmods.anixq.mobile.ui.CommentsScreen(nav, top)
             null -> Column(Modifier.fillMaxSize()) {
                 Box(Modifier.weight(1f)) {
                     holder.SaveableStateProvider(nav.tab.name) {

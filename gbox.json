@@ -6,7 +6,7 @@
   "sourceLinkTitle": "Сайт",
   "sourceLinkUrl": "https://qmurzik.github.io/AnixQ/",
   "sourceImage": "https://raw.githubusercontent.com/qmurzik/AnixQ/gbox-source/icon.png",
-  "sourceUpdateTime": "2026-11-10T11:21:38+0000",
+  "sourceUpdateTime": "2026-11-14T04:47:23+0000",
   "sourceDescription": "AnixQ — аниме с AnimeLib: каталог, плеер без рекламы, синхронизация с Shikimori.",
   "appCategories": [
     "Приложения"
@@ -15,13 +15,13 @@
     {
       "appType": "SELF_SIGN",
       "appCateIndex": 0,
-      "appUpdateTime": "2026-11-10T11:21:38+0000",
+      "appUpdateTime": "2026-11-14T04:47:23+0000",
       "appName": "AnixQ",
-      "appVersion": "1.0.90",
+      "appVersion": "1.0.91",
       "appImage": "https://raw.githubusercontent.com/qmurzik/AnixQ/gbox-source/icon.png",
-      "appPackage": "https://github.com/qmurzik/AnixQ/releases/download/v1.0.90/AnixQ.ipa",
-      "appSize": 4951991,
-      "appDescription": "• Faster 'continue on TV' detection"
+      "appPackage": "https://github.com/qmurzik/AnixQ/releases/download/v1.0.91/AnixQ.ipa",
+      "appSize": 4958239,
+      "appDescription": "• AniLibria: check their server answers before playing"
     }
   ]
 }

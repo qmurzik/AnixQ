@@ -1,5 +1,6 @@
 package ru.qmods.anixq.mobile.ui
 
+import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.NetworkCheck
 import androidx.compose.foundation.horizontalScroll
@@ -174,6 +175,7 @@ fun SettingsScreen(nav: Nav) {
             ToggleRow("Следующая серия сама", Icons.Default.SkipNext, Pal.green, Store.autoNext) { Store.autoNext = it }
             ToggleRow("Субтитры, где есть", Icons.Default.Subtitles, Pal.teal, Store.subtitles) { Store.subtitles = it }
             ToggleRow("Режим марафона", Icons.Default.LocalFireDepartment, Pal.orange, Store.marathon) { Store.marathon = it }
+            ToggleRow("Открывать плеер во весь экран", Icons.Default.Fullscreen, Pal.blue, Store.playerFullscreen) { Store.playerFullscreen = it }
             ToggleRow("Пропускать эндинг", Icons.Default.FastForward, Pal.indigo, Store.autoSkipEnding) { Store.autoSkipEnding = it }
             ToggleRow("Жесты яркости и громкости", Icons.Default.SwipeVertical, Pal.blue, Store.gestureLevels) { Store.gestureLevels = it }
             ToggleRow("Перемотка свайпом", Icons.Default.Swipe, Pal.teal, Store.gestureSeek) { Store.gestureSeek = it }

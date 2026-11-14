@@ -169,6 +169,11 @@ object Store {
     fun ratePrompted(titleId: Int) = prefs.getBoolean("ratePrompted.$titleId", false)
     fun markRatePrompted(titleId: Int) { prefs.edit().putBoolean("ratePrompted.$titleId", true).apply() }
 
+    /** Phone: open the player straight in landscape (otherwise it follows how the phone is held). */
+    var playerFullscreen: Boolean
+        get() = prefs.getBoolean("playerFullscreen", false)
+        set(v) { prefs.edit().putBoolean("playerFullscreen", v).apply(); bump() }
+
     /** Skip the ending (and the preview after it) by itself. */
     var autoSkipEnding: Boolean
         get() = prefs.getBoolean("autoSkipEnding", false)

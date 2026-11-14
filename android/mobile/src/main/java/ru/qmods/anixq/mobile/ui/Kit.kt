@@ -255,9 +255,9 @@ fun CircleButton(icon: ImageVector, description: String?, modifier: Modifier = M
 
 @Composable
 fun Capsule(text: String, icon: ImageVector? = null, selected: Boolean = false, trailing: ImageVector? = null, onClick: () -> Unit) {
-    Row(Modifier.clip(CircleShape).background(if (selected) Color.White else Pal.cardHi).clickable(onClick = onClick)
+    Row(Modifier.clip(CircleShape).background(if (selected) Pal.text else Pal.cardHi).clickable(onClick = onClick)
         .padding(horizontal = 13.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-        val c = if (selected) Color.Black else Pal.text
+        val c = if (selected) Pal.bg else Pal.text
         if (icon != null) Icon(icon, null, Modifier.size(15.dp), tint = c)
         Text(text, fontSize = 14.sp, fontWeight = FontWeight.Medium, color = c, maxLines = 1, modifier = Modifier.padding(start = if (icon != null) 5.dp else 0.dp))
         if (trailing != null) Icon(trailing, null, Modifier.size(15.dp).padding(start = 2.dp), tint = c)
@@ -300,7 +300,7 @@ fun GroupRow(
             trailing?.invoke()
             if (chevron) Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = Pal.faint, modifier = Modifier.padding(start = 4.dp))
         }
-        if (divider) HorizontalDivider(Modifier.padding(start = if (icon != null) 58.dp else 16.dp), thickness = 0.5.dp, color = Color.White.copy(alpha = 0.1f))
+        if (divider) HorizontalDivider(Modifier.padding(start = if (icon != null) 58.dp else 16.dp), thickness = 0.5.dp, color = Pal.stroke)
     }
 }
 
@@ -374,13 +374,13 @@ fun BookmarkMenu(title: Title, open: Boolean, onDismiss: () -> Unit) {
                 leadingIcon = { Icon(if (b == current) Icons.Default.CheckCircle else b.icon, null, tint = if (b == current) Pal.pink else b.color) })
         }
         if (current != null) {
-            HorizontalDivider(color = Color.White.copy(alpha = 0.1f))
+            HorizontalDivider(color = Pal.stroke)
             DropdownMenuItem({ Text("Удалить из закладок", color = Pal.red) }, onClick = { onDismiss(); Store.setBookmark(title, null) })
         }
         // Own collections: add / remove this title.
         val cols by ru.qmods.anixq.mobile.data.Collections.all.collectAsState()
         if (cols.isNotEmpty()) {
-            HorizontalDivider(color = Color.White.copy(alpha = 0.1f))
+            HorizontalDivider(color = Pal.stroke)
             cols.forEach { c ->
                 val inside = ru.qmods.anixq.mobile.data.Collections.contains(c, title)
                 DropdownMenuItem({ Text("${c.emoji} ${c.name}") }, onClick = { onDismiss(); ru.qmods.anixq.mobile.data.Collections.toggle(c.id, title) },

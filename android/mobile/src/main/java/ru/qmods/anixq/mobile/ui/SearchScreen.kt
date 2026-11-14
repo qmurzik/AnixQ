@@ -173,6 +173,6 @@ fun TitleRow(t: Title, trailing: String? = null, onClick: () -> Unit) {
             if (trailing != null) Text(trailing, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Pal.pink)
             else t.rating?.takeIf { it > 0 }?.let { ScoreBadge(it) }
         }
-        HorizontalDivider(Modifier.padding(start = 84.dp), thickness = 0.5.dp, color = Color.White.copy(alpha = 0.1f))
+        HorizontalDivider(Modifier.padding(start = 84.dp), thickness = 0.5.dp, color = Pal.stroke)
     }
 }

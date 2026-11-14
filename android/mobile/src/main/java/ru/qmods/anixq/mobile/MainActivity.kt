@@ -1,5 +1,7 @@
 package ru.qmods.anixq.mobile
 
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.getValue
 import android.app.PictureInPictureParams
 import android.content.Intent
 import android.content.res.Configuration
@@ -99,6 +101,7 @@ class MainActivity : ComponentActivity() {
         NewEpisodes.schedule(applicationContext)
         ru.qmods.anixq.mobile.data.Collections.init(applicationContext)
         ru.qmods.anixq.mobile.data.Notes.init(applicationContext)
+        ru.qmods.anixq.mobile.ui.Looks.init(applicationContext)
         ru.qmods.anixq.tv.data.Room.myName = "Android (${Build.MODEL})"
         // Android 13+: ask once for notifications (new episodes).
         if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
@@ -123,7 +126,14 @@ class MainActivity : ComponentActivity() {
                 onDispose { ru.qmods.anixq.tv.data.Room.onStateWithoutPlayer = null }
             }
             AnixTheme { androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.fillMaxSize()) {
+                // Status bar icons follow the theme (dark icons on the light look).
+                androidx.compose.runtime.LaunchedEffect(ru.qmods.anixq.mobile.ui.Looks.light) {
+                    androidx.core.view.WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightStatusBars = ru.qmods.anixq.mobile.ui.Looks.light
+                    androidx.core.view.WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightNavigationBars = ru.qmods.anixq.mobile.ui.Looks.light
+                }
+                var onboarded by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(getSharedPreferences("looks", MODE_PRIVATE).getBoolean("onboarded", false) || Sync.isOn || Store.libToken != null) }
                 Root(n)
+                if (!onboarded) ru.qmods.anixq.mobile.ui.Onboarding(n) { onboarded = true; getSharedPreferences("looks", MODE_PRIVATE).edit().putBoolean("onboarded", true).apply() }
                 // App lock: the content stays composed (player state), the lock screen covers it.
                 if (ru.qmods.anixq.mobile.ui.AppLock.appLocked(this@MainActivity) && !ru.qmods.anixq.mobile.ui.AppLock.unlocked) ru.qmods.anixq.mobile.ui.LockScreen()
             } }
@@ -144,6 +154,9 @@ class MainActivity : ComponentActivity() {
             "title" -> u.pathSegments.firstOrNull()?.let { slug -> nav.open(Title(id = slug.substringBefore("--").toIntOrNull() ?: 0, slug = slug)) }
             "continue" -> Store.continueList.firstOrNull()?.let { e -> nav.play(PlayerRoute(e.title, resume = true)) }
             "home" -> { nav.stack.clear(); nav.tab = Tab.HOME }
+            "search" -> { nav.stack.clear(); nav.tab = Tab.SEARCH }
+            "remote" -> nav.push(ru.qmods.anixq.mobile.ui.RemoteRoute)
+            "schedule" -> nav.push(ru.qmods.anixq.mobile.ui.ScheduleRoute)
             // "Досмотреть на ТВ?" notification: start the episode on the TV and show the remote.
             "tv-continue" -> Store.continueList.firstOrNull()?.let { e ->
                 androidx.core.app.NotificationManagerCompat.from(this).cancel(NearTv.NOTE_ID)
@@ -164,6 +177,8 @@ class MainActivity : ComponentActivity() {
     override fun onStart() {
         super.onStart()
         ru.qmods.anixq.mobile.ui.AppLock.onStart(this)
+        ru.qmods.anixq.mobile.ui.Shortcuts.publish(applicationContext)
+        lifecycleScope.launch { ru.qmods.anixq.mobile.ui.CalendarSync.sync(applicationContext) }
         Sync.start()
         Sync.syncNow()
         ru.qmods.anixq.tv.data.Crashes.upload()
@@ -232,6 +247,8 @@ fun Root(nav: Nav) {
             is ru.qmods.anixq.mobile.ui.PersonRoute -> ru.qmods.anixq.mobile.ui.PersonScreen(nav, top)
             ru.qmods.anixq.mobile.ui.TraceRoute -> ru.qmods.anixq.mobile.ui.TraceScreen(nav)
             ru.qmods.anixq.mobile.ui.StatsRoute -> ru.qmods.anixq.mobile.ui.StatsScreen(nav)
+            ru.qmods.anixq.mobile.ui.DiagnosticsRoute -> ru.qmods.anixq.mobile.ui.DiagnosticsScreen(nav)
+            ru.qmods.anixq.mobile.ui.ReportRoute -> ru.qmods.anixq.mobile.ui.ReportScreen(nav)
             ru.qmods.anixq.mobile.ui.AchievementsRoute -> ru.qmods.anixq.mobile.ui.AchievementsScreen(nav)
             ru.qmods.anixq.mobile.ui.YearCardRoute -> ru.qmods.anixq.mobile.ui.YearCardScreen(nav)
             ru.qmods.anixq.mobile.ui.FriendsRoute -> ru.qmods.anixq.mobile.ui.FriendsScreen(nav)

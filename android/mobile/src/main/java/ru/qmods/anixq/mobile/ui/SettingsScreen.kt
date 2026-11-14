@@ -1,5 +1,8 @@
 package ru.qmods.anixq.mobile.ui
 
+import androidx.compose.material.icons.filled.BugReport
+import androidx.compose.material.icons.filled.NetworkCheck
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.material.icons.filled.SwapVert
 import androidx.compose.material.icons.filled.Backup
 import androidx.compose.material.icons.filled.Lock
@@ -200,10 +203,34 @@ fun SettingsScreen(nav: Nav) {
             })
         }
 
+        Group("Оформление") {
+            Column(Modifier.padding(14.dp)) {
+                Text("Тема", fontSize = 13.sp, color = Pal.muted)
+                Row(Modifier.padding(top = 8.dp).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Looks.Mode.entries.forEach { m -> Capsule(m.title, selected = Looks.mode == m) { Looks.set(m) } }
+                }
+                Text("Акцент", fontSize = 13.sp, color = Pal.muted, modifier = Modifier.padding(top = 14.dp))
+                Row(Modifier.padding(top = 8.dp).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Looks.Accent.entries.filter { it != Looks.Accent.YOU || android.os.Build.VERSION.SDK_INT >= 31 }.forEach { a ->
+                        val c = if (a == Looks.Accent.YOU) Looks.dynamic ?: a.color else a.color
+                        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.clickable { Looks.set(a) }) {
+                            Box(Modifier.size(34.dp).clip(CircleShape).background(androidx.compose.ui.graphics.Brush.linearGradient(listOf(c, a.second)))
+                                .border(if (Looks.accent == a) 3.dp else 0.dp, Pal.text, CircleShape))
+                            Text(a.title, fontSize = 11.sp, color = Pal.muted, modifier = Modifier.padding(top = 4.dp))
+                        }
+                    }
+                }
+            }
+        }
+        Group("Уведомления и календарь") { CalendarRow() }
         Group("Данные и защита") {
             GroupRow("Блокировка и закрытые папки", icon = Icons.Default.Lock, iconColor = Pal.indigo, chevron = true) { nav.push(LockRoute) }
             GroupRow("Резервная копия", icon = Icons.Default.Backup, iconColor = Pal.blue, chevron = true) { nav.push(BackupRoute) }
             GroupRow("Экспорт и импорт списка (MAL)", icon = Icons.Default.SwapVert, iconColor = Pal.green, chevron = true, divider = false) { nav.push(ListTransferRoute) }
+        }
+        Group("Помощь") {
+            GroupRow("Проверка связи", "Какие серверы доступны из вашей сети", Icons.Default.NetworkCheck, Pal.teal, chevron = true) { nav.push(DiagnosticsRoute) }
+            GroupRow("Сообщить о проблеме", icon = Icons.Default.BugReport, iconColor = Pal.red, chevron = true, divider = false) { nav.push(ReportRoute) }
         }
         Group("О приложении") {
             GroupRow("Версия", icon = Icons.Default.Info, iconColor = Pal.faint, value = BuildConfig.VERSION_NAME)

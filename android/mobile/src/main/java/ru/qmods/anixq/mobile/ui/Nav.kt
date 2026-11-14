@@ -37,6 +37,8 @@ data object SettingsRoute : Route
 data object SyncRoute : Route
 data object LibLoginRoute : Route
 data object TraceRoute : Route
+data object DiagnosticsRoute : Route
+data object ReportRoute : Route
 data object StatsRoute : Route
 data object AchievementsRoute : Route
 data object YearCardRoute : Route

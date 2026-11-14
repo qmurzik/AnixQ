@@ -133,7 +133,7 @@ fun LibraryScreen(nav: Nav) {
                             androidx.compose.material3.Icon(androidx.compose.material.icons.Icons.Default.Close, "Убрать из истории", tint = Pal.faint)
                         }
                     }
-                    if (i < history.lastIndex) androidx.compose.material3.HorizontalDivider(Modifier.padding(start = 72.dp), thickness = 0.5.dp, color = Color.White.copy(alpha = 0.1f))
+                    if (i < history.lastIndex) androidx.compose.material3.HorizontalDivider(Modifier.padding(start = 72.dp), thickness = 0.5.dp, color = Pal.stroke)
                 }
             }
         }

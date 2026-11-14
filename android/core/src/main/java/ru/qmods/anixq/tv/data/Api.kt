@@ -211,6 +211,31 @@ object Api {
             json.obj("meta")?.optBoolean("has_next_page") ?: false)
     }
 
+    /** A comment pinned to a moment of the episode ("03:34 Это всё план Айзена!"). */
+    data class TimedComment(val id: Int, val time: Double, val text: String, val user: String)
+
+    /** Timecoded comments of an episode (rare, so a few pages are scanned) — for comments flying over the video. */
+    suspend fun timedComments(episodeId: Int, pages: Int = 6): List<TimedComment> {
+        val out = ArrayList<TimedComment>()
+        val node = Regex("timecode-node[^>]*>\\s*([0-9]{1,2}:[0-9]{2}(?::[0-9]{2})?)\\s*</span>")
+        for (page in 1..pages) {
+            val json = runCatching { request("/comments", listOf("post_id" to episodeId.toString(), "post_type" to "episodes", "page" to page.toString()), auth = false) as? JSONObject }
+                .getOrNull() ?: break
+            val d = json.obj("data")
+            for (c in (d?.arr("root") ?: emptyList()) + (d?.arr("replies") ?: emptyList())) {
+                val id = c.int("id") ?: continue
+                val html = c.str("comment")?.takeIf { it.contains("timecode-node") } ?: continue
+                val m = node.find(html) ?: continue
+                val seconds = m.groupValues[1].split(":").mapNotNull { it.toDoubleOrNull() }.fold(0.0) { a, b -> a * 60 + b }
+                val text = ShikiExtras.plain(html.removeRange(m.range)).replace(Regex("^[^\\p{L}\\p{N}]+"), "")
+                if (text.isEmpty() || text.length >= 300) continue
+                out += TimedComment(id, seconds, text, c.obj("user")?.str("username") ?: "")
+            }
+            if (json.obj("meta")?.optBoolean("has_next_page") != true) break
+        }
+        return out.sortedBy { it.time }
+    }
+
     suspend fun similar(slug: String): List<Title> = try {
         val a = data(request("/anime/$slug/similar")) as? JSONArray ?: JSONArray()
         val seen = HashSet<Int>()

@@ -125,7 +125,45 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
     private var marathonRun = 0
     private var endingSkipped = false
 
+    // MARK: sleep timer, rating, timeline comments, own subtitles (iPhone parity)
+
+    /** Sleep timer: pause at [sleepAt] (ms) or at the end of this episode. */
+    var sleepAt by mutableLongStateOf(0L)
+    var sleepAfterEpisode by mutableStateOf(false)
+    fun setSleep(minutes: Int?) {
+        when {
+            minutes == null -> { sleepAt = 0; sleepAfterEpisode = false; say("Таймер сна выключен") }
+            minutes == 0 -> { sleepAt = 0; sleepAfterEpisode = true; say("Пауза в конце серии") }
+            else -> { sleepAfterEpisode = false; sleepAt = System.currentTimeMillis() + minutes * 60_000L; say("Пауза через $minutes мин") }
+        }
+    }
+    val sleepLabel: String? get() = when {
+        sleepAfterEpisode -> "до конца серии"
+        sleepAt > 0 -> "${((sleepAt - System.currentTimeMillis()) / 60_000 + 1).coerceAtLeast(1)} мин"
+        else -> null
+    }
+
+    /** "Как вам?" at the end of the last episode of a finished title. */
+    var ratePrompt by mutableStateOf(false)
+
+    var timed by mutableStateOf<List<ru.qmods.anixq.tv.data.Api.TimedComment>>(emptyList())
+    private var timedFor = -1
+
+    /** Subtitles from a file on the phone (SRT / ASS / VTT), added to this episode. */
+    fun addSubtitles(uri: String, name: String) {
+        val p = player ?: return
+        val ext = name.substringAfterLast('.', "srt").lowercase()
+        val sub = ru.qmods.anixq.tv.data.Subtitle(uri, if (ext == "ass" || ext == "ssa") "ass" else ext, name.substringBeforeLast('.'))
+        val updated = p.copy(subtitles = listOf(sub) + p.subtitles)
+        player = updated
+        subtitlesOn = true; Store.subtitles = true
+        exo?.load(currentUrl ?: return, pos, updated.subtitles)
+        exo?.setSubtitles(true)
+        say("Субтитры: ${sub.label}")
+    }
+
     fun autoAdvance() {
+        if (sleepAfterEpisode) { sleepAfterEpisode = false; pause(); say("Таймер сна: пауза"); return }
         marathonRun += 1
         if (Store.marathon && marathonRun >= ru.qmods.anixq.tv.data.Marathon.BREAK_AFTER) {
             marathonRun = 0
@@ -279,9 +317,27 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
             title.shikiId?.let { mal -> scope.launch { recap = ru.qmods.anixq.tv.data.AniSkip.recap(mal, ep0.number, dur) } }
         }
         if ((Store.autoSkipOpening || Store.marathon) && !recapSkipped && inRecap) skipRecap(auto = true)
+        if (sleepAt > 0 && System.currentTimeMillis() >= sleepAt) { sleepAt = 0; pause(); say("Таймер сна: пауза") }
+        if (sleepAfterEpisode && ended) { sleepAfterEpisode = false; say("Таймер сна: пауза") }
+        if (ep0 != null && Store.danmaku && native && timedFor != ep0.id) {
+            timedFor = ep0.id; timed = emptyList()
+            scope.launch { val l = ru.qmods.anixq.tv.data.Api.timedComments(ep0.id); if (episode?.id == ep0.id) timed = l }
+        }
+        if (!hasNext && !ratePrompt && dur > 300 && (ended || inEnding || dur - pos <= 45) && title.statusId == 2
+            && Store.rating(title.id) == null && !Store.ratePrompted(title.id)) {
+            Store.markRatePrompted(title.id); ratePrompt = true
+        }
         val op = opening
         if ((Store.autoSkipOpening || Store.marathon) && op != null && !openingSkipped && pos >= op.from && pos < op.to - 3) skipOpening(auto = true)
         val ed = ending
+        // "Пропускать эндинг": straight to the next episode once the ending starts (the timer still wins).
+        if (Store.autoSkipEnding && !Store.marathon && hasNext && ed != null && !endingSkipped && !breakPrompt && pos >= ed.from + 1 && pos < ed.to) {
+            endingSkipped = true
+            if (!viewedSent) episode?.let { ep -> viewedSent = true; Store.markWatched(title, ep); scope.launch { runCatching { Api.markViewed(ep.id, player?.playerId) } } }
+            say("Эндинг пропущен")
+            autoAdvance()
+            return
+        }
         if (Store.marathon && hasNext && ed != null && !endingSkipped && !breakPrompt && pos >= ed.from + 1 && pos < ed.to) {
             endingSkipped = true
             if (!viewedSent) episode?.let { ep -> viewedSent = true; Store.markWatched(title, ep); scope.launch { runCatching { Api.markViewed(ep.id, player?.playerId) } } }

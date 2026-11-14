@@ -1,5 +1,7 @@
 package ru.qmods.anixq.mobile.ui
 
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import android.app.Activity
 import android.content.Context
 import android.content.pm.ActivityInfo
@@ -112,6 +114,12 @@ fun PlayerScreen(nav: Nav, route: PlayerRoute) {
     var episodesOpen by remember { mutableStateOf(false) }
     var tuneOpen by remember { mutableStateOf(false) }
     var roomOpen by remember { mutableStateOf(false) }
+    var moreOpen by remember { mutableStateOf(false) }
+    var frame by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
+    var who by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
+    var listen by remember { mutableStateOf(false) }
+    var noteOpen by remember { mutableStateOf(false) }
+    var seekPreview by remember { mutableStateOf<Double?>(null) }
     val roomId by ru.qmods.anixq.tv.data.Room.roomId.collectAsState()
     var seekDrag by remember { mutableStateOf<Float?>(null) }
     var gesture by remember { mutableStateOf<Pair<ImageVector, Float>?>(null) }
@@ -186,9 +194,12 @@ fun PlayerScreen(nav: Nav, route: PlayerRoute) {
         m.exo?.let { e -> if (m.native) AndroidView(factory = { e.view }, modifier = Modifier.fillMaxSize()) }
         m.kodik?.let { k -> if (!m.native) AndroidView(factory = { k.view }, modifier = Modifier.fillMaxSize()) }
         if (Pip.inPip) return@Box
+        LaunchedEffect(m.exo) { m.exo?.styleSubtitles(Store.subtitleScale, Store.subtitleBox) }
+        if (!listen) DanmakuLayer(m, Modifier.fillMaxSize())
+        if (listen) ListenOverlay(m) { listen = false }
 
         // Gesture layer (native player only: Kodik's page has its own touch controls).
-        if (m.native) BoxWithConstraints(Modifier.fillMaxSize()) {
+        if (m.native && !listen) BoxWithConstraints(Modifier.fillMaxSize()) {
             val w = constraints.maxWidth.toFloat()
             val h = constraints.maxHeight.toFloat()
             Box(Modifier.fillMaxSize()
@@ -214,7 +225,7 @@ fun PlayerScreen(nav: Nav, route: PlayerRoute) {
                     detectVerticalDragGestures(
                         onDragStart = { o ->
                             left = o.x < w / 2
-                            active = o.y > edgeY && o.y < h - edgeY && o.x > edgeX && o.x < w - edgeX && activity.hasWindowFocus()
+                            active = Store.gestureLevels && o.y > edgeY && o.y < h - edgeY && o.x > edgeX && o.x < w - edgeX && activity.hasWindowFocus()
                         },
                         onDragEnd = { active = false }, onDragCancel = { active = false },
                     ) { change, dy ->
@@ -234,7 +245,27 @@ fun PlayerScreen(nav: Nav, route: PlayerRoute) {
                         }
                         gestureAt = System.currentTimeMillis()
                     }
+                }
+                // Horizontal swipe: seek (90 s across the screen), shown live, applied on release.
+                .pointerInput(m, w, h) {
+                    var start = 0.0
+                    var active = false
+                    val edgeY = maxOf(48.dp.toPx(), h * 0.12f)
+                    detectHorizontalDragGestures(
+                        onDragStart = { o -> active = Store.gestureSeek && o.y > edgeY && o.y < h - edgeY && m.dur > 0; start = m.pos; if (active) seekPreview = start },
+                        onDragEnd = { seekPreview?.let { if (active) m.seekTo(it) }; seekPreview = null; active = false },
+                        onDragCancel = { seekPreview = null; active = false },
+                    ) { change, dx ->
+                        if (!active) return@detectHorizontalDragGestures
+                        change.consume()
+                        seekPreview = ((seekPreview ?: start) + dx / w * 90.0).coerceIn(0.0, m.dur)
+                        touched()
+                    }
                 })
+        }
+        seekPreview?.let { t ->
+            Text("${fmt(t)}  (${if (t >= m.pos) "+" else "−"}${fmt(kotlin.math.abs(t - m.pos))})", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold,
+                modifier = Modifier.align(Alignment.Center).clip(RoundedCornerShape(12.dp)).background(Color.Black.copy(alpha = 0.6f)).padding(14.dp))
         }
 
         if (m.message != null || (m.buffering && m.native && m.exo != null)) {
@@ -261,7 +292,7 @@ fun PlayerScreen(nav: Nav, route: PlayerRoute) {
                 if (m.native) Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(130.dp)
                     .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.75f)))))
                 Column(Modifier.fillMaxSize().safeDrawingPadding()) {
-                    PlayerTopBar(m, onBack = { nav.pop() }, onEpisodes = { episodesOpen = true; touched() }, onTune = { tuneOpen = true; touched() }, onRoom = { roomOpen = true; touched() }, roomActive = roomId != null, onTv = {
+                    PlayerTopBar(m, onBack = { nav.pop() }, onMore = { moreOpen = true; touched() }, onEpisodes = { episodesOpen = true; touched() }, onTune = { tuneOpen = true; touched() }, onRoom = { roomOpen = true; touched() }, roomActive = roomId != null, onTv = {
                         m.sendToTv()
                         Toast.makeText(context, "Продолжаем на телевизоре с ${fmt(m.pos)}", Toast.LENGTH_SHORT).show()
                         nav.pop(); nav.push(RemoteRoute)
@@ -317,11 +348,20 @@ fun PlayerScreen(nav: Nav, route: PlayerRoute) {
         RoomOverlay(Modifier.fillMaxSize())
         if (roomOpen) RoomPanel { roomOpen = false }
         if (m.breakPrompt && !Pip.inPip) BreakCard(m)
+        if (moreOpen) PlayerMoreSheet(m, nav, listen, { listen = it }, { frame = it }, { who = it }, { noteOpen = true }) { moreOpen = false }
+        frame?.let { FrameSheet(m, it) { frame = null } }
+        who?.let { WhoIsThisSheet(it) { who = null } }
+        if (m.ratePrompt && !Pip.inPip) RateSheet(m)
+        if (noteOpen) m.episode?.let { ep ->
+            TextDialog("Заметка к серии ${ep.number}", ru.qmods.anixq.mobile.data.Notes.get(m.title.id).episodes[ep.number] ?: "", "Что запомнилось на ${fmt(m.pos)}", { noteOpen = false }) {
+                ru.qmods.anixq.mobile.data.Notes.setEpisode(m.title.id, ep.number, it); noteOpen = false
+            }
+        }
     }
 }
 
 @Composable
-private fun PlayerTopBar(m: PlayerModel, onBack: () -> Unit, onEpisodes: () -> Unit, onTune: () -> Unit, onRoom: () -> Unit, roomActive: Boolean,
+private fun PlayerTopBar(m: PlayerModel, onBack: () -> Unit, onMore: () -> Unit, onEpisodes: () -> Unit, onTune: () -> Unit, onRoom: () -> Unit, roomActive: Boolean,
                          onTv: () -> Unit, touched: () -> Unit) {
     var menu by remember { mutableStateOf<String?>(null) }
     Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -359,6 +399,7 @@ private fun PlayerTopBar(m: PlayerModel, onBack: () -> Unit, onEpisodes: () -> U
         if (m.native && m.player?.subtitles?.isNotEmpty() == true) IconButton(onClick = { m.toggleSubtitles(); touched() }) {
             Icon(if (m.subtitlesOn) Icons.Default.ClosedCaption else Icons.Default.ClosedCaptionDisabled, "Субтитры", tint = Color.White)
         }
+        IconButton(onClick = onMore) { Icon(Icons.Default.MoreVert, "Ещё", tint = if (m.sleepLabel != null) Pal.pink else Color.White) }
     }
 }
 

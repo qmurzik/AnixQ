@@ -71,6 +71,35 @@ class ExoEngine(private val context: Context, private val onError: (String) -> U
         subtitleView?.setApplyEmbeddedStyles(false)
     }
 
+    /** Subtitle size (1 = normal) and an optional dark box behind the text. */
+    fun styleSubtitles(scale: Float, box: Boolean) {
+        view.subtitleView?.setStyle(androidx.media3.ui.CaptionStyleCompat(Color.WHITE, if (box) Color.argb(170, 0, 0, 0) else Color.TRANSPARENT,
+            Color.TRANSPARENT, if (box) androidx.media3.ui.CaptionStyleCompat.EDGE_TYPE_NONE else androidx.media3.ui.CaptionStyleCompat.EDGE_TYPE_OUTLINE,
+            Color.BLACK, null))
+        view.subtitleView?.setFractionalTextSize(0.058f * scale)
+    }
+
+    /** The picture on screen right now (null if the device can't copy it). */
+    fun captureFrame(done: (android.graphics.Bitmap?) -> Unit) {
+        val sv = view.videoSurfaceView
+        val size = exo.videoSize
+        val w = size.width.takeIf { it > 0 } ?: sv?.width ?: 0
+        val h = size.height.takeIf { it > 0 } ?: sv?.height ?: 0
+        if (w <= 0 || h <= 0) { done(null); return }
+        when (sv) {
+            is android.view.TextureView -> done(sv.bitmap)
+            is android.view.SurfaceView -> {
+                if (android.os.Build.VERSION.SDK_INT < 24) { done(null); return }
+                val bmp = android.graphics.Bitmap.createBitmap(w, h, android.graphics.Bitmap.Config.ARGB_8888)
+                runCatching {
+                    android.view.PixelCopy.request(sv, bmp, { r -> done(if (r == android.view.PixelCopy.SUCCESS) bmp else null) },
+                        android.os.Handler(android.os.Looper.getMainLooper()))
+                }.onFailure { done(null) }
+            }
+            else -> done(null)
+        }
+    }
+
     /** Screen height in pixels the upscaler targets (capped at 1080 on weak boxes, else up to 2160). */
     private val screenHeight: Int by lazy {
         val h = runCatching {

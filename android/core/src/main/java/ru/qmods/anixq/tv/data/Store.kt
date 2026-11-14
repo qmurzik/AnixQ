@@ -169,6 +169,32 @@ object Store {
     fun ratePrompted(titleId: Int) = prefs.getBoolean("ratePrompted.$titleId", false)
     fun markRatePrompted(titleId: Int) { prefs.edit().putBoolean("ratePrompted.$titleId", true).apply() }
 
+    /** Skip the ending (and the preview after it) by itself. */
+    var autoSkipEnding: Boolean
+        get() = prefs.getBoolean("autoSkipEnding", false)
+        set(v) { prefs.edit().putBoolean("autoSkipEnding", v).apply(); bump() }
+
+    /** Phone player gestures: brightness / volume swipes, seeking by a horizontal swipe. */
+    var gestureLevels: Boolean
+        get() = prefs.getBoolean("gestureLevels", true)
+        set(v) { prefs.edit().putBoolean("gestureLevels", v).apply(); bump() }
+    var gestureSeek: Boolean
+        get() = prefs.getBoolean("gestureSeek", true)
+        set(v) { prefs.edit().putBoolean("gestureSeek", v).apply(); bump() }
+
+    /** Subtitle size (1 = normal) and a dark box behind them. */
+    var subtitleScale: Float
+        get() = prefs.getFloat("subtitleScale", 1f)
+        set(v) { prefs.edit().putFloat("subtitleScale", v).apply(); bump() }
+    var subtitleBox: Boolean
+        get() = prefs.getBoolean("subtitleBox", false)
+        set(v) { prefs.edit().putBoolean("subtitleBox", v).apply(); bump() }
+
+    /** Timecoded comments flying over the video. */
+    var danmaku: Boolean
+        get() = prefs.getBoolean("danmaku", true)
+        set(v) { prefs.edit().putBoolean("danmaku", v).apply(); bump() }
+
     /** AniLibria dub from AniLibria's own servers when they have the episode. */
     var libriaDirect: Boolean
         get() = prefs.getBoolean("libriaDirect", true)

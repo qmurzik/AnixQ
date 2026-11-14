@@ -1,5 +1,9 @@
 package ru.qmods.anixq.mobile.ui
 
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.EmojiEvents
+import androidx.compose.material.icons.filled.Group
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -84,7 +88,7 @@ fun LibraryScreen(nav: Nav) {
                 Icons.Default.SettingsRemote, listOf(Pal.pink, Pal.purple), Modifier.weight(1f)) { nav.push(if (Store.remoteChannel.isEmpty()) SyncRoute else RemoteRoute) }
         }
         Row(Modifier.padding(horizontal = 16.dp).padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Tile("Статистика", "$eps ${plural(eps, "серия", "серии", "серий")} · $hours ч", Icons.Default.BarChart, listOf(Pal.orange, Pal.gold), Modifier.weight(1f)) {}
+            Tile("Статистика", "$eps ${plural(eps, "серия", "серии", "серий")} · $hours ч", Icons.Default.BarChart, listOf(Pal.orange, Pal.gold), Modifier.weight(1f)) { nav.push(StatsRoute) }
             Tile("История", "$titles ${plural(titles, "тайтл", "тайтла", "тайтлов")}", Icons.Default.History, listOf(Pal.green, Pal.teal), Modifier.weight(1f)) { nav.push(HistoryRoute) }
         }
         val dls by ru.qmods.anixq.mobile.data.Downloads.items.collectAsState()
@@ -98,11 +102,19 @@ fun LibraryScreen(nav: Nav) {
         }
         Row(Modifier.padding(horizontal = 16.dp).padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Tile("Расписание", "Когда выйдут новые серии", Icons.Default.CalendarMonth, listOf(Pal.teal, Pal.blue), Modifier.weight(1f)) { nav.push(ScheduleRoute) }
+            Tile("Для вас", "Советы по оценкам и продолжения", Icons.Default.AutoAwesome, listOf(Pal.pink, Pal.orange), Modifier.weight(1f)) { nav.push(ForYouRoute) }
+        }
+        Row(Modifier.padding(horizontal = 16.dp).padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Tile("Друзья", if (Store.shikiJson != null) "Что смотрят на Shikimori" else "Нужен вход в Shikimori", Icons.Default.Group, listOf(Pal.indigo, Pal.purple), Modifier.weight(1f)) { nav.push(FriendsRoute) }
+            Tile("Достижения", "${StatsCalc.achievements().count { it.unlocked }} открыто", Icons.Default.EmojiEvents, listOf(Pal.gold, Pal.green), Modifier.weight(1f)) { nav.push(AchievementsRoute) }
         }
         Group("Закладки") {
+            val ctx = androidx.compose.ui.platform.LocalContext.current
+            val locked = remember(version) { AppLock.lockedFolders(ctx) }
             Bookmark.entries.forEachIndexed { i, b ->
                 val n = remember(version) { Store.titles(b).size }
-                GroupRow(b.title, icon = b.icon, iconColor = b.color, value = "$n", chevron = true, divider = i < Bookmark.entries.lastIndex) { nav.push(FolderRoute(b)) }
+                GroupRow(b.title, icon = if (b in locked) Icons.Default.Lock else b.icon, iconColor = b.color, value = if (b in locked) null else "$n", chevron = true,
+                    divider = i < Bookmark.entries.lastIndex) { AppLock.openFolder(ctx as android.app.Activity, b) { nav.push(FolderRoute(b)) } }
             }
         }
         Group("История") {

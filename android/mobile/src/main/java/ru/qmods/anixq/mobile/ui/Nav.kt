@@ -37,6 +37,14 @@ data object SettingsRoute : Route
 data object SyncRoute : Route
 data object LibLoginRoute : Route
 data object TraceRoute : Route
+data object StatsRoute : Route
+data object AchievementsRoute : Route
+data object YearCardRoute : Route
+data object FriendsRoute : Route
+data object ForYouRoute : Route
+data object ListTransferRoute : Route
+data object BackupRoute : Route
+data object LockRoute : Route
 data object RandomRoute : Route
 data object SeasonRoute : Route
 data class PersonRoute(val id: Int, val isCharacter: Boolean, val name: String) : Route

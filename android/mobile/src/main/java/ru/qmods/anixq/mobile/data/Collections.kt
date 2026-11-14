@@ -46,6 +46,20 @@ object Collections {
 
     fun delete(id: String) { all.value = all.value.filter { it.id != id }; save() }
 
+    /** For backups: all lists as JSON, and back (lists with the same id are replaced). */
+    fun export(): JSONArray = JSONArray(app.getSharedPreferences("collections", Context.MODE_PRIVATE).getString("all", "[]"))
+    fun importAll(a: JSONArray) {
+        val incoming = (0 until a.length()).mapNotNull { i ->
+            runCatching {
+                val c = a.getJSONObject(i); val it = c.getJSONArray("items")
+                Collection(c.getString("id"), c.getString("name"), c.optString("emoji", "📺"),
+                    (0 until it.length()).map { j -> it.getJSONObject(j).let { x -> Item(x.getString("slug"), x.getString("title"), x.optString("cover").ifEmpty { null }) } })
+            }.getOrNull()
+        }
+        all.value = all.value.filter { c -> incoming.none { it.id == c.id } } + incoming
+        save()
+    }
+
     fun contains(c: Collection, t: Title) = c.items.any { it.slug == t.slug }
 
     fun toggle(id: String, t: Title) {

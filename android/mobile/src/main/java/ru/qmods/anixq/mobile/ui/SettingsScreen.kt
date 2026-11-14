@@ -1,5 +1,8 @@
 package ru.qmods.anixq.mobile.ui
 
+import androidx.compose.material.icons.filled.SwapVert
+import androidx.compose.material.icons.filled.Backup
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.automirrored.filled.Comment
 import androidx.compose.material.icons.filled.Swipe
 import androidx.compose.material.icons.filled.SwipeVertical
@@ -197,6 +200,11 @@ fun SettingsScreen(nav: Nav) {
             })
         }
 
+        Group("Данные и защита") {
+            GroupRow("Блокировка и закрытые папки", icon = Icons.Default.Lock, iconColor = Pal.indigo, chevron = true) { nav.push(LockRoute) }
+            GroupRow("Резервная копия", icon = Icons.Default.Backup, iconColor = Pal.blue, chevron = true) { nav.push(BackupRoute) }
+            GroupRow("Экспорт и импорт списка (MAL)", icon = Icons.Default.SwapVert, iconColor = Pal.green, chevron = true, divider = false) { nav.push(ListTransferRoute) }
+        }
         Group("О приложении") {
             GroupRow("Версия", icon = Icons.Default.Info, iconColor = Pal.faint, value = BuildConfig.VERSION_NAME)
             GroupRow(when (val u = update) {

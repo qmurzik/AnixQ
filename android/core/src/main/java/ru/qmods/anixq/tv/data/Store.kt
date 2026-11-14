@@ -329,6 +329,34 @@ object Store {
         if (bookmark(title.slug) == null || bookmark(title.slug) == Bookmark.PLANNED) setBookmark(title, Bookmark.WATCHING)
     }
 
+    /** Episodes 1…[count] marked as watched (list import); true if anything changed. */
+    fun markWatchedUpTo(title: Title, count: Int): Boolean {
+        if (count <= 0) return false
+        val set = watched.getOrPut(title.id) { mutableSetOf() }
+        val added = set.addAll((1..count).map { it.toString() })
+        if (added) { changed(); live(title.id) }
+        return added
+    }
+
+    /** Settings and local data for a backup file (everything in the main preferences). */
+    // Sign-ins and keys never go into a backup file (anyone could read it); only settings and preferences.
+    private val secret = Regex("token|shiki|github|auth|cookie|key|secret|channel|lib\\.|gist|deviceId|^rc\\.|^gh\\.|^library$|home\\.cache", RegexOption.IGNORE_CASE)
+    fun exportPrefs(): JSONObject = JSONObject().apply {
+        prefs.all.forEach { (k, v) -> if (v != null && !secret.containsMatchIn(k) && v !is Set<*>) put(k, JSONObject().put("t", v.javaClass.simpleName).put("v", v)) }
+    }
+    fun importPrefs(o: JSONObject) {
+        val e = prefs.edit()
+        o.keys().forEach { k ->
+            if (secret.containsMatchIn(k)) return@forEach
+            val x = o.optJSONObject(k) ?: return@forEach
+            when (x.optString("t")) {
+                "Boolean" -> e.putBoolean(k, x.optBoolean("v")); "Integer" -> e.putInt(k, x.optInt("v")); "Long" -> e.putLong(k, x.optLong("v"))
+                "Float" -> e.putFloat(k, x.optDouble("v").toFloat()); "String" -> e.putString(k, x.optString("v"))
+            }
+        }
+        e.apply(); bump()
+    }
+
     fun setBookmark(title: Title, status: Bookmark?) {
         if (status == null) {
             bookmarks.remove(title.slug)

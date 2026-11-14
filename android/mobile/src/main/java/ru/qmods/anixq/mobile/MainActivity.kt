@@ -122,7 +122,11 @@ class MainActivity : ComponentActivity() {
                 }
                 onDispose { ru.qmods.anixq.tv.data.Room.onStateWithoutPlayer = null }
             }
-            AnixTheme { Root(n) }
+            AnixTheme { androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.fillMaxSize()) {
+                Root(n)
+                // App lock: the content stays composed (player state), the lock screen covers it.
+                if (ru.qmods.anixq.mobile.ui.AppLock.appLocked(this@MainActivity) && !ru.qmods.anixq.mobile.ui.AppLock.unlocked) ru.qmods.anixq.mobile.ui.LockScreen()
+            } }
         }
     }
 
@@ -159,6 +163,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onStart() {
         super.onStart()
+        ru.qmods.anixq.mobile.ui.AppLock.onStart(this)
         Sync.start()
         Sync.syncNow()
         ru.qmods.anixq.tv.data.Crashes.upload()
@@ -175,6 +180,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onStop() {
         super.onStop()
+        ru.qmods.anixq.mobile.ui.AppLock.onStop()
         Sync.flush()
         ContinueWidget.refresh(applicationContext)
         if (!Pip.inPip) Remote.stop()
@@ -225,6 +231,14 @@ fun Root(nav: Nav) {
             LibLoginRoute -> LibLoginScreen(nav)
             is ru.qmods.anixq.mobile.ui.PersonRoute -> ru.qmods.anixq.mobile.ui.PersonScreen(nav, top)
             ru.qmods.anixq.mobile.ui.TraceRoute -> ru.qmods.anixq.mobile.ui.TraceScreen(nav)
+            ru.qmods.anixq.mobile.ui.StatsRoute -> ru.qmods.anixq.mobile.ui.StatsScreen(nav)
+            ru.qmods.anixq.mobile.ui.AchievementsRoute -> ru.qmods.anixq.mobile.ui.AchievementsScreen(nav)
+            ru.qmods.anixq.mobile.ui.YearCardRoute -> ru.qmods.anixq.mobile.ui.YearCardScreen(nav)
+            ru.qmods.anixq.mobile.ui.FriendsRoute -> ru.qmods.anixq.mobile.ui.FriendsScreen(nav)
+            ru.qmods.anixq.mobile.ui.ForYouRoute -> ru.qmods.anixq.mobile.ui.ForYouScreen(nav)
+            ru.qmods.anixq.mobile.ui.ListTransferRoute -> ru.qmods.anixq.mobile.ui.ListTransferScreen(nav)
+            ru.qmods.anixq.mobile.ui.BackupRoute -> ru.qmods.anixq.mobile.ui.BackupScreen(nav)
+            ru.qmods.anixq.mobile.ui.LockRoute -> ru.qmods.anixq.mobile.ui.LockSettingsScreen(nav)
             ru.qmods.anixq.mobile.ui.RandomRoute -> ru.qmods.anixq.mobile.ui.RandomScreen(nav)
             ru.qmods.anixq.mobile.ui.SeasonRoute -> ru.qmods.anixq.mobile.ui.SeasonScreen(nav)
             is ru.qmods.anixq.mobile.ui.CommentsRoute -> ru.qmods.anixq.mobile.ui.CommentsScreen(nav, top)

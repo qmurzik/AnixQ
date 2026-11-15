@@ -1,0 +1,21 @@
+name: Check Android signing
+on: workflow_dispatch
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: "17" }
+      - uses: actions/cache/restore@v4
+        with: { path: ~/anixq-tv-signing.p12, key: anixq-tv-signing-v1 }
+      - name: Compare public certificates
+        env: { GH_TOKEN: "${{ github.token }}" }
+        run: |
+          keytool -exportcert -alias anixq -keystore "$HOME/anixq-tv-signing.p12" -storepass anixq-tv | sha256sum
+          gh release download tv --repo "$GITHUB_REPOSITORY" --pattern AnixQ-TV.apk --output "$RUNNER_TEMP/previous.apk"
+          for SIGNER in "$ANDROID_HOME"/build-tools/*/apksigner; do
+            echo "Verifier: $SIGNER"
+            "$SIGNER" verify --print-certs "$RUNNER_TEMP/previous.apk"
+          done

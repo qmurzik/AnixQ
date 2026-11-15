@@ -26,6 +26,7 @@ jobs:
       version: ${{ steps.v.outputs.version }}
     steps:
       - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
       - uses: actions/setup-java@v4
         with: { distribution: temurin, java-version: "17" }
       - uses: gradle/actions/setup-gradle@v4
@@ -75,8 +76,8 @@ jobs:
             if [ "$CHANNEL" = tv ]; then APK=AnixQ-TV.apk; else APK=AnixQ.apk; fi
             PREVIOUS="$RUNNER_TEMP/previous-$CHANNEL.apk"
             gh release download "$CHANNEL" --repo "$GITHUB_REPOSITORY" --pattern "$APK" --output "$PREVIOUS"
-            BEFORE=$("$SIGNER" verify --print-certs "$PREVIOUS" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')
-            AFTER=$("$SIGNER" verify --print-certs "$APK" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')
+            BEFORE=$("$SIGNER" verify --print-certs "$PREVIOUS" | sed -n 's/^.*certificate SHA-256 digest: //p' | sort -u)
+            AFTER=$("$SIGNER" verify --print-certs "$APK" | sed -n 's/^.*certificate SHA-256 digest: //p' | sort -u)
             if [ -z "$BEFORE" ] || [ "$BEFORE" != "$AFTER" ]; then
               echo "::error::Signing certificate changed for $CHANNEL; refusing to publish an incompatible update"
               exit 1
@@ -95,7 +96,7 @@ jobs:
           # Rolling link that always points at the newest TV build.
           gh release view tv >/dev/null 2>&1 || gh release create tv --title "AnixQ TV (последняя)" --notes "Постоянная ссылка на последнюю сборку для Android TV." --latest=false
           # What the app on the TV checks for updates.
-          NOTES=$(git log -1 --format=%s)
+          NOTES=$(git log -1 --format=%s -- android)
           python3 -c "import json,sys; json.dump({'code': int(sys.argv[1]), 'name': sys.argv[2], 'notes': sys.argv[3][:300],
             'apk': 'https://github.com/${{ github.repository }}/releases/download/tv-v'+sys.argv[2]+'/AnixQ-TV.apk'}, open('tv-version.json','w'), ensure_ascii=False)" \
             "${{ github.run_number }}" "$V" "$NOTES"

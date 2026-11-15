@@ -207,12 +207,30 @@ class MainActivity : ComponentActivity() {
         if (!Pip.inPip) Remote.stop()
     }
 
+    private fun supportsPlayerPip(): Boolean = Build.VERSION.SDK_INT >= 26 &&
+        packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_PICTURE_IN_PICTURE)
+
+    /** Android 12+ owns the Home gesture animation. Update eligibility with actual playback state. */
+    fun updatePlayerPip(playing: Boolean) {
+        if (!supportsPlayerPip()) return
+        val params = PictureInPictureParams.Builder().setAspectRatio(Rational(16, 9))
+        if (Build.VERSION.SDK_INT >= 31) params.setAutoEnterEnabled(playing)
+        runCatching { setPictureInPictureParams(params.build()) }
+    }
+
+    fun enterPlayerPip(): Boolean {
+        val m = Pip.model ?: return false
+        if (!supportsPlayerPip() || isFinishing || !m.native || m.exo == null || m.loading || m.failed) return false
+        if (isInPictureInPictureMode) return true
+        return runCatching {
+            enterPictureInPictureMode(PictureInPictureParams.Builder().setAspectRatio(Rational(16, 9)).build())
+        }.getOrDefault(false)
+    }
+
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
-        val m = Pip.model
-        if (m != null && m.playing && m.native && Build.VERSION.SDK_INT >= 26) {
-            runCatching { enterPictureInPictureMode(PictureInPictureParams.Builder().setAspectRatio(Rational(16, 9)).build()) }
-        }
+        // S+ uses setAutoEnterEnabled; older Android versions need explicit entry on Home.
+        if (Build.VERSION.SDK_INT in 26..30 && Pip.model?.playing == true) enterPlayerPip()
     }
 
     override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: Configuration) {

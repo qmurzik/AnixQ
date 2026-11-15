@@ -60,6 +60,9 @@ jobs:
       - name: Playback recovery regression tests
         working-directory: android
         run: gradle --no-daemon :core:testDebugUnitTest
+      - name: Phone PiP layout regression test
+        working-directory: android
+        run: gradle --no-daemon :mobile:testDebugUnitTest --tests 'ru.qmods.anixq.mobile.ui.PlayerVideoLayoutTest'
       - name: Build (TV + phone)
         working-directory: android
         env: { BUILD_NUMBER: "${{ github.run_number }}" }

@@ -1,13 +1,11 @@
 package ru.qmods.anixq.mobile.ui
 
 import android.app.Activity
-import android.app.PictureInPictureParams
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.media.AudioManager
 import android.os.Build
-import android.util.Rational
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -180,7 +178,10 @@ fun PlayerScreen(nav: Nav, route: PlayerRoute) {
         orientation(if (Store.playerFullscreen) ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE else ActivityInfo.SCREEN_ORIENTATION_FULL_USER)
         onDispose {
             ru.qmods.anixq.mobile.NearTv.sync(context)
-            Pip.model = null
+            if (Pip.model === m) {
+                Pip.model = null
+                (activity as? ru.qmods.anixq.mobile.MainActivity)?.updatePlayerPip(false)
+            }
             if (ru.qmods.anixq.tv.data.Room.player === m) ru.qmods.anixq.tv.data.Room.player = null
             ru.qmods.anixq.mobile.PlaybackService.detach(context)
             m.release()
@@ -226,6 +227,10 @@ fun PlayerScreen(nav: Nav, route: PlayerRoute) {
             if (m.showNext && m.countdown && m.episode?.id == episodeId) m.autoAdvance()
         }
     }
+    LaunchedEffect(m.exo, m.playing, m.native, m.loading, m.failed) {
+        (activity as? ru.qmods.anixq.mobile.MainActivity)?.updatePlayerPip(
+            m.exo != null && m.native && m.playing && !m.loading && !m.failed)
+    }
     LaunchedEffect(m.exo) { m.exo?.let { if (Store.backgroundAudio) ru.qmods.anixq.mobile.PlaybackService.attach(context, it.exo) } }
     LaunchedEffect(m.exo, fill) {
         m.exo?.view?.resizeMode = if (fill) androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM else androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
@@ -239,7 +244,7 @@ fun PlayerScreen(nav: Nav, route: PlayerRoute) {
 
     BoxWithConstraints(Modifier.fillMaxSize().background(if (Pip.inPip) Color.Black else Ink)) {
         val land = maxWidth > maxHeight
-        BackHandler {
+        BackHandler(enabled = !Pip.inPip) {
             when {
                 panel != null -> panel = null
                 locked -> { locked = false; controls = true }
@@ -247,7 +252,8 @@ fun PlayerScreen(nav: Nav, route: PlayerRoute) {
                 else -> nav.pop()
             }
         }
-        LaunchedEffect(land) {
+        LaunchedEffect(land, Pip.inPip) {
+            if (Pip.inPip) return@LaunchedEffect
             controls = true
             touched()
             val ctl = WindowCompat.getInsetsController(activity.window, activity.window.decorView)
@@ -264,9 +270,11 @@ fun PlayerScreen(nav: Nav, route: PlayerRoute) {
                 onFullscreen = { full -> orientation(if (full) ActivityInfo.SCREEN_ORIENTATION_USER_LANDSCAPE else ActivityInfo.SCREEN_ORIENTATION_USER_PORTRAIT) },
                 onListen = { listen = it })
         }
-        if (Pip.inPip) { video(Modifier.fillMaxSize()); return@BoxWithConstraints }
+        // Keep the AndroidView and its parent alive across all three layouts.
+        PlayerVideoLayout(fullscreen = land || Pip.inPip, video = video,
+            details = { Details(m, nav, { panel = it }, { roomOpen = true }, roomId != null) })
+        if (Pip.inPip) return@BoxWithConstraints
         if (land) {
-            video(Modifier.fillMaxSize())
             // Settings slide in from the right over the picture.
             AnimatedVisibility(panel != null, enter = fadeIn(), exit = fadeOut()) {
                 Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.35f)).clickable(remember { MutableInteractionSource() }, null) { panel = null })
@@ -280,10 +288,6 @@ fun PlayerScreen(nav: Nav, route: PlayerRoute) {
                 }
             }
         } else {
-            Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
-                video(Modifier.fillMaxWidth().aspectRatio(16f / 9f))
-                Details(m, nav, { panel = it }, { roomOpen = true }, roomId != null)
-            }
             panel?.let { p -> PanelSheet(p, m, { panel = null }, { pickSubs.launch(arrayOf("*/*")) }) }
         }
         RoomOverlay(Modifier.fillMaxSize())
@@ -444,7 +448,8 @@ private fun VideoArea(
                     nav.pop(); nav.push(RemoteRoute)
                 },
                 onPip = {
-                    if (Build.VERSION.SDK_INT >= 26) runCatching { activity.enterPictureInPictureMode(PictureInPictureParams.Builder().setAspectRatio(Rational(16, 9)).build()) }
+                    if ((activity as? ru.qmods.anixq.mobile.MainActivity)?.enterPlayerPip() != true)
+                        Toast.makeText(context, "Не удалось включить маленький плеер. Проверьте разрешение «Картинка в картинке» для AnixQ.", Toast.LENGTH_LONG).show()
                 })
         }
 

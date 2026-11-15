@@ -3,8 +3,8 @@ name: Build IPA
 on:
   push:
     branches: [ "main" ]
-    # Site-only changes don't produce an app release.
-    paths-ignore: [ "site/**", "scripts/build_site.py", ".github/workflows/pages.yml", ".github/workflows/preview.yml", "README.md", "android/**", ".github/workflows/android-tv.yml" ]
+    # Documentation, Android and CI-only changes do not produce an iOS app release.
+    paths-ignore: [ "site/**", "scripts/build_site.py", ".github/workflows/pages.yml", ".github/workflows/preview.yml", "README.md", "docs/**", "android/**", ".github/workflows/android-*.yml", ".github/workflows/build-ipa.yml" ]
     tags: [ "v*" ]
   workflow_dispatch:
 

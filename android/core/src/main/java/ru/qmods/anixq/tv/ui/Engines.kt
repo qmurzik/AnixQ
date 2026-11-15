@@ -171,6 +171,14 @@ class ExoEngine(private val context: Context, private val onError: (String) -> U
         })
     }
 
+    private var automaticQuality: Boolean? = null
+    fun setAutomaticQuality(enabled: Boolean) {
+        if (automaticQuality == enabled) return
+        automaticQuality = enabled
+        exo.trackSelectionParameters = exo.trackSelectionParameters.buildUpon()
+            .setForceHighestSupportedBitrate(!enabled).build()
+    }
+
     /** The next episode waiting in the player's queue (its start gets buffered near the end of this one). */
     private var queuedUrl: String? = null
 
@@ -184,6 +192,7 @@ class ExoEngine(private val context: Context, private val onError: (String) -> U
     }
 
     fun load(url: String, startAt: Double, subtitles: List<ru.qmods.anixq.tv.data.Subtitle> = emptyList(), upscale: Int = appliedMode) {
+        setAutomaticQuality(ru.qmods.anixq.tv.data.Store.automaticQuality)
         applyUpscale(upscale)
         firstFrame = false
         loadedAt = System.currentTimeMillis()

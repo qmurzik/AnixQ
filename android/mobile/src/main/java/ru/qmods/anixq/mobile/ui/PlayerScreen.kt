@@ -100,6 +100,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -175,7 +176,6 @@ fun PlayerScreen(nav: Nav, route: PlayerRoute) {
         m.start()
         Pip.model = m
         ru.qmods.anixq.tv.data.Room.player = m
-        val before = activity.requestedOrientation
         // Follows the phone's rotation (if auto-rotate is on); the fullscreen button forces landscape.
         orientation(if (Store.playerFullscreen) ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE else ActivityInfo.SCREEN_ORIENTATION_FULL_USER)
         onDispose {
@@ -189,7 +189,7 @@ fun PlayerScreen(nav: Nav, route: PlayerRoute) {
                 // Back to the app's theme (the player is always dark).
                 isAppearanceLightStatusBars = Looks.light; isAppearanceLightNavigationBars = Looks.light
             }
-            activity.requestedOrientation = if (before == ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE) ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED else before
+            activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_USER_PORTRAIT
             activity.window.attributes = activity.window.attributes.apply { screenBrightness = -1f }
         }
     }
@@ -214,13 +214,17 @@ fun PlayerScreen(nav: Nav, route: PlayerRoute) {
     LaunchedEffect(m) {
         while (true) {
             m.tick()
-            if (controls && m.playing && panel == null && System.currentTimeMillis() - lastTouch > 3500) controls = false
+            if (controls && m.playing && panel == null && m.seekUndo == null && System.currentTimeMillis() - lastTouch > 3500) controls = false
             delay(250)
         }
     }
     val autoGo = m.showNext && m.countdown
-    LaunchedEffect(autoGo, m.index) {
-        if (autoGo) { delay(if (Store.marathon) 3000 else 6000); if (m.showNext && m.countdown) m.autoAdvance() }
+    LaunchedEffect(autoGo, m.episode?.id) {
+        val episodeId = m.episode?.id
+        if (autoGo) {
+            delay(if (Store.marathon) 3000 else 6000)
+            if (m.showNext && m.countdown && m.episode?.id == episodeId) m.autoAdvance()
+        }
     }
     LaunchedEffect(m.exo) { m.exo?.let { if (Store.backgroundAudio) ru.qmods.anixq.mobile.PlaybackService.attach(context, it.exo) } }
     LaunchedEffect(m.exo, fill) {
@@ -244,6 +248,8 @@ fun PlayerScreen(nav: Nav, route: PlayerRoute) {
             }
         }
         LaunchedEffect(land) {
+            controls = true
+            touched()
             val ctl = WindowCompat.getInsetsController(activity.window, activity.window.decorView)
             ctl.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
             if (land) ctl.hide(WindowInsetsCompat.Type.systemBars()) else { ctl.show(WindowInsetsCompat.Type.systemBars()); ctl.isAppearanceLightStatusBars = false }
@@ -305,6 +311,8 @@ private fun VideoArea(
 ) {
     val context = LocalContext.current
     val activity = context as Activity
+    val currentControls by rememberUpdatedState(controls)
+    val setControls by rememberUpdatedState(onControls)
     val audio = remember { context.getSystemService(Context.AUDIO_SERVICE) as AudioManager }
     var volume by remember { mutableFloatStateOf(audio.getStreamVolume(AudioManager.STREAM_MUSIC).toFloat()) }
     var brightness by remember { mutableFloatStateOf(activity.window.attributes.screenBrightness.takeIf { it >= 0 } ?: 0.5f) }
@@ -331,7 +339,7 @@ private fun VideoArea(
             Box(Modifier.fillMaxSize()
                 .pointerInput(m, w, h, locked) {
                     detectTapGestures(
-                        onTap = { if (locked) unlockShown = true else onControls(!controls) },
+                        onTap = { if (locked) unlockShown = true else setControls(!currentControls) },
                         onDoubleTap = { o ->
                             if (locked) return@detectTapGestures
                             val left = o.x < w * 0.4f; val right = o.x > w * 0.6f
@@ -440,6 +448,18 @@ private fun VideoArea(
                 })
         }
 
+        if (m.seekUndo != null && m.native && !locked && !listen) {
+            Row(Modifier.align(Alignment.BottomCenter)
+                .padding(bottom = if (land) 150.dp else 72.dp)
+                .clip(RoundedCornerShape(14.dp)).background(Color(0xE6202028))
+                .padding(start = 14.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("Перемотка по шкале", color = Color.White, fontSize = 13.sp)
+                TextButton(onClick = { m.undoTimelineSeek(); onControls(true); touched() }) {
+                    Text("Отменить", color = Pal.pink, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+
         // Skip buttons stay reachable with the controls hidden.
         if (m.native && !locked && !listen) {
             Column(Modifier.align(Alignment.BottomEnd).then(if (land) Modifier.safeDrawingPadding() else Modifier)
@@ -495,9 +515,9 @@ internal fun Controls(
             // Bottom
             if (land) Row(Modifier.padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(fmt(scrub ?: m.pos), color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                Scrubber(m, scrub, { scrub = it; touched() }, { m.seekTo(it); scrub = null }, Modifier.weight(1f).padding(horizontal = 12.dp))
+                Scrubber(m, scrub, { scrub = it; touched() }, { m.seekFromTimeline(it); scrub = null; touched() }, { scrub = null }, Modifier.weight(1f).padding(horizontal = 12.dp))
                 Text("−" + fmt((m.dur - (scrub ?: m.pos)).coerceAtLeast(0.0)), color = Dim, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-            } else Scrubber(m, scrub, { scrub = it; touched() }, { m.seekTo(it); scrub = null }, Modifier.fillMaxWidth().padding(horizontal = 10.dp))
+            } else Scrubber(m, scrub, { scrub = it; touched() }, { m.seekFromTimeline(it); scrub = null; touched() }, { scrub = null }, Modifier.fillMaxWidth().padding(horizontal = 10.dp))
             Row(Modifier.fillMaxWidth().padding(top = if (land) 8.dp else 0.dp, bottom = if (land) 4.dp else 0.dp, start = 6.dp, end = 2.dp), verticalAlignment = Alignment.CenterVertically) {
                 if (land) {
                     LazyRow(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -529,7 +549,10 @@ internal fun Controls(
 
 /** Progress, what's buffered, the opening (marked) and comment ticks; drag or tap to seek with a time bubble. */
 @Composable
-private fun Scrubber(m: PlayerModel, scrub: Double?, onScrub: (Double) -> Unit, onDone: (Double) -> Unit, modifier: Modifier) {
+private fun Scrubber(m: PlayerModel, scrub: Double?, onScrub: (Double) -> Unit, onDone: (Double) -> Unit, onCancel: () -> Unit, modifier: Modifier) {
+    val latestScrub by rememberUpdatedState(onScrub)
+    val latestDone by rememberUpdatedState(onDone)
+    val latestCancel by rememberUpdatedState(onCancel)
     val dur = m.dur.coerceAtLeast(1.0)
     val shown = scrub ?: m.pos
     val buffered = (m.exo?.exo?.bufferedPosition ?: 0L) / 1000.0
@@ -539,11 +562,11 @@ private fun Scrubber(m: PlayerModel, scrub: Double?, onScrub: (Double) -> Unit, 
         val wPx = with(LocalDensity.current) { maxWidth.toPx() }
         fun at(x: Float) = (x / wPx).coerceIn(0f, 1f) * dur
         Canvas(Modifier.fillMaxSize()
-            .pointerInput(dur) { detectTapGestures { o -> onDone(at(o.x)) } }
-            .pointerInput(dur) {
+            .pointerInput(dur, wPx) { detectTapGestures { o -> latestDone(at(o.x)) } }
+            .pointerInput(dur, wPx) {
                 var last = 0.0
-                detectHorizontalDragGestures(onDragStart = { o -> last = at(o.x); onScrub(last) }, onDragEnd = { onDone(last) }, onDragCancel = { onDone(last) }) { c, _ ->
-                    c.consume(); last = at(c.position.x); onScrub(last)
+                detectHorizontalDragGestures(onDragStart = { o -> last = at(o.x); latestScrub(last) }, onDragEnd = { latestDone(last) }, onDragCancel = { latestCancel() }) { c, _ ->
+                    c.consume(); last = at(c.position.x); latestScrub(last)
                 }
             }) {
             val h = if (scrub != null) 6.dp.toPx() else 4.dp.toPx()

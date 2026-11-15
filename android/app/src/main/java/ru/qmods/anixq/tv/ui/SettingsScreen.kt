@@ -91,6 +91,7 @@ fun SettingsScreen(nav: Nav) {
             Section("Плеер") {
                 Toggle("Автоматически пропускать опенинг", Store.autoSkipOpening) { Store.autoSkipOpening = it }
                 Toggle("Сразу включать следующую серию", Store.autoNext) { Store.autoNext = it }
+                Toggle("Понижать качество при длительно нестабильной сети", Store.automaticQuality) { Store.automaticQuality = it }
                 Toggle("Режим марафона: без опенингов и эндингов, серии подряд", Store.marathon) { Store.marathon = it }
                 Toggle("Без спойлеров: скрывать названия новых серий", Store.noSpoilers) { Store.noSpoilers = it }
                 Toggle("Озвучка AniLibria — с их собственного сервера (если серия там есть)", Store.libriaDirect) { Store.libriaDirect = it }

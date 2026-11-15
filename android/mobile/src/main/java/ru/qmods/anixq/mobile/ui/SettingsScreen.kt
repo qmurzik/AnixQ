@@ -173,6 +173,7 @@ fun SettingsScreen(nav: Nav) {
         Group("Плеер") {
             ToggleRow("Пропускать опенинги", Icons.Default.FastForward, Pal.purple, Store.autoSkipOpening) { Store.autoSkipOpening = it }
             ToggleRow("Следующая серия сама", Icons.Default.SkipNext, Pal.green, Store.autoNext) { Store.autoNext = it }
+            ToggleRow("Понижать качество при плохой сети", Icons.Default.HighQuality, Pal.blue, Store.automaticQuality) { Store.automaticQuality = it }
             ToggleRow("Субтитры, где есть", Icons.Default.Subtitles, Pal.teal, Store.subtitles) { Store.subtitles = it }
             ToggleRow("Режим марафона", Icons.Default.LocalFireDepartment, Pal.orange, Store.marathon) { Store.marathon = it }
             ToggleRow("Открывать плеер во весь экран", Icons.Default.Fullscreen, Pal.blue, Store.playerFullscreen) { Store.playerFullscreen = it }

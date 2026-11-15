@@ -57,6 +57,11 @@ object Store {
         get() = prefs.getInt("quality", 1080)
         set(v) { prefs.edit().putInt("quality", v).apply(); bump() }
 
+    /** Opt in to lowering resolution after repeated sustained stalls. Mirrors still recover when off. */
+    var automaticQuality: Boolean
+        get() = prefs.getBoolean("automaticQuality", false)
+        set(v) { prefs.edit().putBoolean("automaticQuality", v).apply(); bump() }
+
     // Accounts (TV storage is private to the app)
     val libToken get() = prefs.getString("lib.token", null)
     val libRefresh get() = prefs.getString("lib.refresh", null)

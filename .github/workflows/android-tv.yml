@@ -55,7 +55,10 @@ jobs:
       - name: Remote-control focus tests
         continue-on-error: true
         working-directory: android
-        run: gradle --no-daemon testDebugUnitTest --tests 'ru.qmods.anixq.tv.focus.*'
+        run: gradle --no-daemon :app:testDebugUnitTest --tests 'ru.qmods.anixq.tv.focus.*'
+      - name: Playback recovery regression tests
+        working-directory: android
+        run: gradle --no-daemon :core:testDebugUnitTest
       - name: Build (TV + phone)
         working-directory: android
         env: { BUILD_NUMBER: "${{ github.run_number }}" }
@@ -63,6 +66,22 @@ jobs:
       - run: |
           cp android/app/build/outputs/apk/release/app-release.apk AnixQ-TV.apk
           cp android/mobile/build/outputs/apk/release/mobile-release.apk AnixQ.apk
+      - name: Verify update signing compatibility
+        if: github.event_name == 'push'
+        env: { GH_TOKEN: "${{ github.token }}" }
+        run: |
+          SIGNER=$(ls -1 "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -n 1)
+          for CHANNEL in tv android; do
+            if [ "$CHANNEL" = tv ]; then APK=AnixQ-TV.apk; else APK=AnixQ.apk; fi
+            PREVIOUS="$RUNNER_TEMP/previous-$CHANNEL.apk"
+            gh release download "$CHANNEL" --repo "$GITHUB_REPOSITORY" --pattern "$APK" --output "$PREVIOUS"
+            BEFORE=$("$SIGNER" verify --print-certs "$PREVIOUS" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')
+            AFTER=$("$SIGNER" verify --print-certs "$APK" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')
+            if [ -z "$BEFORE" ] || [ "$BEFORE" != "$AFTER" ]; then
+              echo "::error::Signing certificate changed for $CHANNEL; refusing to publish an incompatible update"
+              exit 1
+            fi
+          done
       - uses: actions/upload-artifact@v4
         with: { name: apk, path: AnixQ-TV.apk }
       - uses: actions/upload-artifact@v4

@@ -93,6 +93,8 @@ class MainActivity : ComponentActivity() {
         Updater.versionCode = BuildConfig.VERSION_CODE
         Updater.channel = "android"
         super.onCreate(savedInstanceState)
+        // A killed fullscreen task must never reopen the home screen in landscape.
+        requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_USER_PORTRAIT
         enableEdgeToEdge(SystemBarStyle.dark(android.graphics.Color.TRANSPARENT), SystemBarStyle.dark(android.graphics.Color.TRANSPARENT))
         Store.init(applicationContext)
         Api.diskDir = cacheDir
@@ -143,6 +145,8 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        if (intent.action == Intent.ACTION_MAIN && intent.hasCategory(Intent.CATEGORY_LAUNCHER))
+            requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_USER_PORTRAIT
         nav?.let { handle(intent, it) }
     }
 
@@ -189,6 +193,8 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        if (nav?.top !is PlayerRoute && !Pip.inPip)
+            requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_USER_PORTRAIT
         // Back from the browser after authorising on GitHub: finish the sign-in at once.
         Sync.wakeLogin()
     }

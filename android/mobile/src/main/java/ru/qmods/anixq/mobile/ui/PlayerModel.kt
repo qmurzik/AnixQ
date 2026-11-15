@@ -9,6 +9,9 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import ru.qmods.anixq.tv.data.AniSkip
@@ -21,6 +24,7 @@ import ru.qmods.anixq.tv.data.Shiki
 import ru.qmods.anixq.tv.data.Store
 import ru.qmods.anixq.tv.data.Sync
 import ru.qmods.anixq.tv.data.Title
+import ru.qmods.anixq.tv.ui.StallRecovery
 import ru.qmods.anixq.tv.ui.Engine
 import ru.qmods.anixq.tv.ui.ExoEngine
 import ru.qmods.anixq.tv.ui.KodikEngine
@@ -74,6 +78,9 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
     var playing by mutableStateOf(false)
     var buffering by mutableStateOf(true)
     var ended by mutableStateOf(false)
+    data class SeekUndo(val episodeId: Int, val position: Double, val expiresAt: Long)
+    var seekUndo by mutableStateOf<SeekUndo?>(null)
+        private set
     var speed by mutableFloatStateOf(1f)
     var subtitlesOn by mutableStateOf(Store.subtitles)
 
@@ -93,6 +100,11 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
     private val playersCache = HashMap<Int, List<Player>>()
     private var startedOnce = false
     private var loadJob: Job? = null
+    private var loadGeneration = 0
+    var loading by mutableStateOf(true)
+        private set
+    private var autoAdvancedEpisode: Int? = null
+    private val recovery = StallRecovery()
     private var currentUrl: String? = null
 
     val engine: Engine? get() = if (native) exo else kodik
@@ -118,8 +130,8 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
     }
     val inEnding get() = ending?.let { pos >= it.from } == true
     val remaining get() = if (dur > 0) dur - pos else Double.MAX_VALUE
-    val showNext get() = hasNext && !nextDismissed && dur > 0 && (ended || inEnding || (ending == null && remaining <= 90) || remaining <= 15)
-    val countdown get() = (Store.autoNext || Store.marathon) && !breakPrompt && (ended || inEnding || remaining <= 12)
+    val showNext get() = !loading && !failed && seekUndo == null && hasNext && !nextDismissed && dur > 0 && (ended || inEnding || (ending == null && remaining <= 90) || remaining <= 15)
+    val countdown get() = !loading && !failed && (Store.autoNext || Store.marathon) && !breakPrompt && (ended || inEnding || remaining <= 12)
     /** Marathon: a break is suggested instead of the next episode every few in a row. */
     var breakPrompt by mutableStateOf(false)
     private var marathonRun = 0
@@ -163,6 +175,10 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
     }
 
     fun autoAdvance() {
+        if (loading || failed || seekUndo != null || !hasNext) return
+        val id = episode?.id ?: return
+        if (autoAdvancedEpisode == id) return
+        autoAdvancedEpisode = id
         if (sleepAfterEpisode) { sleepAfterEpisode = false; pause(); say("Таймер сна: пауза"); return }
         marathonRun += 1
         if (Store.marathon && marathonRun >= ru.qmods.anixq.tv.data.Marathon.BREAK_AFTER) {
@@ -198,11 +214,21 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
     }
 
     fun load(i: Int, teamId: Int? = player?.team?.id, keepPos: Double? = null, preferKodik: Boolean = false, qualityKey: String? = null) {
+        if (i !in episodes.indices) return
         saveProgress(force = true)
         loadJob?.cancel()
+        val generation = ++loadGeneration
         val sameEpisode = i == index && episodes.isNotEmpty() && keepPos != null
+        loading = true
+        seekUndo = null
+        if (!sameEpisode) autoAdvancedEpisode = null
+        engine?.pause()
+        playing = false
+        ended = false
+        recovery.reset(android.os.SystemClock.elapsedRealtime(), clearHistory = !sameEpisode)
         index = i
         val ep = episodes[i]
+        if (!sameEpisode) player = null
         if (!sameEpisode) { avoidLibria = false; recap = null; recapSkipped = false; endingSkipped = false; extraSegments = emptyList(); openingSkipped = false; nextDismissed = false; viewedSent = false; prefetched = false; nextLooked = false; pos = 0.0; dur = 0.0; ended = false }
         message = if (sameEpisode) "Переключаем…" else "Серия ${ep.number}"
         failed = false
@@ -227,6 +253,8 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
                 if (offline == null && !preferKodik && !avoidLibria && Store.libriaDirect && ru.qmods.anixq.tv.data.Libria.isLibria(chosen.team.name)) {
                     ru.qmods.anixq.tv.data.Libria.player(title, ep.number, chosen, probeAt = keepPos ?: Store.resume(ep.id) ?: 0.0)?.let { chosen = it; if (!sameEpisode) say("AniLibria: видео с их сервера") }
                 }
+                currentCoroutineContext().ensureActive()
+                if (generation != loadGeneration) return@launch
                 player = chosen
                 val local = Store.resume(ep.id)
                 val remote = chosen.serverTimecode?.takeIf { it > 5 && (route.episodeId != ep.id || local == null) }
@@ -237,9 +265,14 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
                 if (chosen.isNative) startNative(chosen, startAt, qualityKey) else startKodik(chosen, startAt)
                 ru.qmods.anixq.tv.data.Room.sendState()
                 if (recapNote != null) say(recapNote!!) else if (startAt > 5 && keepPos == null) say("Продолжаем с ${fmt(startAt)}")
-                message = null
+                currentCoroutineContext().ensureActive()
+                if (generation == loadGeneration) message = null
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
-                message = e.message ?: "Не удалось загрузить серию"; failed = true
+                if (generation == loadGeneration) { message = e.message ?: "Не удалось загрузить серию"; failed = true }
+            } finally {
+                if (generation == loadGeneration) loading = false
             }
         }
     }
@@ -304,17 +337,21 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
 
     /** Every 250 ms while the player is open. */
     fun tick() {
+        if (seekUndo?.let { android.os.SystemClock.elapsedRealtime() >= it.expiresAt } == true) seekUndo = null
+        if (loading || failed) return
         val e = engine ?: return
         pos = e.position; dur = e.duration; playing = e.isPlaying; buffering = e.isBuffering; ended = e.ended
+        // An accidental tap into the ending must remain undoable before auto-skip or marking watched.
+        if (seekUndo != null) return
         val ep0 = episode
         if (ep0 != null && dur > 60 && aniSkipAsked != ep0.id && player?.segments.isNullOrEmpty()) {
             aniSkipAsked = ep0.id
-            title.shikiId?.let { mal -> scope.launch { extraSegments = AniSkip.segments(mal, ep0.number, dur) } }
+            title.shikiId?.let { mal -> scope.launch { val g = loadGeneration; val segments = AniSkip.segments(mal, ep0.number, dur); if (g == loadGeneration && episode?.id == ep0.id) extraSegments = segments } }
         }
         if (toast != null && System.currentTimeMillis() - toastAt > 2500) toast = null
         if (ep0 != null && dur > 60 && recapAsked != ep0.id) {
             recapAsked = ep0.id
-            title.shikiId?.let { mal -> scope.launch { recap = ru.qmods.anixq.tv.data.AniSkip.recap(mal, ep0.number, dur) } }
+            title.shikiId?.let { mal -> scope.launch { val g = loadGeneration; val segment = ru.qmods.anixq.tv.data.AniSkip.recap(mal, ep0.number, dur); if (g == loadGeneration && episode?.id == ep0.id) recap = segment } }
         }
         if ((Store.autoSkipOpening || Store.marathon) && !recapSkipped && inRecap) skipRecap(auto = true)
         if (sleepAt > 0 && System.currentTimeMillis() >= sleepAt) { sleepAt = 0; pause(); say("Таймер сна: пауза") }
@@ -361,6 +398,8 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
         if (hasNext && !prefetched && native && dur > 0 && dur - pos < 180) {
             prefetched = true
             val next = episodes[index + 1]
+            val generation = loadGeneration
+            val sourceEngine = exo
             scope.launch {
                 runCatching {
                     val ps = playersCache[next.id] ?: Api.players(next.id).also { playersCache[next.id] = it }
@@ -376,9 +415,11 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
                     val q = quality?.takeIf { it in keys }
                         ?: keys.firstOrNull { (it.removeSuffix("p").toIntOrNull() ?: 0) <= Store.preferredQuality } ?: keys.last()
                     val href = p.hrefs.getValue(q)
-                    if (p.isLibria) { exo?.queueNext(href, p.subtitles); return@runCatching }
+                    if (generation != loadGeneration || loading || sourceEngine !== exo) return@runCatching
+                    if (p.isLibria) { sourceEngine?.queueNext(href, p.subtitles); return@runCatching }
                     val server = Api.rankServers(href).firstOrNull() ?: return@runCatching
-                    exo?.queueNext(Api.videoUrl(server, href), p.subtitles)
+                    if (generation == loadGeneration && !loading && sourceEngine === exo)
+                        sourceEngine?.queueNext(Api.videoUrl(server, href), p.subtitles)
                 }
             }
         }
@@ -386,43 +427,32 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
         saveProgress()
     }
 
-    // Bad network: a stall of 8 s → another mirror from the same moment; two stalls in 90 s → one quality step down.
-    private var stallSince = 0L
-    private val stalls = ArrayList<Long>()
-    private var lastQualityDrop = 0L
-
+    // Only sustained buffering counts; quality changes are opt-in and share a conservative cooldown.
     private fun watchStalls() {
-        if (!native || message != null) { stallSince = 0; return }
-        val now = System.currentTimeMillis()
-        val stalled = buffering && (exo?.exo?.playWhenReady == true) && pos > 2
-        if (!stalled) { stallSince = 0; return }
-        if (stallSince == 0L) {
-            stallSince = now
-            stalls.removeAll { now - it > 90_000 }
-            stalls.add(now)
-            val p = player ?: return
-            val keys = p.hrefs.keys.sortedByDescending { it.removeSuffix("p").toIntOrNull() ?: 0 }
-            val i = keys.indexOf(quality)
-            if (stalls.size >= 2 && i >= 0 && i + 1 < keys.size && now - lastQualityDrop > 60_000 && !p.hrefs.getValue(keys[i]).startsWith("file:")) {
-                lastQualityDrop = now; stalls.clear()
-                say("Сеть медленная — включаем ${keys[i + 1]}")
-                load(index, keepPos = pos, qualityKey = keys[i + 1])
-            }
+        if (!native || loading || message != null) return
+        exo?.setAutomaticQuality(Store.automaticQuality)
+        val action = recovery.update(android.os.SystemClock.elapsedRealtime(),
+            buffering && exo?.exo?.playWhenReady == true && pos > 2, Store.automaticQuality)
+        if (action == StallRecovery.Action.NONE) return
+        val p = player ?: return
+        val keys = p.hrefs.keys.sortedByDescending { it.removeSuffix("p").toIntOrNull() ?: 0 }
+        val i = keys.indexOf(quality)
+        val href = quality?.let { p.hrefs[it] } ?: return
+        if (href.startsWith("file:")) return
+        if (action == StallRecovery.Action.LOWER_QUALITY && i >= 0 && i + 1 < keys.size) {
+            say("Сеть долго нестабильна — включаем ${keys[i + 1]}")
+            load(index, keepPos = pos, qualityKey = keys[i + 1])
             return
         }
-        if (now - stallSince > 8_000) {
-            stallSince = 0
-            val p = player ?: return
-            val href = quality?.let { p.hrefs[it] } ?: return
-            if (p.isLibria) { onNativeError("stall"); return }
-            if (href.startsWith("file:") || servers.size < 2) return
-            serverIdx = (serverIdx + 1) % servers.size
-            say("Видео подвисло — переподключаемся")
-            exo?.load(Api.videoUrl(servers[serverIdx], href), pos, p.subtitles)
-        }
+        if (p.isLibria) { onNativeError("stall"); return }
+        if (servers.size < 2) return
+        serverIdx = (serverIdx + 1) % servers.size
+        say("Видео подвисло — пробуем другой сервер в том же качестве")
+        exo?.load(Api.videoUrl(servers[serverIdx], href), pos, p.subtitles)
     }
 
     fun saveProgress(force: Boolean = false) {
+        if (loading || seekUndo != null) return
         val ep = episode ?: return
         val p = player ?: return
         if (dur <= 0 || pos < 3) return
@@ -440,6 +470,7 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
     }
 
     fun toggle() {
+        if (loading) return
         val e = engine ?: return
         if (playing) { e.pause(); playing = false; saveProgress(force = true) } else { e.play(); playing = true }
         ru.qmods.anixq.tv.data.Room.sendState()
@@ -453,10 +484,30 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
     }
 
     fun seekTo(t: Double) {
+        if (loading) return
+        seekUndo = null
         val e = engine ?: return
         val target = t.coerceIn(0.0, if (dur > 0) dur - 1 else Double.MAX_VALUE)
         e.seek(target); pos = target
         ru.qmods.anixq.tv.data.Room.sendState()
+    }
+
+    /** Keep the exact pre-tap position independently of controls visibility or phone rotation. */
+    fun seekFromTimeline(target: Double) {
+        if (loading || dur <= 0) return
+        val id = episode?.id ?: return
+        val before = engine?.position ?: pos
+        seekTo(target)
+        seekUndo = SeekUndo(id, before, android.os.SystemClock.elapsedRealtime() + 8_000)
+    }
+
+    fun undoTimelineSeek() {
+        val undo = seekUndo ?: return
+        seekUndo = null
+        if (loading || episode?.id != undo.episodeId || android.os.SystemClock.elapsedRealtime() >= undo.expiresAt) return
+        seekTo(undo.position)
+        nextDismissed = false
+        say("Перемотка отменена")
     }
 
     fun skipOpening(auto: Boolean = false) {
@@ -492,6 +543,8 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
 
     fun release() {
         saveProgress(force = true)
+        ++loadGeneration
+        loadJob?.cancel()
         Sync.flush()
         exo?.release(); kodik?.release()
         exo = null; kodik = null

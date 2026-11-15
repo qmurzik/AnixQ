@@ -28,6 +28,7 @@
         android:networkSecurityConfig="@xml/network_security_config">
         <activity
             android:name=".MainActivity"
+            android:screenOrientation="userPortrait"
             android:exported="true"
             android:launchMode="singleTask"
             android:supportsPictureInPicture="true"

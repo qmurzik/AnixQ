@@ -62,6 +62,8 @@ import coil.request.ImageRequest
 import ru.qmods.anixq.tv.data.Title
 import ru.qmods.anixq.tv.data.WatchEntry
 
+val LocalCinema = androidx.compose.runtime.staticCompositionLocalOf { false }
+
 object C {
     val bg = Color(0xFF0A0A0F)
     val card = Color(0xFF17171F)
@@ -132,6 +134,10 @@ fun Focusable(
     border: Boolean = true,
     content: @Composable () -> Unit,
 ) {
+    if (LocalCinema.current) {
+        ru.qmods.anixq.tv.ui.panorama.PSurface(onClick, modifier, onLongClick = onLongClick, radius = radius, content = content)
+        return
+    }
     val dark = if (focusedContainer.luminance() > 0.5f) Color.Black else C.text
     Surface(
         onClick = onClick,
@@ -256,6 +262,10 @@ fun TitleShelf(title: String, titles: List<Title>, scope: String, onFocus: (Titl
 /** Pill button: white when focused, gradient when primary. */
 @Composable
 fun PillButton(text: String, icon: ImageVector? = null, primary: Boolean = false, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    if (LocalCinema.current) {
+        ru.qmods.anixq.tv.ui.panorama.PButton(text, icon, primary, modifier = modifier, onClick = onClick)
+        return
+    }
     var focused by remember { mutableStateOf(false) }
     Surface(
         onClick = onClick,
@@ -278,6 +288,10 @@ fun PillButton(text: String, icon: ImageVector? = null, primary: Boolean = false
 
 @Composable
 fun Chip(text: String, selected: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    if (LocalCinema.current) {
+        ru.qmods.anixq.tv.ui.panorama.PButton(text, selected = selected, modifier = modifier, onClick = onClick)
+        return
+    }
     Surface(
         onClick = onClick,
         modifier = modifier.tick(),

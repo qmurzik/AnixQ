@@ -60,6 +60,9 @@ jobs:
       - name: Source selection, remote and sync regression tests
         working-directory: android
         run: gradle --no-daemon :app:testDebugUnitTest --tests 'ru.qmods.anixq.tv.focus.YummySourceTest' --tests 'ru.qmods.anixq.tv.focus.PlaybackSelectorTest'
+      - name: Alternate TV interface and D-pad regression tests
+        working-directory: android
+        run: gradle --no-daemon :app:testDebugUnitTest --tests 'ru.qmods.anixq.tv.panorama.PanoramaTest'
       - name: Playback recovery regression tests
         working-directory: android
         run: gradle --no-daemon :core:testDebugUnitTest
@@ -141,8 +144,8 @@ jobs:
           target: android-tv
           arch: x86
           profile: tv_1080p
-          disable-animations: true
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot
+          disable-animations: false
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot -memory 4096 -cores 2
           script: bash android/ci/tv-shots.sh
       - uses: actions/upload-artifact@v4
         if: always()

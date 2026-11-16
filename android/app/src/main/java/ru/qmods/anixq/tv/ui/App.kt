@@ -116,7 +116,7 @@ class Nav {
             resume = m.optBoolean("resume"), startAt = m.optDouble("pos", -1.0).takeIf { it >= 0 }))
     }
 
-    fun pop() { if (stack.isNotEmpty()) { val r = stack.removeAt(stack.lastIndex); if (r is TitleRoute) Focus.forget(r.scope) } }
+    fun pop() { if (stack.isNotEmpty()) { val r = stack.removeAt(stack.lastIndex); if (r is TitleRoute) { Focus.forget(r.scope); Focus.forget("panorama:${r.scope}") } } }
 }
 
 /**
@@ -157,6 +157,7 @@ fun Modifier.memo(scope: String, key: String, initial: Boolean = false): Modifie
 @Composable
 fun App(nav: Nav) {
     val holder = rememberSaveableStateHolder()
+    val appearance by TvAppearance.mode.collectAsState()
     val top = nav.stack.lastOrNull()
     BackHandler(enabled = top != null && top !is PlayerRoute && top != LoginRoute) { nav.pop() }
     var lastKey by remember { mutableStateOf(System.currentTimeMillis()) }
@@ -185,6 +186,9 @@ fun App(nav: Nav) {
         when (top) {
             null -> {
                 BackHandler(enabled = nav.tab != Tab.HOME) { nav.tab = Tab.HOME }
+                if (appearance == TvAppearance.Mode.PANORAMA) {
+                    ru.qmods.anixq.tv.ui.panorama.CinemaTheme { ru.qmods.anixq.tv.ui.panorama.PanoramaShell(nav, holder) }
+                } else {
                 // Each tab draws its own backdrop and leaves room for the bar on top.
                 // One focus group for the tab's content: "down" from the bar always lands in it
                 // (geometric search from the far-right "Настройки" tab found nothing on some boxes).
@@ -202,8 +206,12 @@ fun App(nav: Nav) {
                     }
                 }
                 TopBar(nav, content)
+                }
             }
-            is TitleRoute -> holder.SaveableStateProvider(top.scope + nav.stack.size) { TitleScreen(nav, top.title) }
+            is TitleRoute -> holder.SaveableStateProvider(appearance.name + top.scope + nav.stack.size) {
+                if (appearance == TvAppearance.Mode.PANORAMA) ru.qmods.anixq.tv.ui.panorama.CinemaTheme { ru.qmods.anixq.tv.ui.panorama.PanoramaTitle(nav, top.title) }
+                else TitleScreen(nav, top.title)
+            }
             is PlayerRoute -> PlayerScreen(nav, top)
             LoginRoute -> LoginScreen(nav)
         }
@@ -322,6 +330,7 @@ private fun SlideshowSaver() {
 }
 
 val TopBarHeight = 64.dp
+val LocalTopInset = androidx.compose.runtime.staticCompositionLocalOf { TopBarHeight }
 
 /** Google-TV-like tabs on top; moving across them switches the screen. */
 @OptIn(ExperimentalComposeUiApi::class)
@@ -433,7 +442,7 @@ fun QrCode(text: String, modifier: Modifier = Modifier) {
 
 @Composable
 fun ScreenTitle(text: String, sub: String? = null) {
-    Column(Modifier.padding(top = TopBarHeight + 8.dp, bottom = 14.dp)) {
+    Column(Modifier.padding(top = LocalTopInset.current + 8.dp, bottom = 14.dp)) {
         Text(text, fontSize = 28.sp, fontWeight = FontWeight.Bold)
         sub?.let { Spacer(Modifier.height(4.dp)); Text(it, fontSize = 15.sp, color = C.muted) }
     }

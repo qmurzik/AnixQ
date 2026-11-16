@@ -24,6 +24,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Updater.versionCode = BuildConfig.VERSION_CODE
+        ru.qmods.anixq.tv.ui.TvAppearance.init(applicationContext)
         Store.init(applicationContext)
         Api.diskDir = cacheDir
         ru.qmods.anixq.tv.data.Crashes.install(applicationContext, "AnixQ TV", BuildConfig.VERSION_NAME)
@@ -65,6 +66,12 @@ class MainActivity : ComponentActivity() {
     /** Used by CI screenshots: `-e tab 1`, `-e slug <slug>`, `--ez play true`. */
     private fun applyLaunchExtras(nav: Nav) {
         val i = intent ?: return
+        i.getStringExtra("ui")?.let { value ->
+            when (value.lowercase()) {
+                "classic" -> ru.qmods.anixq.tv.ui.TvAppearance.select(ru.qmods.anixq.tv.ui.TvAppearance.Mode.CLASSIC)
+                "panorama" -> ru.qmods.anixq.tv.ui.TvAppearance.select(ru.qmods.anixq.tv.ui.TvAppearance.Mode.PANORAMA)
+            }
+        }
         i.getStringExtra("rc_play")?.let { runCatching { nav.playFromPhone(org.json.JSONObject(it)) }; return }
         if (handleSearch(i, nav)) return
         i.getStringExtra("tab")?.toIntOrNull()?.let { nav.tab = Tab.entries.getOrElse(it) { Tab.HOME } }

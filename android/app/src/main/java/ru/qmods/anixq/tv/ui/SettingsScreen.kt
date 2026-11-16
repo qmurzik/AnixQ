@@ -67,6 +67,7 @@ fun SettingsScreen(nav: Nav) {
 
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 56.dp, end = 56.dp, bottom = 48.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         item { ScreenTitle("Настройки") }
+        item { TvInterfaceSettings() }
         item { Section("YummyAnime") {
             Text("Войдите в аккаунт — AnixQ автоматически настроит доступ к каталогу и видео.", color = C.muted)
             if (ru.qmods.anixq.tv.data.sources.YummyAccount.signedIn) PillButton("Выйти из YummyAnime") { auth { ru.qmods.anixq.tv.data.sources.YummyAccount.logout() } }

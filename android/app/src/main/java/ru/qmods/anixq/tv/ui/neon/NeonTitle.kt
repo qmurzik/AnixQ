@@ -157,6 +157,13 @@ fun NeonTitle(nav: Nav, start: Title) {
             episodes?.takeIf { it.isNotEmpty() }?.let { eps -> item("line") {
                 MetroLine(title, eps, plan?.episode?.id, scope, color, onPlay = { nav.play(title, it.id, teamId) }, onMenu = { menuEpisode = it })
             } }
+            episodes?.takeIf { it.size > 1 && options.size > 1 }?.let { eps -> item("dubs") {
+                DubTable(title, eps, teamId, scope, N.pink, N.muted,
+                    card = { onClick, mod, content -> NSurface(onClick, mod, N.violet) { content() } },
+                    header = { NSign("声", "Какую озвучку выбрать", N.violet, Modifier.padding(start = 52.dp, end = 52.dp, bottom = 6.dp)) }) { id ->
+                    options.firstOrNull { it.team.id == id }?.let(::choose)
+                }
+            } }
             if (franchise.size > 1) item("franchise") { NRow("系", "Порядок просмотра", franchise, scope, nav, N.violet) }
             if (related.isNotEmpty()) item("related") { NRow("連", "Другие части", related.map { it.first }, scope, nav, N.cyan) }
             if (similar.isNotEmpty()) item("similar") { NRow("似", "В том же настроении", similar, scope, nav, N.pink) }

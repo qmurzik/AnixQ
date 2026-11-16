@@ -381,3 +381,34 @@ fun CommentsScreen(nav: Nav, route: CommentsRoute) {
         }
     }
 }
+
+// MARK: - Which dub to pick
+
+/** Each team: up to which episode, ad-free or Kodik, how soon after an episode its version usually appears. */
+@Composable
+fun DubCompareSection(title: Title, episodes: List<ru.qmods.anixq.tv.data.Episode>, selected: Int?, onPick: (Int) -> Unit) {
+    val rows by androidx.compose.runtime.produceState<List<ru.qmods.anixq.tv.data.DubCompare.Row>?>(null, title.id, episodes.size) {
+        value = runCatching { ru.qmods.anixq.tv.data.DubCompare.load(title, episodes) }.getOrDefault(emptyList())
+    }
+    val list = rows?.takeIf { it.size > 1 } ?: return
+    var all by remember { mutableStateOf(false) }
+    Column(Modifier.padding(top = 26.dp)) {
+        SectionHeader("Какую озвучку выбрать", if (list.size > 5) (if (all) "Скрыть" else "Все ${list.size}") else null) { all = !all }
+        Column(Modifier.padding(horizontal = 16.dp).padding(top = 8.dp).fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Pal.card)) {
+            (if (all) list else list.take(5)).forEachIndexed { i, r ->
+                Row(Modifier.fillMaxWidth().clickable { onPick(r.team.id) }.padding(horizontal = 14.dp, vertical = 11.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(r.team.name + if (r.team.isSubtitles) " · субтитры" else "", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                            color = if (r.team.id == selected) Pal.pink else Pal.text)
+                        Text(listOfNotNull(if (r.latestIndex == r.total - 1) "все серии" else "до серии ${r.latest}",
+                            if (r.adFree) "без рекламы" else "Kodik", r.delayLabel?.let { "выходит $it" }).joinToString(" · "), fontSize = 12.sp, color = Pal.muted)
+                    }
+                    Box(Modifier.size(10.dp).clip(CircleShape).background(if (r.latestIndex == r.total - 1) Pal.green else Pal.orange))
+                }
+                if (i < (if (all) list.size else minOf(5, list.size)) - 1) androidx.compose.material3.HorizontalDivider(Modifier.padding(start = 14.dp), color = Pal.stroke)
+            }
+        }
+        Text("По последним ${list.first().checked.coerceAtLeast(1)} сериям. Нажмите на команду, чтобы смотреть с ней.", fontSize = 12.sp, color = Pal.muted,
+            modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp))
+    }
+}

@@ -206,6 +206,13 @@ fun TitleScreen(nav: Nav, start: Title) {
             episodes?.takeIf { it.isNotEmpty() }?.let { eps -> EpisodeStrip(eps, title, plan?.episode?.id, sc, onMenu = { menuEp = it; dialog = "ep" }) { ep -> nav.play(title, ep.id, teamId) } }
             }
           }
+          episodes?.takeIf { it.size > 1 && teams.size > 1 }?.let { eps -> item("dubs") {
+            DubTable(title, eps, teamId, sc, C.pink, C.muted,
+                card = { onClick, mod, content -> Focusable(onClick = onClick, modifier = mod) { content() } },
+                header = { Text("Какую озвучку выбрать", fontSize = 22.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 48.dp, bottom = 8.dp)) }) { id ->
+                teams.firstOrNull { it.team.id == id }?.let { option -> teamId = option.team.id; Store.setPlaybackOption(title, option); Store.useDub(option.team.name) }
+            }
+          } }
           if (franchise.size > 1) item("franchise") {
             Shelf("Порядок просмотра") {
                 items(franchise.size, key = { "f" + franchise[it].second.id }) { i ->

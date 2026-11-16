@@ -343,6 +343,9 @@ fun TitleScreen(nav: Nav, start: Title) {
                     }
                 }
             }
+            if (eps.size > 1 && teams.size > 1) item(key = "dubs") {
+                DubCompareSection(title, eps, teamId) { id -> teams.firstOrNull { it.team.id == id }?.let { o -> teamId = o.team.id; Store.useDub(o.team.name) } }
+            }
             item(key = "notes") { NotesCard(title) }
             if (franchise.size > 1) item(key = "franchise") {
                 Column(Modifier.padding(top = 26.dp)) {

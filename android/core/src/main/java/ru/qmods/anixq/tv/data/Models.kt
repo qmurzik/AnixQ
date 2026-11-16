@@ -113,6 +113,8 @@ data class Player(
     val headers: Map<String, String> = if (source == "animelib") mapOf("Referer" to "${Api.SITE}/", "Origin" to Api.SITE) else emptyMap(),
     val resolverUrl: String? = null,
     val balancer: String? = null,
+    /** When this team's video of the episode appeared on AnimeLib (ms), for "how fast does this dub come out". */
+    val addedAt: Long? = null,
 ) {
     val isYummy get() = source == "yummy"
     val canResolve get() = resolverUrl != null

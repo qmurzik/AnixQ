@@ -272,7 +272,8 @@ object Api {
                 Subtitle(src, (x.str("format") ?: src.substringAfterLast('.')).lowercase(), x.str("name") ?: x.str("label") ?: "Субтитры")
             }
             Player(team, p.str("player") ?: "?", p.str("src"), hrefs, parseSegments(tc), p.int("id"),
-                (tc as? Number)?.toDouble() ?: (tc as? JSONObject)?.let { it.dbl("timecode") ?: it.dbl("time") }, subs)
+                (tc as? Number)?.toDouble() ?: (tc as? JSONObject)?.let { it.dbl("timecode") ?: it.dbl("time") }, subs,
+                addedAt = ShikiExtras.parseDate(p.str("created_at")))
         }
     }
 

@@ -2,6 +2,7 @@ package ru.qmods.anixq.tv.data
 
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import okhttp3.HttpUrl.Companion.toHttpUrl
@@ -111,6 +112,28 @@ object Libria {
             }.ifEmpty { base.segments }
             base.copy(player = "animelib", hrefs = hrefs, segments = segs, source = SOURCE, headers = emptyMap())
         }
+    }
+
+    /**
+     * Source race: AniLibria's server and AnimeLib's mirrors are checked at the same time. AniLibria wins if it
+     * answers first or within [grace] ms after AnimeLib; otherwise AnimeLib starts at once instead of waiting.
+     * Returns the AniLibria player or null (play [base]).
+     */
+    suspend fun race(title: Title, episodeNumber: String, base: Player, probeAt: Double, grace: Long = 700): Player? = kotlinx.coroutines.coroutineScope {
+        val libria = async { player(title, episodeNumber, base, probeAt) }
+        val href = base.hrefs.values.firstOrNull()?.takeIf { base.isNative && !it.startsWith("http") && !it.startsWith("file:") }
+            ?: return@coroutineScope libria.await()
+        val animelib = async { runCatching { Api.rankServers(href).isNotEmpty() }.getOrDefault(false) }
+        val first = kotlinx.coroutines.selects.select<String> {
+            libria.onAwait { "libria" }
+            animelib.onAwait { "animelib" }
+        }
+        val result = if (first == "libria") libria.await()
+        else if (!animelib.await()) libria.await()
+        else withTimeoutOrNull(grace) { libria.await() }
+        if (result == null) { libria.cancel(); Log.d("AnixQ", "race: AnimeLib first") } else Log.d("AnixQ", "race: AniLibria first")
+        animelib.cancel()
+        result
     }
 
     const val SOURCE = "anilibria"

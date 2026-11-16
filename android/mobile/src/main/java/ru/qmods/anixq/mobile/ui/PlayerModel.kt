@@ -290,7 +290,7 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
                 var chosen: Player = AnimeSources.resolve(first, title, ep, cached = previousChoice.takeIf { sameEpisode && qualityKey != null })
                 // AniLibria dub: their own servers when they have the episode (no ads, often faster than AnimeLib).
                 if (offline == null && !preferKodik && !avoidLibria && !chosen.isYummy && !Store.hasPlaybackChoice(title) && Store.libriaDirect && ru.qmods.anixq.tv.data.Libria.isLibria(chosen.team.name)) {
-                    ru.qmods.anixq.tv.data.Libria.player(title, ep.number, chosen, probeAt = keepPos ?: Store.resumeEpisode(title, ep) ?: 0.0)?.let { chosen = it; if (!sameEpisode) say("AniLibria: видео с их сервера") }
+                    ru.qmods.anixq.tv.data.Libria.race(title, ep.number, chosen, probeAt = keepPos ?: Store.resumeEpisode(title, ep) ?: 0.0)?.let { chosen = it; if (!sameEpisode) say("AniLibria: видео с их сервера") }
                 }
                 currentCoroutineContext().ensureActive()
                 if (generation != loadGeneration) return@launch
@@ -354,6 +354,7 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
     /** AniLibria's server failed for this episode: AnimeLib's copy of the same dub from here on. */
     private val refreshAttempts = HashMap<String, Int>()
     private var avoidLibria = false
+    private var startWatchdog = 0L
 
     private fun onNativeError(err: String) {
         val p = player ?: return
@@ -394,6 +395,15 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
         if (loading || failed) return
         val e = engine ?: return
         pos = e.position; dur = e.duration; playing = e.isPlaying; buffering = e.isBuffering; ended = e.ended
+        // Source race, second half: no picture 9 s after the start — the next source takes over (other mirror,
+        // AnimeLib instead of AniLibria, Kodik last) instead of a spinner forever.
+        exo?.let { x ->
+            if (native && !x.firstFrame && x.loadedAt > 0 && x.loadedAt != startWatchdog && x.exo.playWhenReady && System.currentTimeMillis() - x.loadedAt > 9_000) {
+                startWatchdog = x.loadedAt
+                onNativeError("нет картинки 9 с")
+                return
+            }
+        }
         // An accidental tap into the ending must remain undoable before auto-skip or marking watched.
         if (seekUndo != null) return
         val ep0 = episode

@@ -90,11 +90,13 @@ object HomeData {
 
 /** Description + wide art for the title under the cursor (fetched once, kept for the session). */
 object Spotlight {
-    private val cache = HashMap<String, Detail?>()
+    private val cache = HashMap<String, Detail>()
     fun cached(slug: String) = cache[slug]
     suspend fun get(slug: String): Detail? {
         if (cache.containsKey(slug)) return cache[slug]
-        return runCatching { Api.detail(slug) }.getOrNull().also { cache[slug] = it }
+        return try { Api.detail(slug).also { cache[slug] = it } }
+        catch (e: kotlinx.coroutines.CancellationException) { throw e }
+        catch (_: Exception) { null }
     }
 }
 

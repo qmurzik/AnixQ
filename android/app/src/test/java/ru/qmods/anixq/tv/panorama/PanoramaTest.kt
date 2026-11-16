@@ -179,4 +179,19 @@ class PanoramaTest {
         rule.onNodeWithTag("fallback-rail").assertIsNotFocused()
     }
 
+    @Test fun changingTheSceneReplacesItsDescriptionWithTheMatchingTitle() {
+        val first = titles[0]
+        val second = titles[1]
+        val one = fixture.getJSONObject(0).getString("description").replace("\n", " ").trim()
+        val two = fixture.getJSONObject(1).getString("description").replace("\n", " ").trim()
+        TitleCache.detail[first.slug] = Detail(first, one, null, emptyList())
+        TitleCache.detail[second.slug] = Detail(second, two, null, emptyList())
+        val target = mutableStateOf(first)
+        rule.setContent { AnixTheme { CinemaTheme { PanoramaHero(target.value, Nav(), "panorama:scene-test") } } }
+        rule.waitUntil(3000) { rule.onAllNodesWithText(one).fetchSemanticsNodes().isNotEmpty() }
+        rule.runOnIdle { target.value = second }
+        rule.waitUntil(3000) { rule.onAllNodesWithText(two).fetchSemanticsNodes().isNotEmpty() }
+        rule.onNodeWithText(one).assertDoesNotExist()
+    }
+
 }

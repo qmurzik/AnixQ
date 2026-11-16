@@ -114,15 +114,17 @@ private data class HeroFrame(val title: Title?, val detail: Detail?)
 internal fun PanoramaHero(target: Title?, nav: Nav, scope: String, hasMore: Boolean = false, onNext: () -> Unit = {}) {
     val displayed by produceState(target, target?.slug) { delay(if (value == null) 0 else 260); value = target }
     val title = displayed
-    val detail by produceState(title?.let { TitleCache.detail[it.slug] ?: Spotlight.cached(it.slug) }, title?.slug) {
-        val slug = title?.slug ?: return@produceState
+    val detail by produceState<Detail?>(null, title?.slug) {
+        val slug = title?.slug ?: run { value = null; return@produceState }
+        value = TitleCache.detail[slug] ?: Spotlight.cached(slug)
         if (value == null) { delay(240); value = Spotlight.get(slug) }
     }
+    val currentDetail = detail?.takeIf { it.title.id == title?.id }
     val duration = motionMillis(750)
     val depth = remember(title?.slug) { androidx.compose.animation.core.Animatable(if (duration == 0) 1f else 1.055f) }
     LaunchedEffect(title?.slug) { depth.animateTo(1f, tween(duration * 2)) }
     Box(Modifier.fillMaxWidth().height(442.dp)) {
-        Crossfade(HeroFrame(title, detail), animationSpec = tween(duration), label = "cinema-scene") { frame ->
+        Crossfade(HeroFrame(title, currentDetail), animationSpec = tween(duration), label = "cinema-scene") { frame ->
             val art = frame.title
             if (art != null) Box(Modifier.fillMaxSize()) {
                 if (frame.detail?.background != null) {

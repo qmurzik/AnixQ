@@ -70,6 +70,7 @@ class MainActivity : ComponentActivity() {
             when (value.lowercase()) {
                 "classic" -> ru.qmods.anixq.tv.ui.TvAppearance.select(ru.qmods.anixq.tv.ui.TvAppearance.Mode.CLASSIC)
                 "panorama" -> ru.qmods.anixq.tv.ui.TvAppearance.select(ru.qmods.anixq.tv.ui.TvAppearance.Mode.PANORAMA)
+                "neon" -> ru.qmods.anixq.tv.ui.TvAppearance.select(ru.qmods.anixq.tv.ui.TvAppearance.Mode.NEON)
             }
         }
         i.getStringExtra("motion")?.let { value ->

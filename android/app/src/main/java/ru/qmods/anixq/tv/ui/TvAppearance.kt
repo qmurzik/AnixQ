@@ -7,7 +7,7 @@ import kotlinx.coroutines.flow.asStateFlow
 
 /** Device preference: never exported to the library or applied to the phone. */
 object TvAppearance {
-    enum class Mode { CLASSIC, PANORAMA }
+    enum class Mode { CLASSIC, PANORAMA, NEON }
     enum class Motion { AUTO, FULL, OFF }
     private var preferences: SharedPreferences? = null
     private val _mode = MutableStateFlow(Mode.CLASSIC)
@@ -24,6 +24,7 @@ object TvAppearance {
         Focus.barActive = false
         Focus.reset("settings")
         Focus.reset("panorama:settings")
+        Focus.reset("neon:home")
         _mode.value = mode
     }
     fun chooseMotion(value: Motion) {

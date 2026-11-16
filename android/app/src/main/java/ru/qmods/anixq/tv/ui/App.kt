@@ -186,7 +186,9 @@ fun App(nav: Nav) {
         when (top) {
             null -> {
                 BackHandler(enabled = nav.tab != Tab.HOME) { nav.tab = Tab.HOME }
-                if (appearance == TvAppearance.Mode.PANORAMA) {
+                if (appearance == TvAppearance.Mode.NEON) {
+                    ru.qmods.anixq.tv.ui.neon.NeonTheme { ru.qmods.anixq.tv.ui.neon.NeonShell(nav, holder) }
+                } else if (appearance == TvAppearance.Mode.PANORAMA) {
                     ru.qmods.anixq.tv.ui.panorama.CinemaTheme { ru.qmods.anixq.tv.ui.panorama.PanoramaShell(nav, holder) }
                 } else {
                 // Each tab draws its own backdrop and leaves room for the bar on top.
@@ -209,7 +211,8 @@ fun App(nav: Nav) {
                 }
             }
             is TitleRoute -> holder.SaveableStateProvider(appearance.name + top.scope + nav.stack.size) {
-                if (appearance == TvAppearance.Mode.PANORAMA) ru.qmods.anixq.tv.ui.panorama.CinemaTheme { ru.qmods.anixq.tv.ui.panorama.PanoramaTitle(nav, top.title) }
+                if (appearance == TvAppearance.Mode.NEON) ru.qmods.anixq.tv.ui.neon.NeonTheme { ru.qmods.anixq.tv.ui.neon.NeonTitle(nav, top.title) }
+                else if (appearance == TvAppearance.Mode.PANORAMA) ru.qmods.anixq.tv.ui.panorama.CinemaTheme { ru.qmods.anixq.tv.ui.panorama.PanoramaTitle(nav, top.title) }
                 else TitleScreen(nav, top.title)
             }
             is PlayerRoute -> PlayerScreen(nav, top)

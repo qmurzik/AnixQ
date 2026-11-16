@@ -178,8 +178,21 @@ The full upstream screenshot/focus suite is **not green**: the absent fixture an
 baseline focus failure described above remain. Authenticated complete episodes,
 Android hardware decoding and physical remote operation are **not verified**.
 
-Final release version, signing verification, APK hashes and suite counts are
-recorded in [yummyanime-verification.json](yummyanime-verification.json).
+**1.0.69 is published** in both in-app updater channels (`android` and `tv`).
+[CI run 43783277952](https://github.com/qmurzik/AnixQ/actions/runs/43783277952)
+succeeded on `4c1968ef78dd227a5a37e789682779cdfd537561`. All CI regression
+steps, including upstream focus tests, passed. Locally, 46 tests passed and three
+opt-in authenticated live checks were skipped; both debug builds succeeded.
+Both release builds passed in CI using the existing signing key.
+
+Published APKs were downloaded and independently verified: matching certificate,
+correct package IDs, versionCode 69, LICENSE/NOTICE, and matching GitHub SHA-256
+digests for both versioned and rolling assets. Both updater manifests advertise
+1.0.69 and point to the correct versioned APK. The signed files are also copied to
+`android/build/signed/AnixQ.apk` and `AnixQ-TV.apk`.
+
+Final APK hashes, suite counts and manifest contents are recorded in
+[yummyanime-verification.json](yummyanime-verification.json).
 
 ## Attribution
 

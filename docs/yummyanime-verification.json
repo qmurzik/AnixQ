@@ -1,7 +1,7 @@
 {
-  "checked_utc": "2026-11-16T00:55:59.700204+00:00",
+  "checked_utc": "2026-11-16T03:45:52.122853+00:00",
   "base_commit": "181a347",
-  "build": "SUCCESSFUL: debug/release for Android TV and phone",
+  "build": "SUCCESSFUL: debug locally and signed release CI for Android TV and phone",
   "tests": [
     {
       "name": "ru.qmods.anixq.tv.data.PlaybackChoicesTest",
@@ -77,39 +77,41 @@
   "artifacts": [
     {
       "file": "android/app/build/outputs/apk/debug/app-debug.apk",
-      "bytes": 20602517,
-      "sha256": "528465f9957f906dfb4f9770a055db5b5cbb17ea70906abd053e331d92ba477f",
+      "bytes": 20611395,
+      "sha256": "da6f1facdb9f6cd716c0667cc906fe8b86426a2ed2813da07f8dd6625af1eae9",
       "upstream_notices_present": true
     },
     {
       "file": "android/app/build/outputs/apk/release/app-release.apk",
       "download_file": "android/build/signed/AnixQ-TV.apk",
-      "bytes": 2990568,
-      "sha256": "e76f814c4cc02752f847b9783d3c359a53d9ef59b13343fc62ecef184d818377",
+      "bytes": 2990570,
+      "sha256": "5726092d6a09278aee06bec726f0a69eeaf732b3ddc9e3ab6137f1fc622b6b91",
       "signing_certificate_sha256": "fea95b7474d396516665375c40637f1fe71c84b3af9d75aca2d4635fcc47c2a8",
       "package": "ru.qmods.anixq.tv",
-      "version_code": 68,
-      "version_name": "1.0.68",
+      "version_code": 69,
+      "version_name": "1.0.69",
       "update_compatible_with_published_1_0_67": true,
-      "upstream_notices_present": true
+      "upstream_notices_present": true,
+      "release_url": "https://github.com/qmurzik/AnixQ/releases/download/tv-v1.0.69/AnixQ-TV.apk"
     },
     {
       "file": "android/mobile/build/outputs/apk/debug/mobile-debug.apk",
-      "bytes": 24833655,
-      "sha256": "a184e498785c9e68c291d232eb23b8a4dd5fe412ca4c313901c145dfef29e6d2",
+      "bytes": 24793201,
+      "sha256": "93e728e2fab7fb4757a45445b126e62c1c090a36dff17db2d7d7c873bc85f90b",
       "upstream_notices_present": true
     },
     {
       "file": "android/mobile/build/outputs/apk/release/mobile-release.apk",
       "download_file": "android/build/signed/AnixQ.apk",
-      "bytes": 4159858,
-      "sha256": "8ece0213914fa193d1175bd55443ddaa7d2437c2e1c8eabd17a0e50841543875",
+      "bytes": 4176223,
+      "sha256": "7ba0db03921171a219aa9ff615c49f06638b622e62b6bd83a0f46ea5d432b35a",
       "signing_certificate_sha256": "fea95b7474d396516665375c40637f1fe71c84b3af9d75aca2d4635fcc47c2a8",
       "package": "ru.qmods.anixq.mobile",
-      "version_code": 68,
-      "version_name": "1.0.68",
+      "version_code": 69,
+      "version_name": "1.0.69",
       "update_compatible_with_published_1_0_67": true,
-      "upstream_notices_present": true
+      "upstream_notices_present": true,
+      "release_url": "https://github.com/qmurzik/AnixQ/releases/download/android-v1.0.69/AnixQ.apk"
     }
   ],
   "authenticated_live_playback": "not verified; caller-owned credentials not supplied",
@@ -117,16 +119,17 @@
   "full_upstream_screenshot_suite": "missing /fake/titles.json fixture",
   "release_signing": {
     "status": "success",
-    "run_url": "https://github.com/qmurzik/AnixQ/actions/runs/43778445569",
-    "run_number": 68,
-    "commit": "2b710e87834d67e22e8c5d5caf8f77106026f79a",
+    "run_url": "https://github.com/qmurzik/AnixQ/actions/runs/43783277952",
+    "run_number": 69,
+    "commit": "4c1968ef78dd227a5a37e789682779cdfd537561",
     "published_certificate_sha256": "fea95b7474d396516665375c40637f1fe71c84b3af9d75aca2d4635fcc47c2a8",
     "local_missing_key_guard": "passed: both preReleaseBuild tasks refuse release builds without the original key",
-    "artifact_archive_digests_verified": true,
+    "artifact_archive_digests_verified": false,
     "package_and_version_codes_verified": true,
     "apk_certificates_match_both_published_releases": true,
-    "release_publication": "skipped (workflow_dispatch)",
-    "source_provenance": "GitHub Actions run head SHA and verified artifact digests; AGP embedded VCS metadata is unavailable"
+    "release_publication": "success: both versioned releases and rolling updater manifests verified",
+    "source_provenance": "GitHub Actions head SHA and matching GitHub digests of published versioned and rolling APK assets; APK certificates/package/version verified locally",
+    "release_asset_digests_verified": true
   },
   "local_ux_revision": {
     "build": "SUCCESSFUL: both assembleDebug tasks",
@@ -134,5 +137,28 @@
     "tests_skipped": 3,
     "capture": "Actual Compose widgets rendered with Robolectric at phone portrait and TV landscape sizes; source/balancer D-pad and touch voice-search interactions pass.",
     "authenticated_bootstrap": "Fixture tests only; no caller-owned live session available."
+  },
+  "ci_checks": {
+    "Remote-control focus tests": "success",
+    "Source selection, remote and sync regression tests": "success",
+    "Playback recovery regression tests": "success",
+    "Phone playback, picker and PiP regression tests": "success",
+    "Build (TV + phone)": "success",
+    "Verify update signing compatibility": "success",
+    "Publish release": "success"
+  },
+  "updater_manifests": {
+    "tv": {
+      "code": 69,
+      "name": "1.0.69",
+      "notes": "YummyAnime: удобный выбор источника, балансера и озвучки на Android и ТВ; автоматическая настройка API при входе",
+      "apk": "https://github.com/qmurzik/AnixQ/releases/download/tv-v1.0.69/AnixQ-TV.apk"
+    },
+    "android": {
+      "code": 69,
+      "name": "1.0.69",
+      "notes": "YummyAnime: удобный выбор источника, балансера и озвучки на Android и ТВ; автоматическая настройка API при входе",
+      "apk": "https://github.com/qmurzik/AnixQ/releases/download/android-v1.0.69/AnixQ.apk"
+    }
   }
 }

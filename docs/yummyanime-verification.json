@@ -160,5 +160,6 @@
       "notes": "YummyAnime: удобный выбор источника, балансера и озвучки на Android и ТВ; автоматическая настройка API при входе",
       "apk": "https://github.com/qmurzik/AnixQ/releases/download/android-v1.0.69/AnixQ.apk"
     }
-  }
+  },
+  "optional_focus_step_note": "The Remote-control focus tests step uses continue-on-error; its success conclusion must not be interpreted as a passing test. The baseline FocusTest failure is documented separately."
 }

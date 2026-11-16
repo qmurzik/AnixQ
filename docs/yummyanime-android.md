@@ -180,8 +180,9 @@ Android hardware decoding and physical remote operation are **not verified**.
 
 **1.0.69 is published** in both in-app updater channels (`android` and `tv`).
 [CI run 43783277952](https://github.com/qmurzik/AnixQ/actions/runs/43783277952)
-succeeded on `4c1968ef78dd227a5a37e789682779cdfd537561`. All CI regression
-steps, including upstream focus tests, passed. Locally, 46 tests passed and three
+succeeded on `4c1968ef78dd227a5a37e789682779cdfd537561`. All mandatory CI regression
+steps passed. The upstream focus step is non-blocking (`continue-on-error`); its
+step conclusion alone is not proof of a passing test. Locally, 46 tests passed and three
 opt-in authenticated live checks were skipped; both debug builds succeeded.
 Both release builds passed in CI using the existing signing key.
 

@@ -1,0 +1,79 @@
+name: TV preview assets
+
+on:
+  push:
+    branches: [main]
+    paths: ["docs/tv-panorama-verification.json", ".github/workflows/tv-preview-assets.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  attach:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Read verified capture
+        id: capture
+        run: |
+          python3 - <<'PY'
+          import json, os, re
+          from pathlib import Path
+          report = json.loads(Path('docs/tv-panorama-verification.json').read_text())
+          version = report['release_version']
+          source = report['source_commit']
+          assert re.fullmatch(r'1\.0\.\d+', version)
+          assert re.fullmatch(r'[0-9a-f]{40}', source)
+          match = re.fullmatch(r'https://github.com/' + re.escape(os.environ['GITHUB_REPOSITORY']) + r'/actions/runs/(\d+)', report['emulator']['run_url'])
+          assert match and report['emulator']['source_commit_matches_release']
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write(f'version={version}\nsource={source}\nrun={match.group(1)}\n')
+          PY
+      - name: Verify release and capture use the same source
+        env:
+          CAPTURE_RUN: ${{ steps.capture.outputs.run }}
+          SOURCE: ${{ steps.capture.outputs.source }}
+          VERSION: ${{ steps.capture.outputs.version }}
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$CAPTURE_RUN" > "$RUNNER_TEMP/capture.json"
+          CAPTURE_SHA=$(jq -r .head_sha "$RUNNER_TEMP/capture.json")
+          RESULT=$(jq -r .conclusion "$RUNNER_TEMP/capture.json")
+          RELEASE_SHA=$(gh api "repos/$GITHUB_REPOSITORY/commits/tv-v$VERSION" --jq .sha)
+          test "$RESULT" = success
+          test "$CAPTURE_SHA" = "$SOURCE"
+          test "$RELEASE_SHA" = "$SOURCE"
+      - uses: actions/download-artifact@v4
+        with:
+          name: tv-shots
+          path: capture
+          run-id: ${{ steps.capture.outputs.run }}
+          github-token: ${{ github.token }}
+      - name: Prepare public preview files
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import shutil, zipfile, json
+          source = Path('capture'); output = Path('preview'); output.mkdir()
+          files = {'10-panorama-home.png':'Panorama-home.png', '18-panorama-title.png':'Panorama-title.png',
+                   '12-panorama-catalog-remote.png':'Panorama-catalog.png', '17-panorama-settings.png':'Panorama-settings.png',
+                   'panorama-navigation.mp4':'Panorama-navigation.mp4'}
+          for old, new in files.items():
+              shutil.copyfile(source / old, output / new)
+          report = json.loads(Path('docs/tv-panorama-verification.json').read_text())
+          (output/'README.txt').write_text('Actual Android TV emulator capture. Release '+report['release_version']+'; capture build '+str(report['emulator']['capture_build'])+'. Both use source '+report['source_commit']+'.\nNo signed-in account or fake catalogue was injected. Physical TV hardware is not verified.\n')
+          with zipfile.ZipFile(output/'Panorama-preview.zip','w',zipfile.ZIP_DEFLATED) as archive:
+              for name in [*files.values(), 'README.txt']:
+                  archive.write(output/name, name)
+          PY
+      - name: Attach previews to the existing TV release
+        env:
+          VERSION: ${{ steps.capture.outputs.version }}
+        run: |
+          gh release upload "tv-v$VERSION" --repo "$GITHUB_REPOSITORY" \
+            preview/Panorama-home.png preview/Panorama-title.png \
+            preview/Panorama-navigation.mp4 preview/Panorama-preview.zip --clobber

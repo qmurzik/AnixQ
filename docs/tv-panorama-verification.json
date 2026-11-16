@@ -1,0 +1,151 @@
+{
+  "checked_utc": "2026-11-16T07:26:09.685776+00:00",
+  "source_commit": "7f2a227ecc9e5d1991ea234ccaa4a88ae7554465",
+  "release_version": "1.0.74",
+  "release_run": "https://github.com/qmurzik/AnixQ/actions/runs/43821975264",
+  "required_ci_steps": {
+    "Source selection, remote and sync regression tests": "success",
+    "Alternate TV interface and D-pad regression tests": "success",
+    "Playback recovery regression tests": "success",
+    "Phone playback, picker and PiP regression tests": "success",
+    "Build (TV + phone)": "success",
+    "Verify update signing compatibility": "success",
+    "Publish release": "success"
+  },
+  "apks": [
+    {
+      "file": "android/build/signed/AnixQ-TV.apk",
+      "package": "ru.qmods.anixq.tv",
+      "version_code": 74,
+      "bytes": 3262395,
+      "sha256": "d87747af806b9e86d4b5d22f3670fc36c40cddd76c73af1a6133466b0584b7a8",
+      "certificate_sha256": "fea95b7474d396516665375c40637f1fe71c84b3af9d75aca2d4635fcc47c2a8",
+      "url": "https://github.com/qmurzik/AnixQ/releases/download/tv-v1.0.74/AnixQ-TV.apk",
+      "versioned_and_rolling_asset_digests_match": true,
+      "update_compatible_with_1_0_69": true,
+      "test_catalogue_fixtures_not_packaged": true
+    },
+    {
+      "file": "android/build/signed/AnixQ.apk",
+      "package": "ru.qmods.anixq.mobile",
+      "version_code": 74,
+      "bytes": 4176246,
+      "sha256": "55a1f7cd978e2bd466410fc61f01f300aa0732e845db0bf2d2c350ff9548b112",
+      "certificate_sha256": "fea95b7474d396516665375c40637f1fe71c84b3af9d75aca2d4635fcc47c2a8",
+      "url": "https://github.com/qmurzik/AnixQ/releases/download/android-v1.0.74/AnixQ.apk",
+      "versioned_and_rolling_asset_digests_match": true,
+      "update_compatible_with_1_0_69": true,
+      "test_catalogue_fixtures_not_packaged": true
+    }
+  ],
+  "updater_manifests": {
+    "tv": {
+      "code": 74,
+      "name": "1.0.74",
+      "notes": "TV: «Панорама» — новый кинозал с сохранением классического интерфейса",
+      "apk": "https://github.com/qmurzik/AnixQ/releases/download/tv-v1.0.74/AnixQ-TV.apk"
+    },
+    "android": {
+      "code": 74,
+      "name": "1.0.74",
+      "notes": "TV: «Панорама» — новый кинозал с сохранением классического интерфейса",
+      "apk": "https://github.com/qmurzik/AnixQ/releases/download/android-v1.0.74/AnixQ.apk"
+    }
+  },
+  "ui": {
+    "default": "Classic",
+    "alternative": "Panorama",
+    "device_preference_not_synced": true,
+    "native_player_shared": true,
+    "motion_choices": [
+      "Auto",
+      "Full",
+      "Off"
+    ],
+    "new_ui_tests_passed": 9
+  },
+  "limits": [
+    "No physical Android TV device tested.",
+    "No authenticated episode playback tested in this UI revision.",
+    "Full legacy screenshot suite has a missing fixture; the pre-existing optional FocusTest fails separately and is not counted as passing."
+  ],
+  "emulator": {
+    "run_url": "https://github.com/qmurzik/AnixQ/actions/runs/43822120858",
+    "result": "success",
+    "api": 30,
+    "device": "Android TV 1080p x86",
+    "resolution": [
+      1920,
+      1080
+    ],
+    "capture_build": 75,
+    "source_commit_matches_release": true,
+    "motion": "FULL",
+    "system_animation_scale": 1,
+    "live_catalogue_data": true,
+    "no_injected_account": true,
+    "no_runtime_fatal_or_anr_in_app_log": true,
+    "artifact_id": 14205626693,
+    "artifact_sha256": "4188496994021210d874baa526d344ed6fcab651c300419c036cb9931477d6f8",
+    "checks": [
+      "Classic and Panorama screens",
+      "Home first-load focus",
+      "Film-strip D-pad navigation",
+      "Title header framing",
+      "Catalogue navigation",
+      "Search results",
+      "Library empty state",
+      "Schedule live data",
+      "Settings appearance control",
+      "Animated navigation capture",
+      "Scene-bound clipping inspected on recording frame"
+    ],
+    "no_app_anr_in_full_log": true,
+    "no_fatal_exception_in_full_log": true
+  },
+  "strict_tests": {
+    "passed": 55,
+    "skipped_authenticated_live": 3,
+    "groups": {
+      "core": 39,
+      "tv_source_regressions": 3,
+      "panorama_ui": 9,
+      "phone": 4
+    }
+  },
+  "legacy_optional_focus": {
+    "status": "failed",
+    "location": "FocusTest.kt:60",
+    "non_blocking_before_this_change": true,
+    "counted_as_passing": false,
+    "baseline_reference": "181a347 unchanged baseline failure previously verified"
+  },
+  "preview_assets": [
+    {
+      "name": "Panorama-home.png",
+      "sha256": "d46871fd33576570c5db18a988e2fc3eb57f12d447f5aa18671e7d3127386c41",
+      "bytes": 1328980
+    },
+    {
+      "name": "Panorama-title.png",
+      "sha256": "64bb866100e9c6e422fcd3a4ce4ec2d93f5a7c0efdc3705127e71994d0b38621",
+      "bytes": 969230
+    },
+    {
+      "name": "Panorama-catalog.png",
+      "sha256": "e083fe462874c087668c7ec5344fd7b801dd29b8ddc9339639aae8d801f8be61",
+      "bytes": 2038915
+    },
+    {
+      "name": "Panorama-settings.png",
+      "sha256": "f551343dc364e6ef22c720cd0f71271a14a6daba1978cf428bd9b86a276d85f4",
+      "bytes": 131544
+    },
+    {
+      "name": "Panorama-navigation.mp4",
+      "sha256": "7315f986a81152833f39e16c3981550a0df076dbd5fea7eac5a25d97f06c278b",
+      "bytes": 2775273
+    }
+  ],
+  "preview_bundle": "Produced from the verified capture by tv-preview-assets.yml; excludes device logs."
+}

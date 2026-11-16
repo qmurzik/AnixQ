@@ -349,7 +349,7 @@ fun TitleScreen(nav: Nav, start: Title) {
             item(key = "notes") { NotesCard(title) }
             if (franchise.size > 1) item(key = "franchise") {
                 Column(Modifier.padding(top = 26.dp)) {
-                    SectionHeader("Порядок просмотра")
+                    SectionHeader("Порядок просмотра", "Карта") { title.shikiId?.let { nav.push(FranchiseMapRoute(it, title.title)) } }
                     Spacer(Modifier.height(10.dp))
                     LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         itemsIndexed(franchise, key = { _, f -> "f" + f.second.id }) { i, (node, t) ->

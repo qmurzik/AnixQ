@@ -270,6 +270,7 @@ fun Root(nav: Nav) {
             LibLoginRoute -> LibLoginScreen(nav)
             is ru.qmods.anixq.mobile.ui.PersonRoute -> ru.qmods.anixq.mobile.ui.PersonScreen(nav, top)
             ru.qmods.anixq.mobile.ui.TraceRoute -> ru.qmods.anixq.mobile.ui.TraceScreen(nav)
+            is ru.qmods.anixq.mobile.ui.FranchiseMapRoute -> ru.qmods.anixq.mobile.ui.FranchiseMapScreen(nav, top)
             ru.qmods.anixq.mobile.ui.StatsRoute -> ru.qmods.anixq.mobile.ui.StatsScreen(nav)
             ru.qmods.anixq.mobile.ui.DiagnosticsRoute -> ru.qmods.anixq.mobile.ui.DiagnosticsScreen(nav)
             ru.qmods.anixq.mobile.ui.ReportRoute -> ru.qmods.anixq.mobile.ui.ReportScreen(nav)

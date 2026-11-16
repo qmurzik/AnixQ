@@ -41,7 +41,7 @@ object Recap {
 
 /** Watch order of a franchise from Shikimori, with the matching AnimeLib titles. */
 object Franchise {
-    data class Node(val shikiId: Int, val name: String, val kind: String?, val year: Int?, val date: Long, val weight: Int) {
+    data class Node(val shikiId: Int, val name: String, val kind: String?, val year: Int?, val date: Long, val weight: Int, val image: String? = null) {
         val isMain get() = weight >= 3 || kind == "TV Сериал" || kind == "Фильм"
     }
 
@@ -58,7 +58,8 @@ object Franchise {
                     val kind = n.str("kind")
                     // Promo clips and music videos aren't part of a watch order.
                     if (kind == "Проморолик" || kind == "Клип" || kind == "Реклама") return@mapNotNull null
-                    Node(id, n.str("name") ?: "", kind, n.int("year"), n.optLong("date"), n.int("weight") ?: 1)
+                    Node(id, n.str("name") ?: "", kind, n.int("year"), n.optLong("date"), n.int("weight") ?: 1,
+                        n.str("image_url")?.let { if (it.startsWith("http")) it else "https://shikimori.io$it" }?.takeIf { !it.contains("missing") })
                 }.sortedBy { it.date }
             }
         }.getOrDefault(emptyList()).let { if (it.size > 1) it else emptyList() }

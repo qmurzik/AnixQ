@@ -65,20 +65,26 @@ fun CatalogScreen(nav: Nav) {
     var genres by remember { mutableStateOf(CatalogState.genres) }
     var job by remember { mutableStateOf<Job?>(null) }
 
+    var generation by remember { mutableStateOf(0) }
     fun loadMore(reset: Boolean = false) {
-        if (reset) { job?.cancel(); CatalogState.items.clear(); CatalogState.page = 0; CatalogState.more = true; Focus.reset("catalog") }
+        if (reset) { generation++; job?.cancel(); CatalogState.items.clear(); CatalogState.page = 0; CatalogState.more = true; Focus.reset("catalog") }
         if (!CatalogState.more || (loading && !reset)) return
+        val requestGeneration = generation
+        val requestedQuery = query
+        val requestedPage = CatalogState.page + 1
         loading = true
         job = scope.launch {
             try {
-                val (list, more) = Api.catalog(query, CatalogState.page + 1)
+                val (list, more) = Api.catalog(requestedQuery, requestedPage)
+                if (requestGeneration != generation || requestedQuery != query) return@launch
                 val known = CatalogState.items.map { it.id }.toHashSet()
-                CatalogState.items.addAll(list.filter { it.id !in known })
-                CatalogState.page += 1
+                CatalogState.items.addAll(list.filter { known.add(it.id) })
+                CatalogState.page = requestedPage
                 CatalogState.more = more && list.isNotEmpty()
                 error = null
-            } catch (e: Exception) { error = e.message ?: "Ошибка" }
-            loading = false
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+            catch (e: Exception) { if (requestGeneration == generation) error = e.message ?: "Ошибка" }
+            finally { if (requestGeneration == generation) loading = false }
         }
     }
 
@@ -89,6 +95,7 @@ fun CatalogScreen(nav: Nav) {
         if (genres.isEmpty()) { genres = Api.genres(); CatalogState.genres = genres }
     }
 
+    LaunchedEffect(query.source) { genres = runCatching { Api.genres(query.source) }.getOrDefault(emptyList()) }
     val grid = rememberLazyGridState()
     LaunchedEffect(grid) {
         snapshotFlow { grid.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0 }.collect { last ->
@@ -104,14 +111,17 @@ fun CatalogScreen(nav: Nav) {
         item(span = { GridItemSpan(maxLineSpan) }, key = "head") { ScreenTitle("Каталог") }
         item(span = { GridItemSpan(maxLineSpan) }, key = "filters") {
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.padding(bottom = 6.dp).horizontalScroll(rememberScrollState())) {
-                CatalogSort.entries.forEach { s ->
+                Chip(if (query.source == "yummy") "YummyAnime" else "AnimeLib", true) {
+                    apply(CatalogQuery(source = if (query.source == "yummy") "animelib" else "yummy"))
+                }
+                CatalogSort.entries.filter { query.source != "yummy" || it != CatalogSort.UPDATED }.forEach { s ->
                     Chip(s.title, query.sort == s) { apply(query.copy(sort = s)) }
                 }
                 Box(Modifier.padding(horizontal = 6.dp))
                 Chip(statuses.first { it.first == query.status }.second, query.status != null) { dialog = "status" }
                 Chip(types.firstOrNull { it.first == query.type }?.second ?: "Тип", query.type != null) { dialog = "type" }
                 Chip(genres.firstOrNull { it.first == query.genre }?.second ?: "Жанр", query.genre != null) { dialog = "genre" }
-                if (query != CatalogQuery()) Chip("Сбросить", false) { apply(CatalogQuery()) }
+                if (query != CatalogQuery()) Chip("Сбросить", false) { apply(CatalogQuery(source = query.source)) }
             }
         }
         items(CatalogState.items, key = { it.id }) { t ->

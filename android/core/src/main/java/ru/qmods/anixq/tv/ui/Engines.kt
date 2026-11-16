@@ -47,9 +47,6 @@ class ExoEngine(private val context: Context, private val onError: (String) -> U
     }
 
     val exo: ExoPlayer = ExoPlayer.Builder(context, renderers)
-        // Network through OkHttp (with the site's Referer); file:// for downloaded episodes.
-        .setMediaSourceFactory(DefaultMediaSourceFactory(androidx.media3.datasource.DefaultDataSource.Factory(context,
-            OkHttpDataSource.Factory(Api.http).setDefaultRequestProperties(mapOf("Referer" to "${Api.SITE}/", "Origin" to Api.SITE)))))
         .setHandleAudioBecomingNoisy(true)
         // Start after ~1 s of video instead of 2.5 s; keep up to a minute buffered for shaky Wi-Fi.
         .setLoadControl(androidx.media3.exoplayer.DefaultLoadControl.Builder().setBufferDurationsMs(15_000, 60_000, 1_000, 2_500).build())
@@ -181,22 +178,31 @@ class ExoEngine(private val context: Context, private val onError: (String) -> U
 
     /** The next episode waiting in the player's queue (its start gets buffered near the end of this one). */
     private var queuedUrl: String? = null
+    private var queuedHeaders: Map<String, String>? = null
+    private var currentHeaders: Map<String, String> = mapOf("Referer" to "${Api.SITE}/", "Origin" to Api.SITE)
+    private val legacyHeaders get() = mapOf("Referer" to "${Api.SITE}/", "Origin" to Api.SITE)
+    private fun mediaSource(url: String, subtitles: List<ru.qmods.anixq.tv.data.Subtitle>, headers: Map<String, String>): androidx.media3.exoplayer.source.MediaSource {
+        val upstream = OkHttpDataSource.Factory(Api.http).setDefaultRequestProperties(headers.toMap())
+        return DefaultMediaSourceFactory(androidx.media3.datasource.DefaultDataSource.Factory(context, upstream)).createMediaSource(item(url, subtitles))
+    }
 
     /** Put the next episode in the queue: the player loads its beginning in advance; "next" then starts at once. */
-    fun queueNext(url: String, subtitles: List<ru.qmods.anixq.tv.data.Subtitle> = emptyList()) {
+    fun queueNext(url: String, subtitles: List<ru.qmods.anixq.tv.data.Subtitle> = emptyList(), headers: Map<String, String> = legacyHeaders) {
         if (queuedUrl == url || exo.mediaItemCount != 1) return
         // Don't roll into it by itself: the app decides (countdown, marathon, sleep timer).
         exo.pauseAtEndOfMediaItems = true
-        exo.addMediaItem(item(url, subtitles))
+        exo.addMediaSource(mediaSource(url, subtitles, headers))
+        queuedHeaders = headers.toMap()
         queuedUrl = url
     }
 
-    fun load(url: String, startAt: Double, subtitles: List<ru.qmods.anixq.tv.data.Subtitle> = emptyList(), upscale: Int = appliedMode) {
+    fun load(url: String, startAt: Double, subtitles: List<ru.qmods.anixq.tv.data.Subtitle> = emptyList(), upscale: Int = appliedMode, headers: Map<String, String> = currentHeaders) {
         setAutomaticQuality(ru.qmods.anixq.tv.data.Store.automaticQuality)
         applyUpscale(upscale)
         firstFrame = false
         loadedAt = System.currentTimeMillis()
-        if (url == queuedUrl && exo.mediaItemCount > 1) {
+        currentHeaders = headers.toMap()
+        if (url == queuedUrl && headers == queuedHeaders && exo.mediaItemCount > 1) {
             // Already buffering in the queue: jump straight to it.
             exo.seekTo(1, (startAt * 1000).toLong())
             exo.removeMediaItem(0)
@@ -207,7 +213,7 @@ class ExoEngine(private val context: Context, private val onError: (String) -> U
         }
         queuedUrl = null
         exo.pauseAtEndOfMediaItems = false
-        exo.setMediaItem(item(url, subtitles), (startAt * 1000).toLong())
+        exo.setMediaSource(mediaSource(url, subtitles, headers), (startAt * 1000).toLong())
         exo.prepare()
         exo.playWhenReady = true
     }

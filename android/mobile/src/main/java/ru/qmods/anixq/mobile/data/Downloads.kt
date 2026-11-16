@@ -32,7 +32,7 @@ object Downloads {
 
     data class Item(
         val title: Title, val episode: Episode, val team: Team, val quality: String, val file: String,
-        val systemId: Long, val segments: List<Segment>, val state: State = State.QUEUED, val progress: Float = 0f, val bytes: Long = 0,
+        val systemId: Long, val segments: List<Segment>, val state: State = State.QUEUED, val progress: Float = 0f, val bytes: Long = 0, val source: String = "animelib",
     ) {
         val key get() = episode.id
     }
@@ -56,6 +56,8 @@ object Downloads {
         watch()
     }
 
+    private fun storedChoice(title: Title, players: List<Player>) = ru.qmods.anixq.tv.data.Store.playbackChoice(title, players)
+
     private val dm get() = app.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
 
     fun item(episodeId: Int): Item? = items.value[episodeId]
@@ -67,7 +69,7 @@ object Downloads {
     fun offlinePlayer(episodeId: Int): Player? {
         val it = item(episodeId) ?: return null
         val f = localFile(episodeId) ?: return null
-        return Player(it.team, "animelib", null, mapOf("Скачано" to Uri.fromFile(f).toString()), it.segments, null, null)
+        return Player(it.team, "animelib", null, mapOf("Скачано" to Uri.fromFile(f).toString()), it.segments, null, null, source = it.source, headers = emptyMap())
     }
 
     /** Queue episodes of a title with a dub; resolves the video address for each first. */
@@ -78,24 +80,27 @@ object Downloads {
             for (ep in episodes) {
                 if (items.value[ep.id]?.state.let { it == State.DONE || it == State.RUNNING || it == State.QUEUED }) continue
                 try {
-                    val players = Api.players(ep.id)
-                    val p = players.firstOrNull { it.team.id == teamId && it.isNative } ?: players.firstOrNull { it.isNative }
+                    val players = ru.qmods.anixq.tv.data.sources.AnimeSources.players(title, ep)
+                    val choice = players.firstOrNull { it.team.id == teamId } ?: storedChoice(title, players) ?: players.firstOrNull { it.isNative }
+                    val p = choice?.let { ru.qmods.anixq.tv.data.sources.AnimeSources.resolve(it, title, ep) }
                     if (p == null) { missing++; continue }
-                    val keys = p.hrefs.keys.sortedByDescending { it.removeSuffix("p").toIntOrNull() ?: 0 }
-                    val q = keys.firstOrNull { (it.removeSuffix("p").toIntOrNull() ?: 0) <= quality } ?: keys.last()
+                    val keys = p.hrefs.keys.sortedByDescending { ru.qmods.anixq.tv.data.sources.qualityHeight(it) }
+                    val q = keys.firstOrNull { (ru.qmods.anixq.tv.data.sources.qualityHeight(it)) <= quality } ?: keys.last()
                     val href = p.hrefs.getValue(q)
-                    val server = Api.rankServers(href).firstOrNull() ?: continue
+                    val direct = href.startsWith("http")
+                    if (direct && !Regex("(?i)\\.mp4(?:[?#]|$)").containsMatchIn(href)) { missing++; continue }
+                    val downloadUrl = if (direct) href else Api.videoUrl(Api.rankServers(href).firstOrNull() ?: continue, href)
                     val dir = File(app.getExternalFilesDir(Environment.DIRECTORY_MOVIES) ?: app.filesDir, "anixq").apply { mkdirs() }
                     val file = File(dir, "${title.id}_${ep.id}_${p.team.id}.mp4")
-                    val req = DownloadManager.Request(Uri.parse(Api.videoUrl(server, href)))
-                        .addRequestHeader("Referer", "${Api.SITE}/")
+                    val req = DownloadManager.Request(Uri.parse(downloadUrl))
+                        .apply { p.headers.forEach { (key, value) -> addRequestHeader(key, value) } }
                         .setTitle("${title.title} — серия ${ep.number}")
                         .setDescription("AnixQ · ${p.team.name} · $q")
                         .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE)
                         .setDestinationUri(Uri.fromFile(file))
                         .setAllowedOverMetered(true)
                     val id = dm.enqueue(req)
-                    put(Item(title, ep, p.team, q, file.path, id, p.segments))
+                    put(Item(title, ep, p.team, q, file.path, id, p.segments, source = p.source))
                     added++
                 } catch (e: Exception) { missing++ }
             }
@@ -104,7 +109,7 @@ object Downloads {
                 onResult(when {
                     added > 0 && missing == 0 -> "Скачиваем: $added ${if (added == 1) "серия" else "серий"}"
                     added > 0 -> "Скачиваем $added, для $missing нет видео без рекламы"
-                    missing > 0 -> "Для этих серий нет видео AnimeLib — скачать нельзя"
+                    missing > 0 -> "Нет доступного MP4 для скачивания; HLS пока не поддерживается"
                     else -> "Уже скачано"
                 })
             }
@@ -162,7 +167,7 @@ object Downloads {
     private fun save() {
         val a = JSONArray()
         items.value.values.forEach { i ->
-            a.put(JSONObject().put("title", i.title.toSync())
+            a.put(JSONObject().put("title", i.title.toSync()).put("source", i.source)
                 .put("ep", JSONObject().put("id", i.episode.id).put("n", i.episode.number).put("name", i.episode.name ?: "").put("i", i.episode.index))
                 .put("team", JSONObject().put("id", i.team.id).put("name", i.team.name).put("subs", i.team.isSubtitles))
                 .put("q", i.quality).put("file", i.file).put("sys", i.systemId).put("state", i.state.name).put("bytes", i.bytes)
@@ -191,7 +196,7 @@ object Downloads {
                 Item(t, Episode(e.getInt("id"), e.getString("n"), e.optString("name").ifEmpty { null }, e.getInt("i")),
                     Team(tm.getInt("id"), tm.getString("name"), tm.optBoolean("subs")), x.getString("q"), x.getString("file"), x.getLong("sys"),
                     (0 until seg.length()).map { j -> seg.getJSONObject(j).let { s -> Segment(s.getString("k"), s.getDouble("f"), s.getDouble("t")) } },
-                    State.valueOf(x.getString("state")), if (x.getString("state") == "DONE") 1f else 0f, x.optLong("bytes"))
+                    State.valueOf(x.getString("state")), if (x.getString("state") == "DONE") 1f else 0f, x.optLong("bytes"), x.optString("source", "animelib"))
             }.associateBy { it.key }
         }
     }

@@ -143,6 +143,7 @@ object Api {
     // Catalog
 
     suspend fun catalog(q: CatalogQuery, page: Int): Pair<List<Title>, Boolean> {
+        if (q.source == "yummy") return ru.qmods.anixq.tv.data.sources.AnimeSources.yummy.catalog(q, page)
         val params = mutableListOf("site_id[]" to "5", "page" to page.toString())
         if (q.text.isBlank()) { params += "sort_by" to q.sort.key; params += "sort_type" to "desc" } else params += "q" to q.text
         q.status?.let { params += "status[]" to it.toString() }
@@ -160,12 +161,13 @@ object Api {
 
     suspend fun search(text: String) = catalog(CatalogQuery(text = text), 1).first
 
-    suspend fun genres(): List<Pair<Int, String>> = try {
+    suspend fun genres(source: String = "animelib"): List<Pair<Int, String>> = if (source == "yummy") ru.qmods.anixq.tv.data.sources.AnimeSources.yummy.genres() else try {
         val d = data(request("/constants", listOf("fields[]" to "genres"))) as? JSONObject
         d?.arr("genres")?.mapNotNull { g -> g.int("id")?.let { it to (g.str("name") ?: "") } } ?: emptyList()
     } catch (e: Exception) { emptyList() }
 
     suspend fun detail(slug: String): Detail {
+        if (slug.startsWith("yummy:")) return ru.qmods.anixq.tv.data.sources.AnimeSources.yummy.detail(slug.substringAfter(":").toInt())
         val fields = listOf("background", "summary", "releaseDate", "genres").map { "fields[]" to it }
         val d = data(request("/anime/$slug", fields)) as? JSONObject ?: throw ApiException("Не найдено")
         val title = Title.fromApi(d) ?: throw ApiException("Не найдено")
@@ -184,7 +186,7 @@ object Api {
     }
 
     /** Other parts of the franchise (sequels, films, OVA) with how they relate. */
-    suspend fun related(slug: String): List<Pair<Title, String>> = try {
+    suspend fun related(slug: String): List<Pair<Title, String>> = if (slug.startsWith("yummy:")) emptyList() else try {
         val a = data(request("/anime/$slug/relations")) as? JSONArray ?: JSONArray()
         val seen = HashSet<Int>()
         (0 until a.length()).mapNotNull { i ->
@@ -220,6 +222,7 @@ object Api {
 
     /** Timecoded comments of an episode (rare, so a few pages are scanned) — for comments flying over the video. */
     suspend fun timedComments(episodeId: Int, pages: Int = 6): List<TimedComment> {
+        if (episodeId <= 0) return emptyList()
         val out = ArrayList<TimedComment>()
         val node = Regex("timecode-node[^>]*>\\s*([0-9]{1,2}:[0-9]{2}(?::[0-9]{2})?)\\s*</span>")
         for (page in 1..pages) {
@@ -240,13 +243,14 @@ object Api {
         return out.sortedBy { it.time }
     }
 
-    suspend fun similar(slug: String): List<Title> = try {
+    suspend fun similar(slug: String): List<Title> = if (slug.startsWith("yummy:")) emptyList() else try {
         val a = data(request("/anime/$slug/similar")) as? JSONArray ?: JSONArray()
         val seen = HashSet<Int>()
         (0 until a.length()).mapNotNull { i -> a.optJSONObject(i)?.obj("media")?.let(Title::fromApi)?.takeIf { seen.add(it.id) } }
     } catch (e: Exception) { emptyList() }
 
     suspend fun episodes(slug: String): List<Episode> {
+        if (slug.startsWith("yummy:")) return ru.qmods.anixq.tv.data.sources.AnimeSources.yummy.episodes(slug.substringAfter(":").toInt())
         val a = data(request("/episodes", listOf("anime_id" to slug))) as? JSONArray ?: return emptyList()
         return (0 until a.length()).mapNotNull { i ->
             val x = a.optJSONObject(i) ?: return@mapNotNull null
@@ -255,6 +259,7 @@ object Api {
     }
 
     suspend fun players(episodeId: Int): List<Player> {
+        if (episodeId <= 0) return emptyList()
         val d = data(request("/episodes/$episodeId")) as? JSONObject ?: return emptyList()
         return d.arr("players").mapNotNull { p ->
             val t = p.obj("team") ?: return@mapNotNull null
@@ -303,10 +308,12 @@ object Api {
     }
 
     fun videoUrl(server: String, href: String): String =
-        (if (server.endsWith("/")) server else "$server/") + href.removePrefix("/")
+        if (href.startsWith("https://") || href.startsWith("http://") || href.startsWith("file:")) href
+        else (if (server.endsWith("/")) server else "$server/") + href.removePrefix("/")
 
     /** Mirrors with the first one that answered a small range request first. */
     suspend fun rankServers(href: String): List<String> = coroutineScope {
+        if (href.startsWith("http://") || href.startsWith("https://") || href.startsWith("file:")) return@coroutineScope listOf("")
         val all = videoServers()
         ranked?.let { if (System.currentTimeMillis() - it.first < 20 * 60_000) return@coroutineScope it.second }
         val results = all.map { s ->
@@ -334,7 +341,7 @@ object Api {
     // Account progress
 
     suspend fun saveTimecode(episodeId: Int, playerId: Int?, seconds: Double) {
-        if (Store.libToken == null) return
+        if (episodeId <= 0 || Store.libToken == null) return
         try {
             request("/episodes/timecodes", method = "PUT",
                 body = JSONObject().put("episode_id", episodeId).put("timecode", seconds.toInt()).apply { playerId?.let { put("player_id", it) } })
@@ -342,7 +349,7 @@ object Api {
     }
 
     suspend fun markViewed(episodeId: Int, playerId: Int?) {
-        if (Store.libToken == null) return
+        if (episodeId <= 0 || Store.libToken == null) return
         try {
             request("/episodes/views", method = "PUT",
                 body = JSONObject().put("episode_id", episodeId).apply { playerId?.let { put("player_id", it) } })

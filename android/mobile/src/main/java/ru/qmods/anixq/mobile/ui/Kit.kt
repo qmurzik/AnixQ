@@ -412,7 +412,7 @@ fun tvNow(s: JSONObject?): TvNow? {
     val st = s.optString("state")
     if (st != "playing" && st != "paused") return null
     val id = s.optInt("titleId"); val slug = s.optString("slug")
-    if (id <= 0 || slug.isEmpty()) return null
+    if (id == 0 || slug.isEmpty()) return null
     val t = Title(id = id, slug = slug, rusName = s.optString("title").ifEmpty { null }, coverThumb = s.optString("cover").ifEmpty { null })
     var pos = s.optDouble("pos", 0.0)
     val at = s.optDouble("at", 0.0)
@@ -460,7 +460,7 @@ fun NowOnTvCard(nav: Nav, modifier: Modifier = Modifier) {
         }
         Row(Modifier.clip(CircleShape).background(Color.White).pressable {
             if (tv.playing) Remote.send("pause")
-            nav.play(PlayerRoute(tv.title, tv.episodeId.takeIf { it > 0 }, startAt = tv.pos))
+            nav.play(PlayerRoute(tv.title, tv.episodeId.takeIf { it != 0 }, startAt = tv.pos))
         }.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Default.PlayArrow, null, Modifier.size(18.dp), tint = Color.Black)
             Text("Здесь", color = Color.Black, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)

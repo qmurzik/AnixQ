@@ -66,6 +66,8 @@ object Genres { var list: List<Pair<Int, String>> = emptyList() }
 @Composable
 fun SearchScreen(nav: Nav) {
     var text by rememberSaveable { mutableStateOf("") }
+    var catalogSource by rememberSaveable { mutableStateOf("animelib") }
+    var searchError by remember { mutableStateOf<String?>(null) }
     var results by remember { mutableStateOf<List<Title>>(emptyList()) }
     var corrected by remember { mutableStateOf<String?>(null) }
     var searching by remember { mutableStateOf(false) }
@@ -73,13 +75,16 @@ fun SearchScreen(nav: Nav) {
     var genres by remember { mutableStateOf(Genres.list) }
     val focus = LocalFocusManager.current
     val q = text.trim()
-    LaunchedEffect(Unit) { if (genres.isEmpty()) genres = Api.genres().also { Genres.list = it } }
-    LaunchedEffect(q) {
+    LaunchedEffect(catalogSource) { genres = runCatching { Api.genres(catalogSource) }.getOrDefault(emptyList()) }
+    LaunchedEffect(q, catalogSource) {
         if (q.length < 2) { results = emptyList(); searching = false; return@LaunchedEffect }
         searching = true
+        searchError = null
         delay(350)
         // Forgiving search: layout, transliteration, a typo at the end, Shikimori.
-        val (found, used) = ru.qmods.anixq.tv.data.SmartSearch.search(q)
+        val (found, used) = if (catalogSource == "yummy") {
+            try { Api.catalog(CatalogQuery(text = q, source = "yummy"), 1).first to null } catch(e: kotlinx.coroutines.CancellationException) { throw e } catch(e: Exception) { searchError = e.message; emptyList<Title>() to null }
+        } else ru.qmods.anixq.tv.data.SmartSearch.search(q)
         results = found
         corrected = used
         searching = false
@@ -88,6 +93,11 @@ fun SearchScreen(nav: Nav) {
 
     Column(Modifier.fillMaxSize().statusBarsPadding()) {
         LargeTitle("Поиск")
+        Row(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Capsule("AnimeLib", selected = catalogSource == "animelib") { catalogSource = "animelib" }
+            Capsule("YummyAnime", selected = catalogSource == "yummy") { catalogSource = "yummy" }
+        }
+        searchError?.let { Text(it, color = Pal.muted, modifier = Modifier.padding(16.dp)) }
         Row(Modifier.padding(horizontal = 16.dp, vertical = 6.dp).fillMaxWidth().height(40.dp).clip(RoundedCornerShape(11.dp)).background(Pal.cardHi)
             .padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Default.Search, null, Modifier.size(20.dp), tint = Pal.muted)
@@ -130,7 +140,7 @@ fun SearchScreen(nav: Nav) {
                     item { Text("Жанры", fontSize = 20.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 16.dp, top = 22.dp, bottom = 10.dp)) }
                     items(genres.chunked(2)) { pair ->
                         Row(Modifier.padding(horizontal = 16.dp, vertical = 5.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            pair.forEach { (id, name) -> GenreTile(id, name, Modifier.weight(1f)) { nav.push(CatalogRoute(name, CatalogQuery(CatalogSort.POPULAR, genre = id))) } }
+                            pair.forEach { (id, name) -> GenreTile(id, name, Modifier.weight(1f)) { nav.push(CatalogRoute(name, CatalogQuery(CatalogSort.POPULAR, genre = id, source = catalogSource))) } }
                             if (pair.size == 1) Spacer(Modifier.weight(1f))
                         }
                     }

@@ -114,7 +114,7 @@ fun nextIndex(title: Title, eps: List<Episode>): Int {
     return eps.indexOfFirst { !Store.isWatched(title.id, it.number) }.takeIf { it >= 0 } ?: 0
 }
 
-private fun teamLabel(o: TeamOption) = (if (o.native) "⚡ " else "") + o.team.name + (if (o.native) "" else " · Kodik, реклама")
+private fun teamLabel(o: TeamOption) = o.label
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
@@ -148,6 +148,11 @@ fun TitleScreen(nav: Nav, start: Title) {
     }
     val hasTv = Store.remoteChannel.isNotEmpty()
 
+    var sourceGenres by remember { mutableStateOf<Map<String, Int>>(emptyMap()) }
+    LaunchedEffect(start.slug) {
+        val source = if (start.slug.startsWith("yummy:")) "yummy" else "animelib"
+        sourceGenres = runCatching { Api.genres(source).associate { it.second.lowercase() to it.first } }.getOrDefault(emptyMap())
+    }
     LaunchedEffect(Unit) { runCatching { GenreIds.load() } }
     LaunchedEffect(start.slug, reload) {
         error = null
@@ -162,15 +167,15 @@ fun TitleScreen(nav: Nav, start: Title) {
             if (eps.isEmpty()) return@LaunchedEffect
             // Teams can differ between early and recent episodes: look at both ends.
             val target = eps[nextIndex(start, eps)]
-            val players = Api.players(target.id) + (if (eps.size > 1 && eps.last().id != target.id) runCatching { Api.players(eps.last().id) }.getOrDefault(emptyList()) else emptyList())
+            val players = ru.qmods.anixq.tv.data.sources.AnimeSources.players(start, target).filter(ru.qmods.anixq.tv.data.sources.AnimeSources::supported)
             val order = LinkedHashMap<Int, TeamOption>()
             players.forEach { p ->
                 val o = order[p.team.id]
-                order[p.team.id] = TeamOption(p.team, (o?.native ?: false) || p.isNative, (o?.kodik ?: false) || p.isKodik)
+                order[p.team.id] = TeamOption(p.team, (o?.native ?: false) || p.isNative || p.canResolve, (o?.kodik ?: false) || p.isKodik, p.sourceLabel, p.balancer)
             }
             val opts = order.values.let { v -> v.filter { it.native && !it.team.isSubtitles } + v.filter { it.native && it.team.isSubtitles } + v.filter { !it.native } }
             teams = opts; TitleCache.teams[start.slug] = opts
-            launch { players.firstOrNull { it.isNative && (teamId == null || it.team.id == teamId) }?.hrefs?.values?.firstOrNull()?.let { runCatching { Api.rankServers(it) } } }
+            launch { players.firstOrNull { it.isNative && (teamId == null || it.team.id == teamId) }?.hrefs?.values?.firstOrNull()?.let { if (!it.startsWith("http")) runCatching { Api.rankServers(it) } } }
             if (teamId == null || opts.none { it.team.id == teamId }) {
                 teamId = opts.firstOrNull { o -> Store.dubs.any { it.equals(o.team.name, true) } }?.team?.id ?: opts.firstOrNull()?.team?.id
             }
@@ -251,6 +256,8 @@ fun TitleScreen(nav: Nav, start: Title) {
                     }
                 }
             }
+            if (!ru.qmods.anixq.tv.data.sources.YummyAccount.signedIn) item { Text("Для дополнительных озвучек войдите в YummyAnime в настройках", color = Pal.muted, fontSize = 13.sp, modifier = Modifier.padding(18.dp).clickable { nav.push(SettingsRoute) }) }
+            title.episodeInfo?.let { info -> item { Text(info, color = Pal.muted, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 18.dp, vertical = 8.dp)) } }
             detail?.summary?.takeIf { it.isNotBlank() }?.let { summary ->
                 item(key = "about") {
                     Column(Modifier.padding(horizontal = 16.dp).padding(top = 18.dp)) {
@@ -266,7 +273,7 @@ fun TitleScreen(nav: Nav, start: Title) {
                         items(genres) { g ->
                             Text(g, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.clip(CircleShape).background(Pal.cardHi)
                                 .clickable {
-                                    scopeGenre(g)?.let { id -> nav.push(CatalogRoute(g, CatalogQuery(CatalogSort.POPULAR, genre = id))) }
+                                    sourceGenres[g.lowercase()]?.let { id -> nav.push(CatalogRoute(g, CatalogQuery(CatalogSort.POPULAR, genre = id, source = if (title.slug.startsWith("yummy:")) "yummy" else "animelib"))) }
                                 }.padding(horizontal = 10.dp, vertical = 6.dp))
                         }
                     }
@@ -342,7 +349,7 @@ fun TitleScreen(nav: Nav, start: Title) {
                                                 onClick = { epMenu = null; ru.qmods.anixq.mobile.data.Downloads.remove(ep.id) })
                                             DropdownMenuItem({ Text("Заметка к серии") }, leadingIcon = { Icon(Icons.Default.Edit, null) },
                                                 onClick = { epMenu = null; noteEp = ep })
-                                            DropdownMenuItem({ Text("Обсуждение серии") }, leadingIcon = { Icon(Icons.Default.ChatBubbleOutline, null) },
+                                            if (ep.id > 0) DropdownMenuItem({ Text("Обсуждение серии") }, leadingIcon = { Icon(Icons.Default.ChatBubbleOutline, null) },
                                                 onClick = { epMenu = null; nav.push(CommentsRoute(ep.id, "episodes", "${title.title} · серия ${ep.number}")) })
                                         }
                                     }
@@ -381,7 +388,7 @@ fun TitleScreen(nav: Nav, start: Title) {
                 item(key = "people") { PeopleShelves(sid, nav) }
             }
             item(key = "similar") { Shelf("Похожие", similar) { nav.open(it) } }
-            item(key = "comments") { CommentsPreview(title, nav) }
+            if (title.id > 0) item(key = "comments") { CommentsPreview(title, nav) }
         }
 
         // Floating bar: round buttons over the art; a solid bar with the name once scrolled.

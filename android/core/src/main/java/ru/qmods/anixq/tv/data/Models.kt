@@ -32,12 +32,21 @@ data class Title(
     val statusId: Int? = null,
     val year: Int? = null,
     val age: String? = null,
+    val malId: Int? = null,
+    val episodeCount: Int? = null,
+    val episodesAired: Int? = null,
+    val nextEpisodeAt: Double? = null,
 ) {
     val title: String get() = rusName ?: name ?: engName ?: "Без названия"
     val poster: String? get() = cover ?: coverThumb
     /** Small cover for cards: decodes ~4× faster on weak TV boxes. */
     val thumb: String? get() = coverThumb ?: cover
     val isOngoing: Boolean get() = statusId == 1
+    val episodeInfo: String? get() = episodeCount?.let { count ->
+        val aired = episodesAired ?: 0
+        val next = nextEpisodeAt?.takeIf { it > 0 }?.let { java.text.SimpleDateFormat("dd.MM HH:mm", java.util.Locale.getDefault()).format(java.util.Date((it * 1000).toLong())) }
+        "$aired / $count эп." + (next?.let { " · следующая $it" } ?: "")
+    }
     val meta: String get() = listOfNotNull(typeLabel, year?.toString(), rating?.let { "★ %.1f".format(it) }).joinToString(" · ")
 
     fun toSync(): JSONObject = JSONObject().apply {
@@ -47,6 +56,7 @@ data class Title(
         rating?.let { put("rating", it) }; shikiId?.let { put("shikiId", it) }
         typeLabel?.let { put("typeLabel", it) }; statusId?.let { put("statusId", it) }
         year?.let { put("year", it) }; age?.let { put("age", it) }
+        malId?.let { put("malId", it) }; episodeCount?.let { put("episodeCount", it) }; episodesAired?.let { put("episodesAired", it) }; nextEpisodeAt?.let { put("nextEpisodeAt", it) }
     }
 
     companion object {
@@ -54,7 +64,7 @@ data class Title(
             val id = x.int("id") ?: return null
             val slug = x.str("slug_url") ?: return null
             val year = x.str("releaseDateString")?.split(" ")?.mapNotNull { it.toIntOrNull() }?.firstOrNull { it > 1900 }
-            val shiki = x.str("shikimori_href")?.split("/")?.lastOrNull()?.takeWhile { it.isDigit() }?.toIntOrNull()
+            val shiki = x.str("shikimori_href")?.substringBefore('?')?.trimEnd('/')?.substringAfterLast('/')?.let { Regex("^[a-zA-Z]?(\\d+)(?:-|$)").find(it)?.groupValues?.get(1)?.toIntOrNull() }
             return Title(
                 id = id, slug = slug, rusName = x.str("rus_name"), name = x.str("name"), engName = x.str("eng_name"),
                 cover = x.obj("cover")?.str("default"), coverThumb = x.obj("cover")?.str("thumbnail"),
@@ -68,7 +78,7 @@ data class Title(
             val id = x.int("id") ?: return null
             val slug = x.str("slugURL") ?: return null
             return Title(id, slug, x.str("rusName"), x.str("name"), x.str("engName"), x.str("cover"), x.str("coverThumb"),
-                x.dbl("rating"), x.int("shikiId"), x.str("typeLabel"), x.int("statusId"), x.int("year"), x.str("age"))
+                x.dbl("rating"), x.int("shikiId"), x.str("typeLabel"), x.int("statusId"), x.int("year"), x.str("age"), x.int("malId"), x.int("episodeCount"), x.int("episodesAired"), x.dbl("nextEpisodeAt"))
         }
     }
 }
@@ -100,15 +110,22 @@ data class Player(
     val subtitles: List<Subtitle> = emptyList(),
     /** Where the video comes from: AnimeLib's servers, or AniLibria's own (see Libria). */
     val source: String = "animelib",
+    val headers: Map<String, String> = if (source == "animelib") mapOf("Referer" to "${Api.SITE}/", "Origin" to Api.SITE) else emptyMap(),
+    val resolverUrl: String? = null,
+    val balancer: String? = null,
 ) {
+    val isYummy get() = source == "yummy"
+    val canResolve get() = resolverUrl != null
+    val sourceLabel get() = when(source) { "yummy" -> "YummyAnime"; "anilibria" -> "AniLibria"; else -> "AnimeLib" }
+    val choiceLabel get() = listOfNotNull(sourceLabel, balancer, team.name).joinToString(" · ")
     val isLibria get() = source == Libria.SOURCE
     val isNative get() = player.equals("animelib", true) && hrefs.isNotEmpty()
     val isKodik get() = player.equals("kodik", true) && kodikSrc != null
 }
 
 /** A dub / subtitle team offered for a title, with the players it has. */
-data class TeamOption(val team: Team, val native: Boolean, val kodik: Boolean) {
-    val label get() = team.name + if (native) "" else " · Kodik"
+data class TeamOption(val team: Team, val native: Boolean, val kodik: Boolean, val sourceLabel: String = "AnimeLib", val balancer: String? = null) {
+    val label get() = listOfNotNull(sourceLabel, balancer, team.name).joinToString(" · ") + if (native || !kodik) "" else " · Kodik"
 }
 
 enum class Bookmark(val raw: Int, val title: String) {
@@ -133,6 +150,7 @@ data class CatalogQuery(
     val yearTo: Int? = null,
     val episodesMin: Int? = null,
     val episodesMax: Int? = null,
+    val source: String = "animelib",
 ) {
     val extraFilters get() = listOfNotNull(genre, yearFrom ?: yearTo, episodesMin ?: episodesMax).size
 }

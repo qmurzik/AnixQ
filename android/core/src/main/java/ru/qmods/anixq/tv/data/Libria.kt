@@ -109,7 +109,7 @@ object Libria {
                     if (!a.isNaN() && !b.isNaN() && b > a) Segment("ending", a, b) else null
                 })
             }.ifEmpty { base.segments }
-            base.copy(player = "animelib", hrefs = hrefs, segments = segs, source = SOURCE)
+            base.copy(player = "animelib", hrefs = hrefs, segments = segs, source = SOURCE, headers = emptyMap())
         }
     }
 

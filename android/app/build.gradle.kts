@@ -29,8 +29,6 @@ android {
                 storePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
                 keyAlias = System.getenv("ANDROID_KEY_ALIAS") ?: "anixq"
                 keyPassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
-            } else {
-                initWith(getByName("debug"))
             }
         }
     }
@@ -83,3 +81,17 @@ dependencies {
     debugImplementation("androidx.compose.ui:ui-test-manifest")
 }
 
+
+// Release updates must use the repository's existing key, restored by android-tv.yml.
+// A local debug key cannot update an installed release and must never be substituted.
+tasks.matching { it.name == "preReleaseBuild" }.configureEach {
+    doFirst {
+        val signingPath = System.getenv("ANDROID_KEYSTORE")
+        check(!signingPath.isNullOrBlank() && file(signingPath).isFile) {
+            "Release signing requires ANDROID_KEYSTORE. Use the Android TV GitHub Actions workflow, which restores the existing signing key."
+        }
+        check(!System.getenv("ANDROID_KEYSTORE_PASSWORD").isNullOrBlank()) {
+            "Release signing requires ANDROID_KEYSTORE_PASSWORD."
+        }
+    }
+}

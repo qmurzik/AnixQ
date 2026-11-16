@@ -1,0 +1,22 @@
+{
+  "id": "be348c0423c77acd06f24bcbee51c5fc",
+  "anime_id": 10818,
+  "episode": "1",
+  "studio_name": "Art-Dublyazh",
+  "is_subtitle": false,
+  "language": "ru",
+  "opening_start": 0,
+  "opening_length": 0,
+  "ending_start": 0,
+  "ending_length": 0,
+  "date": 1723558576,
+  "qualities": {
+    "q1080": "https://cdn.example.test/q1080/JAM CLUB/video.mp4",
+    "q360": null,
+    "q480": null,
+    "q720": null,
+    "q2k": null,
+    "q4k": null
+  },
+  "next_ep_id": "6e497a9db21b99162350c5153bd25a48"
+}

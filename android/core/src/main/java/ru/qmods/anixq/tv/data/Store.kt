@@ -20,6 +20,7 @@ data class Pos(val pos: Double, val dur: Double, val at: Double) {
 data class WatchEntry(
     val title: Title, val episodeId: Int, val ep: String, val epName: String,
     val teamId: Int, val teamName: String, val pos: Double, val dur: Double, val at: Double,
+    val playbackSource: String = "animelib", val balancer: String? = null,
 ) {
     val progress: Double get() = if (dur > 0) (pos / dur).coerceIn(0.0, 1.0) else 0.0
 }
@@ -63,6 +64,14 @@ object Store {
         set(v) { prefs.edit().putBoolean("automaticQuality", v).apply(); bump() }
 
     // Accounts (TV storage is private to the app)
+    var yummyApplicationToken: String?
+        get() = prefs.getString("yummy.applicationToken", null)
+        set(value) {
+            prefs.edit().putString("yummy.applicationToken", value?.trim()?.takeIf { it.isNotEmpty() }).apply()
+            ru.qmods.anixq.tv.data.sources.AnimeSources.yummy.applicationToken = value?.trim()?.takeIf { it.isNotEmpty() }
+                ?: ru.qmods.anixq.core.BuildConfig.YANI_APPLICATION_TOKEN.takeIf { it.isNotEmpty() }
+            bump()
+        }
     val libToken get() = prefs.getString("lib.token", null)
     val libRefresh get() = prefs.getString("lib.refresh", null)
     val libUser get() = prefs.getString("lib.user", null)
@@ -73,6 +82,8 @@ object Store {
     val shikiNickname get() = prefs.getString("shiki.nickname", null)
     val shikiJson: JSONObject? get() = prefs.getString("shiki.json", null)?.let { runCatching { JSONObject(it) }.getOrNull() }
         ?.takeIf { it.str("token") != null || it.str("cookies") != null }
+
+    fun accountChanged() = bump()
 
     fun setLib(token: String?, refresh: String?, user: String?, userId: Int?) {
         prefs.edit().putString("lib.token", token).putString("lib.refresh", refresh).putString("lib.user", user)
@@ -267,6 +278,9 @@ object Store {
         positions.clear(); history.clear(); watched.clear(); bookmarks.clear(); removedBookmarks.clear(); hiddenHistory.clear()
         dubs = emptyList(); dubsAt = 0.0
         prefs = context.getSharedPreferences(n, Context.MODE_PRIVATE)
+        ru.qmods.anixq.tv.data.sources.YummyAccount.init(context, n)
+        ru.qmods.anixq.tv.data.sources.AnimeSources.yummy.applicationToken = yummyApplicationToken
+            ?: ru.qmods.anixq.core.BuildConfig.YANI_APPLICATION_TOKEN.takeIf { it.isNotEmpty() }
         prefs.getString("library", null)?.let { runCatching { load(JSONObject(it)) } }
         bump()
     }
@@ -278,6 +292,9 @@ object Store {
     // MARK: Queries
 
     fun resume(episodeId: Int): Double? = positions[episodeId]?.takeIf { it.pos > 5 && it.progress < 0.95 }?.pos
+    fun resumeEpisode(title: Title, ep: Episode): Double? = resume(ep.id) ?: lastEntry(title.id)?.takeIf {
+        ru.qmods.anixq.tv.data.sources.YummyAnime.sameNumber(it.ep, ep.number) && it.pos > 5 && it.progress < 0.95
+    }?.pos
     fun progress(episodeId: Int): Double = positions[episodeId]?.progress ?: 0.0
     fun lastEntry(titleId: Int): WatchEntry? = history.firstOrNull { it.title.id == titleId }
     fun isWatched(titleId: Int, number: String) = watched[titleId]?.contains(number) == true
@@ -305,7 +322,7 @@ object Store {
             val p = positions[e.episodeId]
             progress.put(e.episodeId.toString(), JSONObject().put("pos", p?.pos ?: e.pos).put("dur", p?.dur ?: e.dur)
                 .put("at", maxOf(p?.at ?: 0.0, e.at)).put("title", titleId).put("ep", e.ep).put("epName", e.epName)
-                .put("team", e.teamId).put("teamName", e.teamName))
+                .put("team", e.teamId).put("teamName", e.teamName).put("playbackSource", e.playbackSource).put("balancer", e.balancer ?: ""))
         }
         watched[titleId]?.takeIf { it.isNotEmpty() }?.let { set ->
             w.put(titleId.toString(), JSONObject().put("eps", JSONArray(set.sortedBy { it.toDoubleOrNull() ?: 0.0 }))
@@ -324,11 +341,24 @@ object Store {
 
     private fun live(titleId: Int) { runCatching { Remote.publishLive(exportFor(titleId)) } }
 
-    fun updateProgress(title: Title, ep: Episode, team: Team, pos: Double, dur: Double) {
+    private fun playbackKey(title: Title) = "playback.${title.slug}"
+    fun prefersExternal(title: Title): Boolean = prefs.getString(playbackKey(title), null)?.let {
+        runCatching { JSONObject(it).optString("source") != "animelib" }.getOrDefault(false)
+    } ?: (lastEntry(title.id)?.playbackSource?.let { it != "animelib" } ?: false)
+    fun setPlaybackChoice(title: Title, player: Player) {
+        prefs.edit().putString(playbackKey(title), JSONObject().put("source", player.source).put("balancer", player.balancer ?: "").put("dub", player.team.name).toString()).apply()
+    }
+    fun playbackChoice(title: Title, players: List<Player>): Player? {
+        val last = lastEntry(title.id)
+        val x = prefs.getString(playbackKey(title), null)?.let { runCatching { JSONObject(it) }.getOrNull() }
+            ?: last?.let { JSONObject().put("source", it.playbackSource).put("balancer", it.balancer ?: "").put("dub", it.teamName) } ?: return null
+        return players.firstOrNull { it.source == x.optString("source") && it.balancer.orEmpty() == x.optString("balancer") && it.team.name == x.optString("dub") }
+    }
+    fun updateProgress(title: Title, ep: Episode, team: Team, pos: Double, dur: Double, player: Player? = null) {
         val t = now()
         positions[ep.id] = Pos(pos, dur, t)
         history.removeAll { it.title.id == title.id }
-        history.add(0, WatchEntry(title, ep.id, ep.number, ep.name ?: "", team.id, team.name, pos, dur, t))
+        history.add(0, WatchEntry(title, ep.id, ep.number, ep.name ?: "", team.id, team.name, pos, dur, t, player?.source ?: "animelib", player?.balancer))
         changed()
         live(title.id)
     }
@@ -421,7 +451,7 @@ object Store {
         history.forEach { e ->
             val p = progress.optJSONObject(e.episodeId.toString()) ?: JSONObject().put("pos", e.pos).put("dur", e.dur).put("at", e.at)
             p.put("at", maxOf(p.optDouble("at", 0.0), e.at))
-            p.put("title", e.title.id).put("ep", e.ep).put("epName", e.epName).put("team", e.teamId).put("teamName", e.teamName)
+            p.put("title", e.title.id).put("ep", e.ep).put("epName", e.epName).put("team", e.teamId).put("teamName", e.teamName).put("playbackSource", e.playbackSource).put("balancer", e.balancer ?: "")
             progress.put(e.episodeId.toString(), p)
         }
         val w = JSONObject()
@@ -468,7 +498,7 @@ object Store {
                     val local = history.firstOrNull { it.title.id == t.id }
                     if ((local?.at ?: 0.0) < at && at > (hiddenHistory[t.id] ?: 0.0)) {
                         history.removeAll { it.title.id == t.id }
-                        history.add(WatchEntry(t, eid, ep, p.str("epName") ?: "", team, p.str("teamName") ?: "", pos, dur, at))
+                        history.add(WatchEntry(t, eid, ep, p.str("epName") ?: "", team, p.str("teamName") ?: "", pos, dur, at, p.str("playbackSource") ?: "animelib", p.str("balancer")))
                         changed = true
                     }
                 }

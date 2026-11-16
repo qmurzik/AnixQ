@@ -71,6 +71,8 @@ fun SearchScreen(nav: Nav) {
     var text by rememberSaveable { mutableStateOf("") }
     LaunchedEffect(SearchRequest.pending) { SearchRequest.pending?.let { text = it; SearchRequest.pending = null } }
     var latin by rememberSaveable { mutableStateOf(false) }
+    var catalogSource by rememberSaveable { mutableStateOf("animelib") }
+    var searchError by remember { mutableStateOf<String?>(null) }
     var results by remember { mutableStateOf<List<Title>>(emptyList()) }
     var popular by remember { mutableStateOf(SearchState.popular) }
     var busy by remember { mutableStateOf(false) }
@@ -89,18 +91,22 @@ fun SearchScreen(nav: Nav) {
     }
     val hasVoice = remember { voiceIntent.resolveActivity(context.packageManager) != null }
 
-    LaunchedEffect(Unit) {
-        if (popular.isEmpty()) runCatching { Api.catalog(CatalogQuery(sort = CatalogSort.POPULAR, status = 1), 1).first }
-            .getOrNull()?.let { popular = it; SearchState.popular = it }
+    LaunchedEffect(catalogSource) {
+        popular = if (catalogSource == "animelib") SearchState.popular else emptyList()
+        runCatching { Api.catalog(CatalogQuery(sort = CatalogSort.POPULAR, status = 1, source = catalogSource), 1).first }
+            .getOrNull()?.let { popular = it; if (catalogSource == "animelib") SearchState.popular = it }
     }
     var corrected by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(text) {
+    LaunchedEffect(text, catalogSource) {
         val q = text.trim()
         if (q.length < 2) { results = emptyList(); return@LaunchedEffect }
+        searchError = null
         delay(350)
         busy = true
         // Forgiving search: layout, transliteration, a typo at the end, Shikimori.
-        val (found, used) = SmartSearch.search(q)
+        val (found, used) = if (catalogSource == "yummy") {
+            try { Api.catalog(CatalogQuery(text = q, source = "yummy"), 1).first to null } catch(e: kotlinx.coroutines.CancellationException) { throw e } catch(e: Exception) { searchError = e.message; emptyList<Title>() to null }
+        } else SmartSearch.search(q)
         results = found
         corrected = used
         busy = false
@@ -117,6 +123,11 @@ fun SearchScreen(nav: Nav) {
                 Text(if (text.isEmpty()) "Название…" else text + "▏", fontSize = 20.sp, maxLines = 1,
                     color = if (text.isEmpty()) C.muted else Color.White)
             }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Chip("AnimeLib", catalogSource == "animelib") { catalogSource = "animelib" }
+                Chip("YummyAnime", catalogSource == "yummy") { catalogSource = "yummy" }
+            }
+            searchError?.let { Text(it, color = C.muted) }
             Spacer(Modifier.height(14.dp))
             (if (latin) en else ru).forEachIndexed { r, row ->
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(bottom = 6.dp)) {

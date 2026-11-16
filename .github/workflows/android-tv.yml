@@ -71,7 +71,7 @@ jobs:
           cp android/app/build/outputs/apk/release/app-release.apk AnixQ-TV.apk
           cp android/mobile/build/outputs/apk/release/mobile-release.apk AnixQ.apk
       - name: Verify update signing compatibility
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
         env: { GH_TOKEN: "${{ github.token }}" }
         run: |
           SIGNER=$(ls -1 "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -n 1)

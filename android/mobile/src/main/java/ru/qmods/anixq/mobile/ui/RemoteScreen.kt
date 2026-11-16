@@ -136,7 +136,7 @@ fun RemoteScreen(nav: Nav) {
                 onClick = {
                     // Handoff TV → phone: pause there, continue here from the same second.
                     if (tv.playing) cmd("pause")
-                    nav.pop(); nav.play(PlayerRoute(tv.title, tv.episodeId.takeIf { it > 0 }, startAt = tv.pos))
+                    nav.pop(); nav.play(PlayerRoute(tv.title, tv.episodeId.takeIf { it != 0 }, startAt = tv.pos))
                 },
                 Modifier.padding(top = 22.dp).fillMaxWidth(), shape = RoundedCornerShape(14.dp),
             ) { Icon(Icons.Default.PhoneAndroid, null, Modifier.size(18.dp)); Text("  Досмотреть на телефоне") }

@@ -112,7 +112,7 @@ class Nav {
     fun playFromPhone(m: org.json.JSONObject) {
         val t = m.optJSONObject("title")?.let { Title.fromSync(it) } ?: return
         stack.removeAll { it is PlayerRoute }
-        push(PlayerRoute(t, m.optInt("episodeId").takeIf { it > 0 }, m.optInt("teamId").takeIf { it > 0 },
+        push(PlayerRoute(t, m.optInt("episodeId").takeIf { it != 0 }, m.optInt("teamId").takeIf { it != 0 },
             resume = m.optBoolean("resume"), startAt = m.optDouble("pos", -1.0).takeIf { it >= 0 }))
     }
 

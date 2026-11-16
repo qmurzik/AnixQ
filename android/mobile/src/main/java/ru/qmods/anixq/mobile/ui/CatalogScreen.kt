@@ -70,7 +70,8 @@ class CatalogLoader {
             val seen = items.map { it.id }.toHashSet()
             items = items + list.filter { seen.add(it.id) }
             more = m && list.isNotEmpty(); page += 1
-        } catch (e: Exception) { if (q == query) error = e.message ?: "Ошибка загрузки" }
+        } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+        catch (e: Exception) { if (q == query) error = e.message ?: "Ошибка загрузки" }
         finally { if (q == query) loading = false }
     }
 }
@@ -115,11 +116,14 @@ fun CatalogScreen(nav: Nav) {
     Column(Modifier.fillMaxSize().statusBarsPadding()) {
         LargeTitle("Каталог")
         LazyRow(contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            item { Capsule(if (query.source == "yummy") "YummyAnime" else "AnimeLib", selected = true) {
+                query = CatalogQuery(source = if (query.source == "yummy") "animelib" else "yummy")
+            } }
             item {
                 Box {
                     Capsule(query.sort.title, Icons.AutoMirrored.Filled.Sort, selected = true, trailing = Icons.Default.KeyboardArrowDown) { sortMenu = true }
                     DropdownMenu(sortMenu, { sortMenu = false }, containerColor = Pal.cardHi) {
-                        CatalogSort.entries.forEach { s -> DropdownMenuItem({ Text(s.title, color = if (s == query.sort) Pal.pink else Pal.text) },
+                        CatalogSort.entries.filter { query.source != "yummy" || it != CatalogSort.UPDATED }.forEach { s -> DropdownMenuItem({ Text(s.title, color = if (s == query.sort) Pal.pink else Pal.text) },
                             onClick = { sortMenu = false; query = query.copy(sort = s) }) }
                     }
                 }
@@ -127,7 +131,7 @@ fun CatalogScreen(nav: Nav) {
             statuses.forEach { (id, name) -> item { Capsule(name, selected = query.status == id) { query = query.copy(status = if (query.status == id) null else id) } } }
             types.forEach { (id, name) -> item { Capsule(name, selected = query.type == id) { query = query.copy(type = if (query.type == id) null else id) } } }
             item { Capsule(if (query.extraFilters > 0) "Фильтры · ${query.extraFilters}" else "Фильтры", Icons.Default.Tune, selected = query.extraFilters > 0) { filters = true } }
-            if (query.status != null || query.type != null || query.extraFilters > 0) item { Capsule("Сбросить", Icons.Default.Close) { query = CatalogQuery(sort = query.sort) } }
+            if (query.status != null || query.type != null || query.extraFilters > 0) item { Capsule("Сбросить", Icons.Default.Close) { query = CatalogQuery(sort = query.sort, source = query.source) } }
         }
         PosterGrid(loader, { nav.open(it) }, { scope.launch { loader.reset(query) } })
     }

@@ -70,7 +70,7 @@ class MainActivity : ComponentActivity() {
         i.getStringExtra("tab")?.toIntOrNull()?.let { nav.tab = Tab.entries.getOrElse(it) { Tab.HOME } }
         if (i.getStringExtra("login") != null) { nav.push(LoginRoute); return }
         val slug = i.getStringExtra("slug") ?: return
-        val t = Title(id = slug.substringBefore("--").toIntOrNull() ?: 0, slug = slug)
+        val t = Title(id = if (slug.startsWith("yummy:")) -(slug.substringAfter(":").toIntOrNull() ?: 0) else slug.substringBefore("--").toIntOrNull() ?: 0, slug = slug)
         if (i.getBooleanExtra("play", false)) nav.play(t, null) else nav.open(t)
     }
 

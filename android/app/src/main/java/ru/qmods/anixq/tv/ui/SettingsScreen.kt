@@ -17,6 +17,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.PhoneIphone
 import androidx.compose.material.icons.rounded.Sync
+import kotlinx.coroutines.launch
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.DisposableEffect
@@ -43,6 +45,17 @@ import java.util.Locale
 
 @Composable
 fun SettingsScreen(nav: Nav) {
+    val authScope = rememberCoroutineScope()
+    var authEmail by remember { mutableStateOf("") }
+    var authMessage by remember { mutableStateOf<String?>(null) }
+    var authBusy by remember { mutableStateOf(false) }
+    fun auth(block: suspend () -> Unit) { if (!authBusy) authScope.launch {
+        authBusy = true
+        try { block(); authMessage = "Готово"; Store.accountChanged() }
+        catch(e: kotlinx.coroutines.CancellationException) { throw e }
+        catch(e: Exception) { authMessage = e.message ?: "Не удалось войти" }
+        finally { authBusy = false }
+    } }
     val version by Store.version.collectAsState()
     val status by Sync.status.collectAsState()
     val last by Sync.lastSync.collectAsState()
@@ -53,6 +66,17 @@ fun SettingsScreen(nav: Nav) {
 
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 56.dp, end = 56.dp, bottom = 48.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         item { ScreenTitle("Настройки") }
+        item { Section("YummyAnime") {
+            Text("Токен собственного приложения: yummyani.me/dev/applications", color = C.muted)
+            PillButton("Настроить X-Application") { dialog = "yummyToken" }
+            if (ru.qmods.anixq.tv.data.sources.YummyAccount.signedIn) PillButton("Выйти из YummyAnime") { auth { ru.qmods.anixq.tv.data.sources.YummyAccount.logout() } }
+            else Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                PillButton("Войти в YummyAnime") { if (!authBusy) dialog = "yummyEmail" }
+                PillButton("Мой личный токен") { if (!authBusy) dialog = "yummyPersonalToken" }
+            }
+            authMessage?.let { Text(it, color = C.muted) }
+            if (authBusy) Text("Подключение…", color = C.muted)
+        } }
 
         item {
             Section("AnimeLib") {
@@ -165,6 +189,18 @@ fun SettingsScreen(nav: Nav) {
     }
 
     if (pairing) PairDialog { pairing = false }
+    if (dialog == "yummyEmail") NameDialog("Email YummyAnime", authEmail, maxLength = 254) { email ->
+        if (email == null) dialog = null else { authEmail = email; dialog = "yummyPassword" }
+    }
+    if (dialog == "yummyPassword") NameDialog("Пароль YummyAnime", "", maxLength = 1024, secret = true) { password ->
+        dialog = null; if (password != null) auth { ru.qmods.anixq.tv.data.sources.YummyAccount.login(authEmail, password) }
+    }
+    if (dialog == "yummyPersonalToken") NameDialog("Ваш токен аккаунта YummyAnime", "", maxLength = 4096, secret = true) { token ->
+        dialog = null; if (token != null) auth { ru.qmods.anixq.tv.data.sources.YummyAccount.usePersonalToken(token) }
+    }
+    if (dialog == "yummyToken") NameDialog("YummyAnime: X-Application", Store.yummyApplicationToken.orEmpty(), maxLength = 1024) { token ->
+        dialog = null; if (token != null) Store.yummyApplicationToken = token
+    }
     if (dialog == "device") {
         Dialog(onDismissRequest = { dialog = null }) {
             Column(Modifier.background(C.card, RoundedCornerShape(22.dp)).padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally) {

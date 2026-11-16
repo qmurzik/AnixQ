@@ -1,0 +1,78 @@
+{
+  "checked_utc": "2026-11-16T00:02:30.035782+00:00",
+  "base_commit": "181a347",
+  "build": "SUCCESSFUL: debug/release for Android TV and phone",
+  "tests": [
+    {
+      "name": "ru.qmods.anixq.tv.focus.YummySourceTest",
+      "tests": "2",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0"
+    },
+    {
+      "name": "ru.qmods.anixq.tv.data.sources.LiveSourcesTest",
+      "tests": "3",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "3"
+    },
+    {
+      "name": "ru.qmods.anixq.tv.data.sources.YummyIntegrationTest",
+      "tests": "23",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0"
+    },
+    {
+      "name": "ru.qmods.anixq.tv.ui.StallRecoveryTest",
+      "tests": "4",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0"
+    },
+    {
+      "name": "ru.qmods.anixq.mobile.ui.PlayerSourceSwitchTest",
+      "tests": "1",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0"
+    },
+    {
+      "name": "ru.qmods.anixq.mobile.ui.PlayerVideoLayoutTest",
+      "tests": "1",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0"
+    }
+  ],
+  "artifacts": [
+    {
+      "file": "android/app/build/outputs/apk/debug/app-debug.apk",
+      "bytes": 20602517,
+      "sha256": "528465f9957f906dfb4f9770a055db5b5cbb17ea70906abd053e331d92ba477f",
+      "upstream_notices_present": true
+    },
+    {
+      "file": "android/app/build/outputs/apk/release/app-release.apk",
+      "bytes": 2990535,
+      "sha256": "d68dd273b6c2eea34c8e7e27089f223a576001ffb7ef85e3c55e334c9280b691",
+      "upstream_notices_present": true
+    },
+    {
+      "file": "android/mobile/build/outputs/apk/debug/mobile-debug.apk",
+      "bytes": 24833655,
+      "sha256": "a184e498785c9e68c291d232eb23b8a4dd5fe412ca4c313901c145dfef29e6d2",
+      "upstream_notices_present": true
+    },
+    {
+      "file": "android/mobile/build/outputs/apk/release/mobile-release.apk",
+      "bytes": 4159820,
+      "sha256": "c68de413c25440dfccd130675fd774518a31be6c47319fd64c83b1ad259e92dc",
+      "upstream_notices_present": true
+    }
+  ],
+  "authenticated_live_playback": "not verified; caller-owned credentials not supplied",
+  "upstream_focus_baseline": "fails unchanged at 181a347: expected Home tab focus, got AnimeLib login button",
+  "full_upstream_screenshot_suite": "missing /fake/titles.json fixture"
+}

@@ -88,6 +88,8 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import ru.qmods.anixq.tv.data.sources.AnimeSources
+import ru.qmods.anixq.tv.data.sources.qualityHeight
 import ru.qmods.anixq.tv.data.Api
 import ru.qmods.anixq.tv.data.Episode
 import ru.qmods.anixq.tv.data.Player
@@ -103,13 +105,15 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
 
     override fun roomState(): org.json.JSONObject = org.json.JSONObject()
         .put("slug", title.slug).put("titleName", title.title).put("episodeId", episode?.id ?: 0)
+        .put("catalogSource", if (title.slug.startsWith("yummy:")) "yummy" else "animelib")
+        .put("playbackSource", player?.source ?: "animelib").put("balancer", player?.balancer ?: "").put("dubbing", player?.team?.name ?: "")
         .put("episodeNumber", episode?.number ?: "").put("teamId", player?.team?.id ?: 0).put("team", player?.team?.name ?: "")
         .put("playing", playing).put("position", pos).put("rate", speed.toDouble())
         .apply {
             // Browser viewers: the direct stream, plus the same dub's Kodik link to fall back to
             // (AnimeLib's video servers often refuse browsers).
-            if (native && player?.isLibria != true) currentUrl?.let { put("stream", it) }
-            val k = if (!native) currentUrl else players.firstOrNull { it.team.id == player?.team?.id && it.isKodik }?.kodikSrc?.let { Api.kodikUrl(it) }
+            if (native && player?.isLibria != true && player?.isYummy != true) currentUrl?.let { put("stream", it) }
+            val k = if (player?.isYummy == true) null else if (!native) currentUrl else players.firstOrNull { it.team.id == player?.team?.id && it.isKodik }?.kodikSrc?.let { Api.kodikUrl(it) }
                 ?: players.firstOrNull { it.isKodik }?.kodikSrc?.let { Api.kodikUrl(it) }
             k?.let { put("kodik", it) }
         }
@@ -118,9 +122,15 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
         if (m.optString("slug") != title.slug) { say("В комнате смотрят «${m.optString("titleName")}»"); return }
         val eid = m.optInt("episodeId"); val tid = m.optInt("teamId")
         if (eid != episode?.id) {
-            val i = episodes.indexOfFirst { it.id == eid }
-            if (i >= 0) load(i, teamId = tid.takeIf { it > 0 }, keepPos = m.optDouble("position", 0.0))
+            val i = episodes.indexOfFirst { it.id == eid }.takeIf { it >= 0 } ?: episodes.indexOfFirst { it.number == m.optString("episodeNumber") }
+            if (i >= 0) load(i, teamId = tid.takeIf { it != 0 }, keepPos = m.optDouble("position", 0.0))
             return
+        }
+        if (!loading && m.has("playbackSource")) {
+            val choice = players.firstOrNull { it.source == m.optString("playbackSource") && it.team.name == m.optString("dubbing") && it.balancer.orEmpty() == m.optString("balancer") }
+            if (choice != null && (choice.source != player?.source || choice.team.id != player?.team?.id)) {
+                load(index, choice.team.id, keepPos = m.optDouble("position", pos)); return
+            }
         }
         val remotePlaying = m.optBoolean("playing")
         var target = m.optDouble("position", pos)
@@ -225,6 +235,19 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
     var toast by mutableStateOf<String?>(null)
     var toastAt by mutableLongStateOf(0L)
 
+    val unsupportedBalancers get() = players.filter { !AnimeSources.supported(it) }.mapNotNull { it.balancer }.distinct()
+    val sourceOptions get() = players.filter(AnimeSources::supported).map { it.source }.distinct()
+    val balancerOptions get() = players.filter { it.source == player?.source && AnimeSources.supported(it) }.mapNotNull { it.balancer }.distinct()
+    val dubOptions get() = players.filter { it.source == player?.source && it.balancer == player?.balancer && AnimeSources.supported(it) }
+    fun selectSource(source: String) {
+        val p = players.firstOrNull { it.source == source && AnimeSources.supported(it) } ?: return
+        load(index, p.team.id, keepPos = engine?.position ?: pos)
+    }
+    fun selectBalancer(name: String) {
+        val choices = players.filter { it.source == player?.source && it.balancer == name && AnimeSources.supported(it) }
+        val p = choices.firstOrNull { it.team.name == player?.team?.name } ?: choices.firstOrNull() ?: return
+        load(index, p.team.id, keepPos = engine?.position ?: pos)
+    }
     private var servers: List<String> = emptyList()
     private var serverIdx = 0
     private var lastSaved = 0L
@@ -329,8 +352,10 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
         playing = false
         ended = false
         recovery.reset(android.os.SystemClock.elapsedRealtime(), clearHistory = !sameEpisode)
+        if (keepPos != null) pos = keepPos
         index = i
         val ep = episodes[i]
+        val previousChoice = player
         if (!sameEpisode) player = null
         if (!sameEpisode) { avoidLibria = false; recap = null; recapSkipped = false; endingSkipped = false; extraSegments = emptyList(); openingSkipped = false; nextDismissed = false; viewedSent = false; prefetched = false; nextLooked = false; pos = 0.0; dur = 0.0; ended = false }
         message = if (sameEpisode) "Переключаем…" else "Серия ${ep.number}"
@@ -338,23 +363,34 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
         buffering = true
         loadJob = scope.launch {
             try {
-                val list = if (sameEpisode && players.isNotEmpty()) players else playersCache.remove(ep.id) ?: Api.players(ep.id)
+                val list = if (sameEpisode && players.isNotEmpty()) players else playersCache.remove(ep.id)?.takeIf { (teamId == null || teamId > 0) && previousChoice?.isYummy != true && previousChoice?.isLibria != true } ?: AnimeSources.players(title, ep, includeYummy = Store.prefersExternal(title) || title.id < 0 || teamId?.let { it < 0 } == true || previousChoice?.isYummy == true)
                 players = list
+                if (title.id > 0 && list.none { it.isYummy }) launch {
+                    val extra = AnimeSources.additional(title, ep)
+                    if (generation == loadGeneration && episode?.id == ep.id) players = (players + extra).distinctBy { "${it.source}:${it.team.id}" }
+                }
                 if (list.isEmpty()) { message = "Для этой серии нет видео"; failed = true; return@launch }
-                val forTeam = { id: Int? -> list.filter { it.team.id == id } }
+                if ((previousChoice?.isYummy == true || (previousChoice == null && Store.prefersExternal(title) && (teamId == null || teamId < 0))) && !ru.qmods.anixq.tv.data.sources.YummyAccount.signedIn) {
+                    message = "Войдите в YummyAnime в настройках или выберите AnimeLib"; failed = true; return@launch
+                }
+                val forTeam = { id: Int? -> list.filter { it.team.id == id }.ifEmpty { list.filter { it.source == previousChoice?.source && it.balancer == previousChoice?.balancer && it.team.name == previousChoice?.team?.name } } }
+                val preferredChoice = Store.playbackChoice(title, list)
                 val favourite = list.firstOrNull { p -> Store.dubs.any { it.equals(p.team.name, true) } }?.team?.id
-                val candidates = forTeam(teamId).ifEmpty { forTeam(favourite) }.ifEmpty { list.filter { it.isNative }.ifEmpty { list } }
+                val candidates = forTeam(teamId).ifEmpty { preferredChoice?.let { listOf(it) }.orEmpty() }.ifEmpty { forTeam(favourite) }.ifEmpty { list.filter { it.isNative }.ifEmpty { list } }
                 var chosen = (if (preferKodik) candidates.firstOrNull { it.isKodik } else null)
-                    ?: candidates.firstOrNull { it.isNative } ?: candidates.firstOrNull { it.isKodik }
-                    ?: list.firstOrNull { it.isNative } ?: list.first { it.isKodik || it.isNative }
+                    ?: candidates.firstOrNull { it.isNative || (it.canResolve && AnimeSources.supported(it)) } ?: candidates.firstOrNull { it.isKodik }
+                    ?: list.firstOrNull { it.isNative || (it.canResolve && AnimeSources.supported(it)) } ?: list.firstOrNull { it.isKodik || it.isNative } ?: error("Нет поддерживаемого потока. Alloha требует прямой поток; выберите другой балансер")
+                player = chosen
+                chosen = AnimeSources.resolve(chosen, title, ep)
                 // AniLibria dub: their own servers when they have the episode (no ads, often faster than AnimeLib).
-                if (!preferKodik && !avoidLibria && Store.libriaDirect && ru.qmods.anixq.tv.data.Libria.isLibria(chosen.team.name)) {
-                    ru.qmods.anixq.tv.data.Libria.player(title, ep.number, chosen, probeAt = keepPos ?: Store.resume(ep.id) ?: 0.0)?.let { chosen = it; if (!sameEpisode) say("AniLibria: видео с их сервера") }
+                if (!preferKodik && !avoidLibria && !chosen.isYummy && Store.libriaDirect && ru.qmods.anixq.tv.data.Libria.isLibria(chosen.team.name)) {
+                    ru.qmods.anixq.tv.data.Libria.player(title, ep.number, chosen, probeAt = keepPos ?: Store.resumeEpisode(title, ep) ?: 0.0)?.let { chosen = it; if (!sameEpisode) say("AniLibria: видео с их сервера") }
                 }
                 currentCoroutineContext().ensureActive()
                 if (generation != loadGeneration) return@launch
                 player = chosen
-                val local = Store.resume(ep.id)
+                Store.setPlaybackChoice(title, chosen)
+                val local = Store.resumeEpisode(title, ep)
                 val remote = chosen.serverTimecode?.takeIf { it > 5 && (route.episodeId != ep.id || local == null) }
                 var startAt = keepPos ?: (if (!startedOnce) route.startAt ?: (if (route.fromStart) 0.0 else null) else null) ?: local ?: remote ?: 0.0
                 var recapNote: String? = null
@@ -375,10 +411,10 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
     }
 
     private suspend fun startNative(p: Player, startAt: Double, qualityKey: String?) {
-        val keys = p.hrefs.keys.sortedByDescending { it.removeSuffix("p").toIntOrNull() ?: 0 }
+        val keys = p.hrefs.keys.sortedByDescending { qualityHeight(it) }
         // Keeps the quality of the previous episode (so the file queued in advance is the one played).
         val q = qualityKey?.takeIf { it in keys } ?: quality?.takeIf { it in keys }
-            ?: keys.firstOrNull { (it.removeSuffix("p").toIntOrNull() ?: 0) <= Store.preferredQuality } ?: keys.last()
+            ?: keys.firstOrNull { (qualityHeight(it)) <= Store.preferredQuality } ?: keys.last()
         quality = q
         val href = p.hrefs.getValue(q)
         // A full link (AniLibria) is played as is, no AnimeLib mirrors.
@@ -389,8 +425,9 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
         native = true
         val e = exo ?: ExoEngine(context) { err -> onNativeError(err) }.also { exo = it }
         currentUrl = if (direct) href else Api.videoUrl(servers[0], href)
-        e.load(currentUrl!!, startAt, p.subtitles, upscale)
+        e.load(currentUrl!!, startAt, p.subtitles, upscale, p.headers)
         ru.qmods.anixq.tv.data.Room.sendState()
+        e.setAutomaticQuality(q.equals("auto", true) || Store.automaticQuality)
         e.setSubtitles(subtitlesOn)
         if (speed != 1f) e.exo.setPlaybackSpeed(speed)
     }
@@ -406,16 +443,28 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
     }
 
     /** AniLibria's server failed for this episode: AnimeLib's copy of the same dub from here on. */
+    private val refreshAttempts = HashMap<String, Int>()
     private var avoidLibria = false
 
     private fun onNativeError(err: String) {
         val p = player ?: return
         if (upscale > 0) { upscaleFailed("ошибка видео: $err"); return }
+        if (p.isYummy) {
+            val at = exo?.position?.takeIf { it > 0 } ?: pos
+            pos = at
+            val key = "${episode?.id}:${p.team.id}"
+            val count = refreshAttempts[key] ?: 0
+            if (count < 1) {
+                refreshAttempts[key] = count + 1
+                load(index, teamId = p.team.id, keepPos = at)
+            } else { message = "${p.balancer ?: "Источник"}: $err. Выберите другой источник или озвучку"; failed = true }
+            return
+        }
         if (p.isLibria) {
             avoidLibria = true
             ru.qmods.anixq.tv.data.Libria.markFailed()
             say("AniLibria не отвечает — берём видео с AnimeLib")
-            load(index, teamId = p.team.id, keepPos = exo?.position ?: pos)
+            load(index, teamId = players.firstOrNull { it.source == "animelib" && it.team.name == p.team.name }?.team?.id, keepPos = exo?.position ?: pos)
             return
         }
         val href = quality?.let { p.hrefs[it] } ?: return
@@ -469,7 +518,7 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
         // Auto-skip the opening once per episode.
         if (ep0 != null && dur > 60 && recapAsked != ep0.id) {
             recapAsked = ep0.id
-            title.shikiId?.let { mal -> scope.launch { val g = loadGeneration; val segment = ru.qmods.anixq.tv.data.AniSkip.recap(mal, ep0.number, dur); if (g == loadGeneration && episode?.id == ep0.id) recap = segment } }
+            (title.malId ?: title.shikiId)?.let { mal -> scope.launch { val g = loadGeneration; val segment = ru.qmods.anixq.tv.data.AniSkip.recap(mal, ep0.number, dur); if (g == loadGeneration && episode?.id == ep0.id) recap = segment } }
         }
         if ((Store.autoSkipOpening || Store.marathon) && !recapSkipped && inRecap) skipRecap(auto = true)
         val op = opening
@@ -483,7 +532,7 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
         }
         if (Store.marathon && hasNext && ed != null && !endingSkipped && !breakPrompt && !sleepAfterEpisode && pos >= ed.from + 1 && pos < ed.to) {
             endingSkipped = true
-            if (!viewedSent) episode?.let { ep -> viewedSent = true; Store.markWatched(title, ep); scope.launch { Api.markViewed(ep.id, player?.playerId) } }
+            if (!viewedSent) episode?.let { ep -> viewedSent = true; Store.markWatched(title, ep); scope.launch { if (player?.isYummy != true) Api.markViewed(ep.id, player?.playerId) } }
             autoAdvance()
             return
         }
@@ -492,7 +541,7 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
             viewedSent = true
             episode?.let { ep ->
                 Store.markWatched(title, ep)
-                scope.launch { Api.markViewed(ep.id, player?.playerId) }
+                scope.launch { if (player?.isYummy != true) Api.markViewed(ep.id, player?.playerId) }
                 ru.qmods.anixq.tv.data.Shiki.markEpisode(title.shikiId, ep.number)
             }
         }
@@ -503,19 +552,19 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
             ru.qmods.anixq.tv.data.Remote.publishState()
         }
         // Next episode: where it is (right after this one starts), then its video queued 3 minutes before the end.
-        if (hasNext && !nextLooked && native && pos > 15) {
+        if (hasNext && player?.isYummy != true && !nextLooked && native && pos > 15) {
             nextLooked = true
             val next = episodes[index + 1]
             scope.launch { runCatching { Api.players(next.id) }.getOrNull()?.takeIf { it.isNotEmpty() }?.let { playersCache[next.id] = it } }
         }
-        if (hasNext && !prefetched && native && dur > 0 && dur - pos < 180) {
+        if (hasNext && player?.isYummy != true && !prefetched && native && dur > 0 && dur - pos < 180) {
             prefetched = true
             val next = episodes[index + 1]
             val generation = loadGeneration
             val sourceEngine = exo
             scope.launch {
                 runCatching {
-                    val ps = playersCache[next.id] ?: Api.players(next.id).also { playersCache[next.id] = it }
+                    val ps = playersCache[next.id] ?: AnimeSources.players(title, next).also { playersCache[next.id] = it }
                     var p = ps.firstOrNull { it.team.id == player?.team?.id && it.isNative }
                     // AniLibria now: queue their file of the next episode (the one the player will pick).
                     if (player?.isLibria == true) {
@@ -523,16 +572,16 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
                         p = ru.qmods.anixq.tv.data.Libria.player(title, next.number, base)
                     }
                     if (p == null) return@runCatching
-                    val keys = p.hrefs.keys.sortedByDescending { it.removeSuffix("p").toIntOrNull() ?: 0 }
+                    val keys = p.hrefs.keys.sortedByDescending { qualityHeight(it) }
                     // The same quality the player will pick, so the queued file is exactly the one played next.
                     val q = quality?.takeIf { it in keys }
-                        ?: keys.firstOrNull { (it.removeSuffix("p").toIntOrNull() ?: 0) <= Store.preferredQuality } ?: keys.last()
+                        ?: keys.firstOrNull { (qualityHeight(it)) <= Store.preferredQuality } ?: keys.last()
                     val href = p.hrefs.getValue(q)
                     if (generation != loadGeneration || loading || sourceEngine !== exo) return@runCatching
-                    if (p.isLibria) { sourceEngine?.queueNext(href, p.subtitles); return@runCatching }
+                    if (href.startsWith("http")) { sourceEngine?.queueNext(href, p.subtitles, p.headers); return@runCatching }
                     val server = Api.rankServers(href).firstOrNull() ?: return@runCatching
                     if (generation == loadGeneration && !loading && sourceEngine === exo)
-                        sourceEngine?.queueNext(Api.videoUrl(server, href), p.subtitles)
+                        sourceEngine?.queueNext(Api.videoUrl(server, href), p.subtitles, p.headers)
                 }
             }
         }
@@ -543,12 +592,12 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
     // Only sustained buffering counts; quality changes are opt-in and share a conservative cooldown.
     private fun watchStalls() {
         if (!native || loading || message != null) return
-        exo?.setAutomaticQuality(Store.automaticQuality)
+        exo?.setAutomaticQuality(quality.equals("auto", true) || Store.automaticQuality)
         val action = recovery.update(android.os.SystemClock.elapsedRealtime(),
             buffering && exo?.exo?.playWhenReady == true && pos > 2, Store.automaticQuality)
         if (action == StallRecovery.Action.NONE) return
         val p = player ?: return
-        val keys = p.hrefs.keys.sortedByDescending { it.removeSuffix("p").toIntOrNull() ?: 0 }
+        val keys = p.hrefs.keys.sortedByDescending { qualityHeight(it) }
         val i = keys.indexOf(quality)
         val href = quality?.let { p.hrefs[it] } ?: return
         if (href.startsWith("file:")) return
@@ -557,7 +606,7 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
             load(index, keepPos = pos, qualityKey = keys[i + 1])
             return
         }
-        if (p.isLibria) { onNativeError("stall"); return }
+        if (p.isLibria || p.isYummy) { onNativeError("stall"); return }
         if (servers.size < 2) return
         serverIdx = (serverIdx + 1) % servers.size
         say("Видео подвисло — пробуем другой сервер в том же качестве")
@@ -572,13 +621,13 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
         val now = System.currentTimeMillis()
         if (force || (playing && now - lastSaved > 10_000)) {
             lastSaved = now
-            Store.updateProgress(title, ep, p.team, pos, dur)
+            Store.updateProgress(title, ep, p.team, pos, dur, p)
             ru.qmods.anixq.tv.data.WatchNext.update(title, ep, p.team.id, pos, dur, hasNext, force)
         }
         if (force || (playing && now - lastRemote > 30_000)) {
             lastRemote = now
             val at = pos
-            scope.launch { Api.saveTimecode(ep.id, p.playerId, at) }
+            scope.launch { if (!p.isYummy) Api.saveTimecode(ep.id, p.playerId, at) }
         }
     }
 
@@ -774,6 +823,11 @@ fun PlayerScreen(nav: Nav, route: PlayerRoute) {
                 if (m.failed) {
                     Spacer(Modifier.height(10.dp))
                     Text("OK — попробовать снова · Назад — выйти", fontSize = 14.sp, color = C.muted)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        if (m.sourceOptions.isNotEmpty()) PillButton("Источник") { dialog = "source" }
+                        if (m.balancerOptions.size > 1) PillButton("Балансер") { dialog = "balancer" }
+                        if (m.dubOptions.size > 1) PillButton("Озвучка") { dialog = "dub" }
+                    }
                 }
             }
         }
@@ -814,7 +868,7 @@ fun PlayerScreen(nav: Nav, route: PlayerRoute) {
         AnimatedVisibility(controls && panel == Panel.NONE, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.fillMaxSize()) {
             Controls(m, playBtn, skipBtn, onAny = { lastInput = System.currentTimeMillis() },
                 onEpisodes = { panel = Panel.EPISODES }, onDub = { dialog = "dub" }, onQuality = { dialog = "quality" },
-                onHide = { controls = false }, onMore = { dialog = "more" })
+                onHide = { controls = false }, onMore = { dialog = "more" }, onSource = { dialog = "source" }, onBalancer = { dialog = "balancer" })
         }
 
         // Episodes
@@ -838,11 +892,17 @@ fun PlayerScreen(nav: Nav, route: PlayerRoute) {
     }
 
     when (dialog) {
+        "source" -> ChoiceDialog("Источник", m.sourceOptions.map { source -> Choice(when(source) { "yummy" -> "YummyAnime"; "anilibria" -> "AniLibria"; else -> "AnimeLib" }, source == m.player?.source) }, { dialog = null }) { i ->
+            dialog = null; m.selectSource(m.sourceOptions[i])
+        }
+        "balancer" -> ChoiceDialog("Балансер", m.balancerOptions.map { Choice(it, it == m.player?.balancer) }, { dialog = null }) { i ->
+            dialog = null; m.selectBalancer(m.balancerOptions[i])
+        }
         "dub" -> {
-            val teams = m.players.groupBy { it.team.id }.values.map { ps -> ps.first().team to ps }
+            val teams = m.dubOptions.groupBy { it.team.id }.values.map { ps -> ps.first().team to ps }
             ChoiceDialog("Озвучка", teams.map { (t, ps) ->
                 Choice(t.name, t.id == m.player?.team?.id, listOfNotNull(if (t.isSubtitles) "субтитры" else "озвучка",
-                    if (ps.any { it.isNative }) "без рекламы" else "Kodik").joinToString(" · "))
+                    ps.first().sourceLabel + (ps.first().balancer?.let { " · $it" } ?: "")).joinToString(" · "))
             }, { dialog = null }) { i ->
                 dialog = null
                 val t = teams[i].first
@@ -851,6 +911,8 @@ fun PlayerScreen(nav: Nav, route: PlayerRoute) {
             }
         }
         "more" -> ChoiceDialog("Ещё", listOfNotNull(
+            if (m.sourceOptions.size > 1) Choice("Источник", hint = m.player?.sourceLabel) else null,
+            if (m.balancerOptions.size > 1) Choice("Балансер", hint = m.player?.balancer) else null,
             if (m.native) Choice("Скорость", hint = speedLabel(m.speed)) else null,
             if (m.native && m.player?.subtitles?.isNotEmpty() == true) Choice("Субтитры", hint = if (m.subtitlesOn) "включены" else "выключены") else null,
             if (m.native) Choice("Апскейлер", hint = upscaleMode(m.upscale).name +
@@ -866,7 +928,7 @@ fun PlayerScreen(nav: Nav, route: PlayerRoute) {
             }),
         ).let { opts -> opts }, { dialog = null }) { i ->
             val hasSubs = m.native && m.player?.subtitles?.isNotEmpty() == true
-            val keys = listOfNotNull(if (m.native) "speed" else null, if (hasSubs) "subs" else null, if (m.native) "upscale" else null,
+            val keys = listOfNotNull(if (m.sourceOptions.size > 1) "source" else null, if (m.balancerOptions.size > 1) "balancer" else null, if (m.native) "speed" else null, if (hasSubs) "subs" else null, if (m.native) "upscale" else null,
                 if (m.native) "color" else null, if (m.native) "sound" else null, "marathon", "room", "sleep")
             when (val k = keys.getOrNull(i)) {
                 "subs" -> { dialog = null; m.toggleSubtitles() }
@@ -916,13 +978,13 @@ fun PlayerScreen(nav: Nav, route: PlayerRoute) {
         }
         "quality" -> {
             val p = m.player
-            val keys = p?.hrefs?.keys?.sortedByDescending { it.removeSuffix("p").toIntOrNull() ?: 0 } ?: emptyList()
+            val keys = p?.hrefs?.keys?.sortedByDescending { qualityHeight(it) } ?: emptyList()
             val kodikToo = m.players.any { it.team.id == p?.team?.id && it.isKodik }
             val opts = keys.map { Choice(it, m.native && it == m.quality) } + listOfNotNull(if (kodikToo) Choice("Плеер Kodik", !m.native, "если основной не грузится") else null)
             ChoiceDialog("Качество", opts, { dialog = null }) { i ->
                 dialog = null
                 if (i < keys.size) {
-                    keys[i].removeSuffix("p").toIntOrNull()?.let { Store.preferredQuality = it }
+                    qualityHeight(keys[i]).takeIf { it != Int.MAX_VALUE && it > 0 }?.let { Store.preferredQuality = it }
                     m.load(m.index, keepPos = m.pos, qualityKey = keys[i])
                 } else m.load(m.index, keepPos = m.pos, preferKodik = true)
             }
@@ -932,7 +994,7 @@ fun PlayerScreen(nav: Nav, route: PlayerRoute) {
 
 @Composable
 internal fun Controls(m: PlayerModel, playBtn: FocusRequester, skipBtn: FocusRequester, onAny: () -> Unit,
-                     onEpisodes: () -> Unit, onDub: () -> Unit, onQuality: () -> Unit, onHide: () -> Unit = {}, onMore: () -> Unit = {}) {
+                     onEpisodes: () -> Unit, onDub: () -> Unit, onQuality: () -> Unit, onHide: () -> Unit = {}, onMore: () -> Unit = {}, onSource: () -> Unit = {}, onBalancer: () -> Unit = {}) {
     Box(Modifier.fillMaxSize()) {
         Box(Modifier.fillMaxWidth().height(170.dp).background(Brush.verticalGradient(0f to Color.Black.copy(alpha = 0.8f), 1f to Color.Black.copy(alpha = 0f))))
         Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(320.dp)
@@ -950,6 +1012,13 @@ internal fun Controls(m: PlayerModel, playBtn: FocusRequester, skipBtn: FocusReq
             if (m.inOpening && !m.openingSkipped) {
                 PillButton("Пропустить опенинг", Icons.Rounded.FastForward, primary = true, modifier = Modifier.focusRequester(skipBtn)) { m.skipOpening(); onHide() }
                 Spacer(Modifier.height(16.dp))
+            }
+            if (m.sourceOptions.size > 1 || m.balancerOptions.size > 1) {
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    if (m.sourceOptions.size > 1) PillButton(m.player?.sourceLabel ?: "Источник", onClick = onSource)
+                    if (m.balancerOptions.size > 1) PillButton(m.player?.balancer ?: "Балансер", onClick = onBalancer)
+                }
+                Spacer(Modifier.height(12.dp))
             }
             SeekBar(m, onAny, onHide)
             Spacer(Modifier.height(18.dp))

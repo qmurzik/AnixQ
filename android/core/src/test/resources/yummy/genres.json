@@ -1,0 +1,791 @@
+{
+  "response": {
+    "genres": [
+      {
+        "title": "Бисёнэн",
+        "href": "bisenen",
+        "value": 2,
+        "more_titles": [
+          "Бисёнен"
+        ],
+        "group_id": -1
+      },
+      {
+        "title": "Дзёсэй",
+        "href": "dzesej",
+        "value": 4,
+        "more_titles": [
+          "Дзёсей"
+        ],
+        "group_id": -1
+      },
+      {
+        "title": "Махо-сёдзё",
+        "href": "maho-sedze",
+        "value": 5,
+        "more_titles": [
+          "Махо-сёдзе"
+        ],
+        "group_id": -1
+      },
+      {
+        "title": "Сёдзё",
+        "href": "sedze",
+        "value": 6,
+        "more_titles": [
+          "Сёдзе"
+        ],
+        "group_id": -1
+      },
+      {
+        "title": "Сёдзё-ай",
+        "href": "sedze-aj",
+        "value": 7,
+        "more_titles": [
+          "Сёдзе-ай",
+          "Юри"
+        ],
+        "group_id": -1
+      },
+      {
+        "title": "Сёнэн",
+        "href": "senen",
+        "value": 8,
+        "more_titles": [
+          "Сёнен"
+        ],
+        "group_id": -1
+      },
+      {
+        "title": "Сёнэн-ай",
+        "href": "senen-aj",
+        "value": 9,
+        "more_titles": [
+          "Сёнен-ай",
+          "Яой"
+        ],
+        "group_id": -1
+      },
+      {
+        "title": "Сэйнэн",
+        "href": "sejnen",
+        "value": 10,
+        "more_titles": [
+          "Сэйнён",
+          "Сейнен",
+          "Сейнэн"
+        ],
+        "group_id": -1
+      },
+      {
+        "title": "Этти",
+        "href": "etti",
+        "value": 11,
+        "more_titles": [],
+        "group_id": -1
+      },
+      {
+        "title": "Вестерн",
+        "href": "vestern",
+        "value": 13,
+        "more_titles": [],
+        "group_id": -2
+      },
+      {
+        "title": "Детектив",
+        "href": "detektiv",
+        "value": 14,
+        "more_titles": [
+          "детектив"
+        ],
+        "group_id": -2
+      },
+      {
+        "title": "Драма",
+        "href": "drama",
+        "value": 15,
+        "more_titles": [
+          "драма"
+        ],
+        "group_id": -2
+      },
+      {
+        "title": "Комедия",
+        "href": "komediya",
+        "value": 16,
+        "more_titles": [
+          "комедия"
+        ],
+        "group_id": -2
+      },
+      {
+        "title": "Пародия",
+        "href": "parodiya",
+        "value": 17,
+        "more_titles": [],
+        "group_id": 16
+      },
+      {
+        "title": "Преступный мир",
+        "href": "prestupnyj-mir",
+        "value": 18,
+        "more_titles": [],
+        "group_id": -2
+      },
+      {
+        "title": "Воры",
+        "href": "vori",
+        "value": 19,
+        "more_titles": [],
+        "group_id": 18
+      },
+      {
+        "title": "Мафия/Якудза",
+        "href": "mafiya-yakudza",
+        "value": 20,
+        "more_titles": [],
+        "group_id": 18
+      },
+      {
+        "title": "Охотники за головами",
+        "href": "ohotniki-za-golovami",
+        "value": 21,
+        "more_titles": [],
+        "group_id": 18
+      },
+      {
+        "title": "Пираты",
+        "href": "piraty",
+        "value": 22,
+        "more_titles": [],
+        "group_id": -3
+      },
+      {
+        "title": "Террористы",
+        "href": "terroristy",
+        "value": 23,
+        "more_titles": [],
+        "group_id": 18
+      },
+      {
+        "title": "Убийцы",
+        "href": "ubijcy",
+        "value": 24,
+        "more_titles": [],
+        "group_id": 18
+      },
+      {
+        "title": "Меха",
+        "href": "meha",
+        "value": 25,
+        "more_titles": [],
+        "group_id": -1
+      },
+      {
+        "title": "Андроиды",
+        "href": "androidy",
+        "value": 26,
+        "more_titles": [],
+        "group_id": 37
+      },
+      {
+        "title": "Пилотируемые роботы",
+        "href": "pilotiruemye-roboty",
+        "value": 27,
+        "more_titles": [],
+        "group_id": 25
+      },
+      {
+        "title": "Силовые костюмы",
+        "href": "silovye-kostyumy",
+        "value": 28,
+        "more_titles": [],
+        "group_id": 37
+      },
+      {
+        "title": "Искусственный интеллект",
+        "href": "ii",
+        "value": 29,
+        "more_titles": [],
+        "group_id": 37
+      },
+      {
+        "title": "Трансформеры",
+        "href": "transformery",
+        "value": 30,
+        "more_titles": [],
+        "group_id": 25
+      },
+      {
+        "title": "Мистика",
+        "href": "mistika",
+        "value": 31,
+        "more_titles": [],
+        "group_id": -2
+      },
+      {
+        "title": "Приключения",
+        "href": "priklyucheniya",
+        "value": 32,
+        "more_titles": [
+          "приключения"
+        ],
+        "group_id": -2
+      },
+      {
+        "title": "Романтика",
+        "href": "romantika",
+        "value": 33,
+        "more_titles": [],
+        "group_id": -2
+      },
+      {
+        "title": "Любовный треугольник",
+        "href": "lyubovnyj-treugol-nik",
+        "value": 34,
+        "more_titles": [],
+        "group_id": 33
+      },
+      {
+        "title": "Триллер",
+        "href": "triller",
+        "value": 35,
+        "more_titles": [],
+        "group_id": -2
+      },
+      {
+        "title": "Ужасы",
+        "href": "ugasy",
+        "value": 36,
+        "more_titles": [],
+        "group_id": -2
+      },
+      {
+        "title": "Фантастика",
+        "href": "fantastika",
+        "value": 37,
+        "more_titles": [
+          "фантастика"
+        ],
+        "group_id": -2
+      },
+      {
+        "title": "Инопланетные расы",
+        "href": "inoplanetyane",
+        "value": 38,
+        "more_titles": [],
+        "group_id": 37
+      },
+      {
+        "title": "Киборги",
+        "href": "kiborgi",
+        "value": 39,
+        "more_titles": [],
+        "group_id": 37
+      },
+      {
+        "title": "Космос",
+        "href": "kosmicheskie-priklyucheniya",
+        "value": 40,
+        "more_titles": [],
+        "group_id": 37
+      },
+      {
+        "title": "Путешествия во времени",
+        "href": "puteshestviya-vo-vremeni",
+        "value": 41,
+        "more_titles": [],
+        "group_id": 37
+      },
+      {
+        "title": "Фэнтези",
+        "href": "fentezi",
+        "value": 42,
+        "more_titles": [
+          "фэнтези"
+        ],
+        "group_id": -2
+      },
+      {
+        "title": "Альтернативная реальность",
+        "href": "al-ternativnaya-real-nost",
+        "value": 43,
+        "more_titles": [],
+        "group_id": 37
+      },
+      {
+        "title": "Ангелы",
+        "href": "angely",
+        "value": 44,
+        "more_titles": [],
+        "group_id": 42
+      },
+      {
+        "title": "Божества",
+        "href": "bogi",
+        "value": 45,
+        "more_titles": [],
+        "group_id": 42
+      },
+      {
+        "title": "Вампиры",
+        "href": "vampiry",
+        "value": 46,
+        "more_titles": [],
+        "group_id": 42
+      },
+      {
+        "title": "Ведьмы",
+        "href": "ved-my",
+        "value": 47,
+        "more_titles": [],
+        "group_id": 42
+      },
+      {
+        "title": "Демоны",
+        "href": "demony",
+        "value": 48,
+        "more_titles": [],
+        "group_id": 42
+      },
+      {
+        "title": "Драконы",
+        "href": "drakony",
+        "value": 49,
+        "more_titles": [],
+        "group_id": 42
+      },
+      {
+        "title": "Зомби",
+        "href": "zombi",
+        "value": 50,
+        "more_titles": [],
+        "group_id": 103
+      },
+      {
+        "title": "Магия",
+        "href": "magiya",
+        "value": 51,
+        "more_titles": [],
+        "group_id": 42
+      },
+      {
+        "title": "Призраки",
+        "href": "prizraki",
+        "value": 52,
+        "more_titles": [],
+        "group_id": 103
+      },
+      {
+        "title": "Русалки",
+        "href": "rysalki",
+        "value": 53,
+        "more_titles": [],
+        "group_id": 42
+      },
+      {
+        "title": "Современное фэнтези",
+        "href": "sovremennoe-fentezi",
+        "value": 54,
+        "more_titles": [],
+        "group_id": 42
+      },
+      {
+        "title": "Суккубы",
+        "href": "sukkuby",
+        "value": 55,
+        "more_titles": [],
+        "group_id": 42
+      },
+      {
+        "title": "Темное фэнтези",
+        "href": "temnoe-fentezi",
+        "value": 56,
+        "more_titles": [],
+        "group_id": 42
+      },
+      {
+        "title": "Темные эльфы",
+        "href": "temnye-el-fy",
+        "value": 57,
+        "more_titles": [],
+        "group_id": 42
+      },
+      {
+        "title": "Феи",
+        "href": "fei",
+        "value": 58,
+        "more_titles": [],
+        "group_id": 42
+      },
+      {
+        "title": "Целый фэнтези мир",
+        "href": "celyj-fentezi-mir",
+        "value": 59,
+        "more_titles": [],
+        "group_id": -3
+      },
+      {
+        "title": "Эльфы",
+        "href": "el-fy",
+        "value": 60,
+        "more_titles": [],
+        "group_id": 42
+      },
+      {
+        "title": "Виртуальная реальность",
+        "href": "virtual-naya-real-nost",
+        "value": 61,
+        "more_titles": [],
+        "group_id": 104
+      },
+      {
+        "title": "Параллельный мир",
+        "href": "parallel-nyj-mir",
+        "value": 62,
+        "more_titles": [],
+        "group_id": 42
+      },
+      {
+        "title": "Экшен",
+        "href": "ekshen",
+        "value": 63,
+        "more_titles": [],
+        "group_id": -2
+      },
+      {
+        "title": "Боевые искусства",
+        "href": "boevye-iskusstva",
+        "value": 64,
+        "more_titles": [],
+        "group_id": 63
+      },
+      {
+        "title": "Ниндзя",
+        "href": "nindzya",
+        "value": 65,
+        "more_titles": [],
+        "group_id": 63
+      },
+      {
+        "title": "Перестрелки",
+        "href": "perestrelki",
+        "value": 66,
+        "more_titles": [],
+        "group_id": 63
+      },
+      {
+        "title": "Прокси бои",
+        "href": "proksi-boi",
+        "value": 67,
+        "more_titles": [],
+        "group_id": -3
+      },
+      {
+        "title": "Самураи",
+        "href": "samurai",
+        "value": 68,
+        "more_titles": [],
+        "group_id": 63
+      },
+      {
+        "title": "Сражения на мечах",
+        "href": "srazheniya-na-mechah",
+        "value": 69,
+        "more_titles": [],
+        "group_id": 63
+      },
+      {
+        "title": "Суперспособности",
+        "href": "supersposobnosti",
+        "value": 70,
+        "more_titles": [
+          "Супер сила"
+        ],
+        "group_id": 103
+      },
+      {
+        "title": "Альтернативная история",
+        "href": "al-ternativnaya-istoriya",
+        "value": 72,
+        "more_titles": [],
+        "group_id": -3
+      },
+      {
+        "title": "Антивойна",
+        "href": "antivojna",
+        "value": 73,
+        "more_titles": [],
+        "group_id": -3
+      },
+      {
+        "title": "Антиутопия",
+        "href": "antiutopiya",
+        "value": 74,
+        "more_titles": [],
+        "group_id": -3
+      },
+      {
+        "title": "Война",
+        "href": "vojna",
+        "value": 75,
+        "more_titles": [],
+        "group_id": -3
+      },
+      {
+        "title": "Военная тематика",
+        "href": "voennaya-tematika",
+        "value": 76,
+        "more_titles": [
+          "Военное",
+          "военный",
+          "боевик"
+        ],
+        "group_id": -3
+      },
+      {
+        "title": "Гарем",
+        "href": "garem",
+        "value": 77,
+        "more_titles": [],
+        "group_id": -3
+      },
+      {
+        "title": "Искусство",
+        "href": "iskusstvo",
+        "value": 78,
+        "more_titles": [],
+        "group_id": -3
+      },
+      {
+        "title": "Музыка",
+        "href": "muzyka",
+        "value": 79,
+        "more_titles": [
+          "музыка"
+        ],
+        "group_id": 78
+      },
+      {
+        "title": "Исторический",
+        "href": "istoricheskij",
+        "value": 80,
+        "more_titles": [
+          "история"
+        ],
+        "group_id": -3
+      },
+      {
+        "title": "Киберпанк",
+        "href": "kiberpank",
+        "value": 81,
+        "more_titles": [],
+        "group_id": -3
+      },
+      {
+        "title": "Кулинария",
+        "href": "kulinariya",
+        "value": 82,
+        "more_titles": [],
+        "group_id": -3
+      },
+      {
+        "title": "Нелинейный сюжет",
+        "href": "nelinejnyj-syuzhet",
+        "value": 85,
+        "more_titles": [],
+        "group_id": -3
+      },
+      {
+        "title": "Повседневность",
+        "href": "povsednevnost",
+        "value": 86,
+        "more_titles": [],
+        "group_id": -3
+      },
+      {
+        "title": "Политика",
+        "href": "politika",
+        "value": 87,
+        "more_titles": [],
+        "group_id": -3
+      },
+      {
+        "title": "Полицейские",
+        "href": "policejskie",
+        "value": 88,
+        "more_titles": [
+          "Полиция"
+        ],
+        "group_id": -3
+      },
+      {
+        "title": "Постапокалиптика",
+        "href": "postapokaliptika",
+        "value": 89,
+        "more_titles": [],
+        "group_id": -3
+      },
+      {
+        "title": "Русские в аниме",
+        "href": "rossiya-v-anime",
+        "value": 90,
+        "more_titles": [],
+        "group_id": -3
+      },
+      {
+        "title": "Спорт",
+        "href": "sport",
+        "value": 91,
+        "more_titles": [],
+        "group_id": -2
+      },
+      {
+        "title": "Баскетбол",
+        "href": "basketbol",
+        "value": 92,
+        "more_titles": [],
+        "group_id": 91
+      },
+      {
+        "title": "Стимпанк",
+        "href": "stimpank",
+        "value": 93,
+        "more_titles": [],
+        "group_id": -3
+      },
+      {
+        "title": "Тайный заговор",
+        "href": "tajnyj-zagovor",
+        "value": 94,
+        "more_titles": [],
+        "group_id": -3
+      },
+      {
+        "title": "Школьная жизнь",
+        "href": "shkola",
+        "value": 95,
+        "more_titles": [
+          "Школа"
+        ],
+        "group_id": -3
+      },
+      {
+        "title": "Гарем (для девочек)",
+        "href": "garem-dlya-devochek",
+        "value": 96,
+        "more_titles": [],
+        "group_id": -3
+      },
+      {
+        "title": "Полулюди",
+        "href": "lyudi-zveri",
+        "value": 97,
+        "more_titles": [],
+        "group_id": -3
+      },
+      {
+        "title": "Психология",
+        "href": "psihologiya",
+        "value": 98,
+        "more_titles": [
+          "Психологическое"
+        ],
+        "group_id": -2
+      },
+      {
+        "title": "Манга",
+        "href": "manga",
+        "value": 99,
+        "more_titles": [],
+        "group_id": 78
+      },
+      {
+        "title": "Эротика",
+        "href": "erotica",
+        "value": 100,
+        "more_titles": [
+          "Хентай"
+        ],
+        "group_id": -2
+      },
+      {
+        "title": "Не японское",
+        "href": "ne-yaponskoe",
+        "value": 101,
+        "more_titles": [],
+        "group_id": -3
+      },
+      {
+        "title": "Гендерная интрига",
+        "href": "trap",
+        "value": 102,
+        "more_titles": [],
+        "group_id": -1
+      },
+      {
+        "title": "Сверхъестественное",
+        "href": "sverh-estestvennoe",
+        "value": 103,
+        "more_titles": [],
+        "group_id": -3
+      },
+      {
+        "title": "Игры",
+        "href": "igry",
+        "value": 104,
+        "more_titles": [],
+        "group_id": -3
+      },
+      {
+        "title": "Исэкай",
+        "href": "isekai",
+        "value": 106,
+        "more_titles": [],
+        "group_id": -1
+      },
+      {
+        "title": "Китайское 3D",
+        "href": "chinese3d",
+        "value": 107,
+        "more_titles": [],
+        "group_id": 101
+      },
+      {
+        "title": "Мотоциклы",
+        "href": "motorcycles",
+        "value": 108,
+        "more_titles": [],
+        "group_id": -3
+      },
+      {
+        "title": "Хулиганы",
+        "href": "badguys",
+        "value": 109,
+        "more_titles": [],
+        "group_id": -3
+      },
+      {
+        "title": "Безумие",
+        "href": "bezumie",
+        "value": 110,
+        "more_titles": [],
+        "group_id": -3
+      }
+    ],
+    "groups": [
+      {
+        "title": "Японские",
+        "id": -1
+      },
+      {
+        "title": "Классические",
+        "id": -2
+      },
+      {
+        "title": "Другие жанры",
+        "id": -3
+      }
+    ]
+  }
+}

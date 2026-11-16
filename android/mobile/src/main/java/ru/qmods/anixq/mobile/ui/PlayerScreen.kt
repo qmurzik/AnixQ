@@ -137,7 +137,7 @@ object Pip {
 }
 
 internal enum class Panel(val title: String) {
-    EPISODES("Серии"), TEAMS("Озвучка"), QUALITY("Качество"), SPEED("Скорость"), SUBS("Субтитры"), SLEEP("Таймер сна"), TUNE("Картинка и звук")
+    SOURCE("Источник"), BALANCER("Балансер"), EPISODES("Серии"), TEAMS("Озвучка"), QUALITY("Качество"), SPEED("Скорость"), SUBS("Субтитры"), SLEEP("Таймер сна"), TUNE("Картинка и звук")
 }
 
 /** The player is always dark (like cinema apps), whatever the app's theme. */
@@ -527,6 +527,8 @@ internal fun Controls(
                 if (land) {
                     LazyRow(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         item { Chip("Серии", Icons.Default.ViewList) { onPanel(Panel.EPISODES) } }
+                        if (m.sourceOptions.size > 1) item { Chip(m.player?.sourceLabel ?: "Источник", Icons.Default.GraphicEq) { onPanel(Panel.SOURCE) } }
+                        if (m.balancerOptions.size > 1) item { Chip(m.player?.balancer ?: "Балансер", Icons.Default.GraphicEq) { onPanel(Panel.BALANCER) } }
                         if (m.players.distinctBy { it.team.id }.size > 1) item { Chip(m.player?.team?.name ?: "Озвучка", Icons.Default.GraphicEq) { onPanel(Panel.TEAMS) } }
                         item { Chip(if (m.speed == 1f) "1×" else "${m.speed}×", Icons.Default.Speed) { onPanel(Panel.SPEED) } }
                         if (m.qualities.size > 1) item { Chip(m.quality ?: "Качество", Icons.Default.HighQuality) { onPanel(Panel.QUALITY) } }
@@ -680,15 +682,22 @@ private fun PanelContent(p: Panel, m: PlayerModel, onClose: () -> Unit, onPickSu
     val context = LocalContext.current
     val version by Store.version.collectAsState()
     when (p) {
+        Panel.SOURCE -> Column { m.sourceOptions.forEach { source ->
+            OptionRow(when(source) { "yummy" -> "YummyAnime"; "anilibria" -> "AniLibria"; else -> "AnimeLib" }, null, m.player?.source == source) { onClose(); m.selectSource(source) }
+        } }
+        Panel.BALANCER -> Column { m.balancerOptions.forEach { name ->
+            OptionRow(name, null, m.player?.balancer == name) { onClose(); m.selectBalancer(name) }
+        } }
         Panel.EPISODES -> {
             val st = rememberLazyListState((m.index - 2).coerceAtLeast(0))
             LazyColumn(state = st) { itemsIndexed(m.episodes, key = { _, e -> e.id }) { i, ep -> EpisodeRow(m, i, ep, version, onClose) } }
         }
         Panel.TEAMS -> LazyColumn {
-            val teams = m.players.groupBy { it.team.id }.values.map { ps -> ps.first().team to ps }
+            if (m.unsupportedBalancers.isNotEmpty()) item { Text("Недоступны в родном плеере: ${m.unsupportedBalancers.joinToString()}. Alloha требует прямой поток.", color = Pal.muted, modifier = Modifier.padding(18.dp)) }
+            val teams = m.dubOptions.groupBy { it.team.id }.values.map { ps -> ps.first().team to ps }
             teams.forEach { (t, ps) ->
                 item {
-                    OptionRow(t.name, listOfNotNull(if (ps.any { it.isNative }) "без рекламы" else "Kodik", if (t.isSubtitles) "субтитры" else null,
+                    OptionRow(t.name, listOfNotNull(ps.first().sourceLabel + (ps.first().balancer?.let { " · $it" } ?: ""), if (t.isSubtitles) "субтитры" else null,
                         if (ru.qmods.anixq.tv.data.Libria.isLibria(t.name) && Store.libriaDirect) "с сервера AniLibria" else null).joinToString(" · "),
                         t.id == m.player?.team?.id) { onClose(); m.setTeam(t.id) }
                 }

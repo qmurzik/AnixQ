@@ -84,7 +84,7 @@ fun ProfilePicker(onDone: () -> Unit) {
 
 /** Name entry with the TV's own keyboard. */
 @Composable
-fun NameDialog(title: String, initial: String, onDone: (String?) -> Unit) {
+fun NameDialog(title: String, initial: String, maxLength: Int = 20, secret: Boolean = false, onDone: (String?) -> Unit) {
     var text by remember { mutableStateOf(initial) }
     val fr = remember { FocusRequester() }
     LaunchedEffect(Unit) { delay(100); runCatching { fr.requestFocus() } }
@@ -92,7 +92,7 @@ fun NameDialog(title: String, initial: String, onDone: (String?) -> Unit) {
         Column(Modifier.width(460.dp).background(C.card, RoundedCornerShape(20.dp)).padding(24.dp)) {
             Text(title, fontSize = 22.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(16.dp))
-            BasicTextField(text, { text = it.take(20) }, singleLine = true, cursorBrush = SolidColor(C.pink),
+            BasicTextField(text, { text = it.take(maxLength) }, singleLine = true, visualTransformation = if (secret) androidx.compose.ui.text.input.PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None, cursorBrush = SolidColor(C.pink),
                 textStyle = TextStyle(color = Color.White, fontSize = 20.sp),
                 modifier = Modifier.focusRequester(fr).background(Color.White.copy(alpha = 0.08f), RoundedCornerShape(12.dp)).padding(14.dp).width(400.dp),
                 decorationBox = { inner -> if (text.isEmpty()) Text("Имя", color = C.muted, fontSize = 20.sp); inner() })

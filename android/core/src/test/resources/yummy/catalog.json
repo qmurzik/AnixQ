@@ -1,0 +1,145 @@
+{
+  "response": [
+    {
+      "description": "Закат человеческой эры пришёл с возникновением особой расы Титанов. Люди за столетие так и не нашли способов их полного уничтожения, как и не смогли узнать о происхождении этих колоссов. Остатки человеческой цивилизации создали государство, надежно защищенное тремя стенами, построенными по системе круговых колец, с именами: «Мария», «Роза», «Шина». Стены надежно укрывают и обеспечивают тихую жизнь потомкам тех, кто их строил. Но есть и обратная сторона: стены помимо защитной функции не дают возможности покинуть эти земли.\nМечта увидеть внешний МИР не оставляет главного героя Эрена…\nСпокойная жизнь не вечна, как и детство, и в один из солнечных дней 845 года Титан невероятных размеров и мощи пробивает брешь в крепостной стене Шиганшины, родного города Эрена. Этот день станет последним для тысяч людей не только этого города, так как вслед за ним под натиском Титанов падёт и внешняя стена «Мария». Друзьям Эрену, Микасе и Армину удается уцелеть. Человечество оказывается под угрозой полного уничтожения. Треть всей земли потеряна, количество жертв достигает невероятных размеров. Эрен собирается вступить в «Легион разведки», чтобы уничтожать Титанов. Месть – тоже стимул для того, чтобы жить, ведь «этот мир жесток и беспощаден»...\n©Номия",
+      "poster": {
+        "fullsize": "//static.yani.tv/posters/full/1636691256.jpg",
+        "big": "//static.yani.tv/posters/big/1636691256.webp",
+        "small": "//static.yani.tv/posters/small/1636691256.webp",
+        "medium": "//static.yani.tv/posters/medium/1636691256.webp",
+        "huge": "//static.yani.tv/posters/huge/1636691256.avif",
+        "mega": "//static.yani.tv/posters/mega/1636691256.avif"
+      },
+      "title": "Атака титанов",
+      "anime_url": "vtorzhenie-gigantov",
+      "anime_id": 45,
+      "rating": {
+        "average": 8.9024486566421,
+        "counters": 10128,
+        "kp_rating": 8.7,
+        "anidub_rating": 0,
+        "myanimelist_rating": 8.58,
+        "worldart_rating": 8.7,
+        "shikimori_rating": 8.59708971646986
+      },
+      "genres": [
+        {
+          "title": "Сёнэн",
+          "url": "/catalog/category/senen",
+          "id": 8,
+          "alias": "senen"
+        },
+        {
+          "title": "Детектив",
+          "url": "/catalog/category/detektiv",
+          "id": 14,
+          "alias": "detektiv"
+        },
+        {
+          "title": "Драма",
+          "url": "/catalog/category/drama",
+          "id": 15,
+          "alias": "drama"
+        },
+        {
+          "title": "Приключения",
+          "url": "/catalog/category/priklyucheniya",
+          "id": 32,
+          "alias": "priklyucheniya"
+        },
+        {
+          "title": "Триллер",
+          "url": "/catalog/category/triller",
+          "id": 35,
+          "alias": "triller"
+        },
+        {
+          "title": "Ужасы",
+          "url": "/catalog/category/ugasy",
+          "id": 36,
+          "alias": "ugasy"
+        },
+        {
+          "title": "Фантастика",
+          "url": "/catalog/category/fantastika",
+          "id": 37,
+          "alias": "fantastika"
+        },
+        {
+          "title": "Экшен",
+          "url": "/catalog/category/ekshen",
+          "id": 63,
+          "alias": "ekshen"
+        },
+        {
+          "title": "Суперспособности",
+          "url": "/catalog/category/supersposobnosti",
+          "id": 70,
+          "alias": "supersposobnosti"
+        },
+        {
+          "title": "Альтернативная история",
+          "url": "/catalog/category/al-ternativnaya-istoriya",
+          "id": 72,
+          "alias": "al-ternativnaya-istoriya"
+        },
+        {
+          "title": "Военная тематика",
+          "url": "/catalog/category/voennaya-tematika",
+          "id": 76,
+          "alias": "voennaya-tematika"
+        },
+        {
+          "title": "Постапокалиптика",
+          "url": "/catalog/category/postapokaliptika",
+          "id": 89,
+          "alias": "postapokaliptika"
+        }
+      ],
+      "year": 2013,
+      "min_age": {
+        "value": 4,
+        "title_long": "R-17+ (насилие и/или нецензурная лексика)",
+        "title": "R-17+"
+      },
+      "views": 1777368,
+      "season": 2,
+      "anime_status": {
+        "value": 0,
+        "title": "вышел",
+        "alias": "released",
+        "class": ""
+      },
+      "type": {
+        "name": "Сериал",
+        "value": 1,
+        "shortname": "ТВ",
+        "alias": "tv"
+      },
+      "remote_ids": {
+        "worldart_id": 1245,
+        "shikimori_id": 16498,
+        "anidub_id": 0,
+        "anilibria_alias": "shingekinokyojin-tv1",
+        "myanimelist_id": 16498,
+        "kp_id": 749374,
+        "worldart_type": "animation",
+        "sr_id": 0
+      },
+      "top": {
+        "category": 26,
+        "global": 38
+      },
+      "blocked_in": [
+        "RU",
+        "AZ",
+        "AM",
+        "KZ",
+        "KG",
+        "TJ",
+        "TM",
+        "UZ"
+      ]
+    }
+  ]
+}

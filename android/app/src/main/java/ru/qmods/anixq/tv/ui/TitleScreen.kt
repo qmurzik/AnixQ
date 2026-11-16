@@ -116,12 +116,12 @@ fun TitleScreen(nav: Nav, start: Title) {
             val eps = Api.episodes(start.slug)
             episodes = eps; TitleCache.episodes[start.slug] = eps
             val target = resumePlan(start, eps)?.episode ?: return@LaunchedEffect
-            val players = Api.players(target.id)
-            val opts = players.groupBy { it.team.id }.map { (_, ps) -> TeamOption(ps.first().team, ps.any { it.isNative }, ps.any { it.isKodik }) }
+            val players = ru.qmods.anixq.tv.data.sources.AnimeSources.players(start, target).filter(ru.qmods.anixq.tv.data.sources.AnimeSources::supported)
+            val opts = players.groupBy { it.team.id }.map { (_, ps) -> TeamOption(ps.first().team, ps.any { it.isNative || it.canResolve }, ps.any { it.isKodik }, ps.first().sourceLabel, ps.first().balancer) }
                 .sortedWith(compareBy({ !it.native }, { it.team.isSubtitles }))
             teams = opts; TitleCache.teams[start.slug] = opts
             // Warm the video mirrors now, so pressing "Смотреть" starts in a moment.
-            launch { players.firstOrNull { it.isNative }?.hrefs?.values?.firstOrNull()?.let { runCatching { Api.rankServers(it) } } }
+            launch { players.firstOrNull { it.isNative }?.hrefs?.values?.firstOrNull()?.let { if (!it.startsWith("http")) runCatching { Api.rankServers(it) } } }
             if (teamId == null || opts.none { it.team.id == teamId }) {
                 teamId = opts.firstOrNull { o -> Store.dubs.any { it.equals(o.team.name, true) } }?.team?.id ?: opts.firstOrNull()?.team?.id
             }
@@ -170,7 +170,8 @@ fun TitleScreen(nav: Nav, start: Title) {
                     Text(it, fontSize = 15.sp, color = C.muted, maxLines = 1, modifier = Modifier.padding(top = 4.dp))
                 }
                 Spacer(Modifier.height(12.dp))
-                MetaLine(title, episodes?.takeIf { it.isNotEmpty() }?.let { "${it.size} эп." })
+                if (!ru.qmods.anixq.tv.data.sources.YummyAccount.signedIn) Text("Дополнительные озвучки YummyAnime: войдите в аккаунт в настройках", fontSize = 13.sp, color = C.muted)
+                MetaLine(title, title.episodeInfo ?: episodes?.takeIf { it.isNotEmpty() }?.let { "${it.size} эп." })
                 detail?.genres?.takeIf { it.isNotEmpty() }?.let {
                     Text(it.take(5).joinToString(" · "), fontSize = 14.sp, color = C.muted, modifier = Modifier.padding(top = 8.dp))
                 }
@@ -187,7 +188,7 @@ fun TitleScreen(nav: Nav, start: Title) {
                         episodes?.isEmpty() == true -> Text("Серий пока нет", color = C.muted, fontSize = 17.sp)
                         else -> Text("Загрузка серий…", color = C.muted, fontSize = 17.sp)
                     }
-                    if (teams.size > 1) PillButton(team?.team?.name ?: "Озвучка", Icons.Rounded.RecordVoiceOver,
+                    if (teams.size > 1) PillButton(team?.label ?: "Источник / озвучка", Icons.Rounded.RecordVoiceOver,
                         modifier = Modifier.memo(sc, "dub")) { dialog = "dub" }
                     PillButton(bookmark?.title ?: "", if (bookmark != null) Icons.Rounded.BookmarkAdded else Icons.Rounded.BookmarkAdd,
                         modifier = Modifier.memo(sc, "bm")) { dialog = "bookmark" }
@@ -228,7 +229,7 @@ fun TitleScreen(nav: Nav, start: Title) {
     }
 
     when (dialog) {
-        "dub" -> ChoiceDialog("Озвучка", teams.map { Choice(it.team.name, it.team.id == teamId,
+        "dub" -> ChoiceDialog("Озвучка", teams.map { Choice(it.label, it.team.id == teamId,
             listOfNotNull(if (it.team.isSubtitles) "субтитры" else "озвучка", if (it.native) "без рекламы" else "Kodik").joinToString(" · ")) },
             { dialog = null }) { i ->
             dialog = null

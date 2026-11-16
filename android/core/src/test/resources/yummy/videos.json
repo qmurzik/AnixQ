@@ -1,0 +1,59 @@
+{
+  "response": [
+    {
+      "video_id": 681024,
+      "data": {
+        "player": "Плеер Aksor",
+        "dubbing": "Арт-Дубляж",
+        "player_id": 1
+      },
+      "author": {
+        "avatars": {
+          "small": "//static.yani.tv/img/no-photo.jpg",
+          "big": "//static.yani.tv/img/no-photo.jpg",
+          "full": "//static.yani.tv/img/no-photo.jpg"
+        },
+        "roles": []
+      },
+      "number": "1",
+      "date": 1723558576,
+      "iframe_url": "https://player.aksor.tv/video/be348c0423c77acd06f24bcbee51c5fc",
+      "index": 1,
+      "skips": {
+        "opening": null,
+        "ending": null
+      },
+      "views": 3358,
+      "duration": 1422
+    },
+    {
+      "video_id": 681025,
+      "data": {
+        "player": "Плеер Aksor",
+        "dubbing": "Арт-Дубляж",
+        "player_id": 1
+      },
+      "author": {
+        "avatars": {
+          "small": "//static.yani.tv/img/no-photo.jpg",
+          "big": "//static.yani.tv/img/no-photo.jpg",
+          "full": "//static.yani.tv/img/no-photo.jpg"
+        },
+        "roles": []
+      },
+      "number": "2",
+      "date": 1723558688,
+      "iframe_url": "https://player.aksor.tv/video/6e497a9db21b99162350c5153bd25a48",
+      "index": 2,
+      "skips": {
+        "opening": null,
+        "ending": {
+          "time": 1399,
+          "length": 24
+        }
+      },
+      "views": 1363,
+      "duration": 1433
+    }
+  ]
+}

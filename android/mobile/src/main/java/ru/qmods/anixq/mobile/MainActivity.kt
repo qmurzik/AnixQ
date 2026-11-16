@@ -121,9 +121,9 @@ class MainActivity : ComponentActivity() {
                 // Joined a friend's room: the first state says what they're watching — open it.
                 ru.qmods.anixq.tv.data.Room.onStateWithoutPlayer = { m ->
                     val slug = m.optString("slug")
-                    if (slug.isNotEmpty()) n.play(PlayerRoute(Title(id = slug.substringBefore("--").toIntOrNull() ?: 0, slug = slug,
-                        rusName = m.optString("titleName").ifEmpty { null }), m.optInt("episodeId").takeIf { it > 0 },
-                        m.optInt("teamId").takeIf { it > 0 }, startAt = m.optDouble("position", 0.0)))
+                    if (slug.isNotEmpty()) n.play(PlayerRoute(Title(id = if (slug.startsWith("yummy:")) -(slug.substringAfter(":").toIntOrNull() ?: 0) else slug.substringBefore("--").toIntOrNull() ?: 0, slug = slug,
+                        rusName = m.optString("titleName").ifEmpty { null }), m.optInt("episodeId").takeIf { it != 0 },
+                        m.optInt("teamId").takeIf { it != 0 }, startAt = m.optDouble("position", 0.0)))
                 }
                 onDispose { ru.qmods.anixq.tv.data.Room.onStateWithoutPlayer = null }
             }
@@ -155,7 +155,7 @@ class MainActivity : ComponentActivity() {
         val u = i?.data ?: return
         when (u.host) {
             "pair" -> { nav.stack.removeAll { it is PlayerRoute }; nav.push(SettingsRoute); PairFlow.run(u.toString(), lifecycleScope) }
-            "title" -> u.pathSegments.firstOrNull()?.let { slug -> nav.open(Title(id = slug.substringBefore("--").toIntOrNull() ?: 0, slug = slug)) }
+            "title" -> u.pathSegments.firstOrNull()?.let { slug -> nav.open(Title(id = if (slug.startsWith("yummy:")) -(slug.substringAfter(":").toIntOrNull() ?: 0) else slug.substringBefore("--").toIntOrNull() ?: 0, slug = slug)) }
             "continue" -> Store.continueList.firstOrNull()?.let { e -> nav.play(PlayerRoute(e.title, resume = true)) }
             "home" -> { nav.stack.clear(); nav.tab = Tab.HOME }
             "search" -> { nav.stack.clear(); nav.tab = Tab.SEARCH }

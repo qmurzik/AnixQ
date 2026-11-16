@@ -260,14 +260,14 @@ fun SeasonScreen(nav: Nav) {
 @Composable
 fun FilterSheet(query: CatalogQuery, onApply: (CatalogQuery) -> Unit, onClose: () -> Unit) {
     var q by remember { mutableStateOf(query) }
-    var genres by remember { mutableStateOf(Genres.list) }
-    LaunchedEffect(Unit) { if (genres.isEmpty()) genres = Api.genres().also { Genres.list = it } }
+    var genres by remember { mutableStateOf(if (query.source == "yummy") emptyList<Pair<Int, String>>() else Genres.list) }
+    LaunchedEffect(query.source) { genres = runCatching { Api.genres(query.source) }.getOrDefault(emptyList()) }
     val year = java.util.Calendar.getInstance().get(java.util.Calendar.YEAR)
     ModalBottomSheet(onClose, containerColor = Pal.card) {
         Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).navigationBarsPadding().padding(bottom = 16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Фильтры", fontSize = 20.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                TextButton({ q = CatalogQuery(sort = q.sort) }) { Text("Сбросить", color = Pal.muted) }
+                TextButton({ q = CatalogQuery(sort = q.sort, source = q.source) }) { Text("Сбросить", color = Pal.muted) }
             }
             Text("Годы выхода", fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 10.dp, bottom = 8.dp))
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {

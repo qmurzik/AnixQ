@@ -1,5 +1,6 @@
 package ru.qmods.anixq.mobile.ui
 
+import androidx.compose.ui.graphics.asImageBitmap
 import ru.qmods.anixq.tv.data.PlaybackLabels
 
 import android.app.Activity
@@ -590,6 +591,11 @@ private fun Scrubber(m: PlayerModel, scrub: Double?, onScrub: (Double) -> Unit, 
         }
         if (scrub != null) {
             val x = (wPx * (scrub / dur)).toFloat()
+            // Frame of that moment above the finger (YouTube-style), when the source allows it.
+            val thumb = scrubThumb(m, scrub)
+            if (thumb != null) androidx.compose.foundation.Image(thumb, null, contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                modifier = Modifier.offset { IntOffset((x - 80.dp.toPx()).toInt().coerceIn(0, (wPx - 160.dp.toPx()).toInt().coerceAtLeast(0)), (-122).dp.roundToPx()) }
+                    .size(160.dp, 90.dp).clip(RoundedCornerShape(10.dp)).background(Color.Black))
             Text(fmt(scrub), color = Color.Black, fontSize = 12.sp, fontWeight = FontWeight.Bold,
                 modifier = Modifier.offset { IntOffset((x - 26.dp.toPx()).toInt().coerceIn(0, (wPx - 52.dp.toPx()).toInt().coerceAtLeast(0)), (-26).dp.roundToPx()) }
                     .clip(RoundedCornerShape(8.dp)).background(Color.White).padding(horizontal = 8.dp, vertical = 3.dp))
@@ -882,4 +888,50 @@ private fun BreakCard(m: PlayerModel) {
             }
         }
     }
+}
+
+/**
+ * Frames for the scrubber preview: read from the playing file with MediaMetadataRetriever (one worker,
+ * newest request wins), cached in 5-second steps. Null while loading or for streams it can't read (HLS).
+ */
+private object ScrubFrames {
+    private val cache = object : LinkedHashMap<String, androidx.compose.ui.graphics.ImageBitmap>(64, .75f, true) {
+        override fun removeEldestEntry(e: MutableMap.MutableEntry<String, androidx.compose.ui.graphics.ImageBitmap>?) = size > 60
+    }
+    private var retriever: android.media.MediaMetadataRetriever? = null
+    private var source: String? = null
+    private val lock = Any()
+
+    fun cached(url: String, bucket: Long) = synchronized(cache) { cache["$url#$bucket"] }
+
+    fun load(url: String, headers: Map<String, String>, bucket: Long): androidx.compose.ui.graphics.ImageBitmap? = synchronized(lock) {
+        cached(url, bucket)?.let { return it }
+        runCatching {
+            if (source != url) {
+                retriever?.release()
+                retriever = android.media.MediaMetadataRetriever().apply {
+                    if (url.startsWith("file:")) setDataSource(android.net.Uri.parse(url).path) else setDataSource(url, headers)
+                }
+                source = url
+            }
+            val r = retriever ?: return null
+            val us = bucket * 5_000_000L
+            val b = if (android.os.Build.VERSION.SDK_INT >= 27) r.getScaledFrameAtTime(us, android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC, 320, 180)
+                else r.getFrameAtTime(us, android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+            b?.asImageBitmap()?.also { synchronized(cache) { cache["$url#$bucket"] = it } }
+        }.getOrNull()
+    }
+}
+
+@Composable
+private fun scrubThumb(m: PlayerModel, at: Double): androidx.compose.ui.graphics.ImageBitmap? {
+    val src = m.previewSource ?: return null
+    val bucket = (at / 5).toLong()
+    var shown by remember { mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null) }
+    LaunchedEffect(src.first, bucket) {
+        ScrubFrames.cached(src.first, bucket)?.let { shown = it; return@LaunchedEffect }
+        delay(120)   // only where the finger rests for a moment
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { ScrubFrames.load(src.first, src.second, bucket) }?.let { shown = it }
+    }
+    return shown
 }

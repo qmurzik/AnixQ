@@ -131,6 +131,8 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
     private var autoAdvancedEpisode: Int? = null
     private val recovery = StallRecovery()
     private var currentUrl: String? = null
+    /** What the scrubber's frame previews read: the file being played (progressive video only, not HLS). */
+    val previewSource: Pair<String, Map<String, String>>? get() = currentUrl?.takeIf { native && !it.substringBefore('?').endsWith(".m3u8") }?.let { it to (player?.headers ?: emptyMap()) }
 
     val engine: Engine? get() = if (native) exo else kodik
     val episode: Episode? get() = episodes.getOrNull(index)

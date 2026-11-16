@@ -20,8 +20,7 @@ android {
     }
 
     signingConfigs {
-        // A fixed key from the repository secrets keeps updates installable over each other;
-        // without it the debug key is used (fine for local builds).
+        // The existing repository secret/cached CI key keeps release updates installable.
         create("release") {
             val ks = System.getenv("ANDROID_KEYSTORE")
             if (ks != null && file(ks).exists()) {

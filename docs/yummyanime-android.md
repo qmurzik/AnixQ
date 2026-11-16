@@ -144,7 +144,7 @@ the configured repository secret. Manual workflow runs also compare each APK's
 certificate against the published `tv` and `android` releases before uploading
 artifacts. Local release builds fail if signing credentials are missing, instead
 of substituting a debug key. The initial local test-signed APKs are superseded
-by the workflow artifacts once signing compatibility is verified.
+by the verified workflow artifacts from run 43778445569.
 
 ## Executed results (2026-11-16 UTC)
 
@@ -156,6 +156,17 @@ by the workflow artifacts once signing compatibility is verified.
 - LICENSE and NOTICE verified inside all four APKs. DASH classes remain in the TV release R8 output.
 - Full upstream screenshot/focus suite is **not green**: the fixture and baseline failures described above remain.
 - Authenticated complete episodes, Android hardware decoding and physical remote operation are **not verified**.
+
+Release signing correction: [CI run 43778445569](https://github.com/qmurzik/AnixQ/actions/runs/43778445569)
+completed successfully on commit `2b710e87834d67e22e8c5d5caf8f77106026f79a`.
+The CI artifact ZIP digests were verified against GitHub, and both extracted APKs
+were verified locally with `apksigner` and `aapt`. Their package IDs match the
+published apps, versionCode is **68** (published: **67**), and both certificates
+match the published phone/TV releases:
+`fea95b7474d396516665375c40637f1fe71c84b3af9d75aca2d4635fcc47c2a8`.
+The signed files replace the earlier local release APKs and are also available
+under `android/build/signed/AnixQ.apk` and `AnixQ-TV.apk`. No release was published;
+the workflow used `workflow_dispatch` on the integration branch.
 
 Artifact sizes, SHA-256 hashes and test suite counts are in
 [yummyanime-verification.json](yummyanime-verification.json).

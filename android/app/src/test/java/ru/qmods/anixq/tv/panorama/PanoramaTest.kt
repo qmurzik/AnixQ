@@ -7,6 +7,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.ui.input.key.Key
@@ -66,10 +67,10 @@ class PanoramaTest {
     @Test fun interfaceChoicePersistsOnTheDeviceAndDoesNotChangeTheLibrary() {
         assertEquals(TvAppearance.Mode.CLASSIC, TvAppearance.mode.value)
         Store.setBookmark(titles[0],Bookmark.PLANNED)
-        TvAppearance.select(TvAppearance.Mode.PANORAMA); TvAppearance.animate(false)
+        TvAppearance.select(TvAppearance.Mode.PANORAMA); TvAppearance.chooseMotion(TvAppearance.Motion.OFF)
         TvAppearance.init(context)
         assertEquals(TvAppearance.Mode.PANORAMA,TvAppearance.mode.value)
-        assertFalse(TvAppearance.motion.value)
+        assertEquals(TvAppearance.Motion.OFF,TvAppearance.motion.value)
         assertEquals(Bookmark.PLANNED,Store.bookmark(titles[0].slug))
         TvAppearance.select(TvAppearance.Mode.CLASSIC)
         assertEquals(Bookmark.PLANNED,Store.bookmark(titles[0].slug))
@@ -84,7 +85,9 @@ class PanoramaTest {
         rule.waitUntil(3000) { runCatching { rule.onNodeWithTag("tv-style-PANORAMA").assertIsFocused() }.isSuccess }
         rule.onNodeWithTag("tv-panorama-motion").performSemanticsAction(SemanticsActions.RequestFocus)
         rule.onNodeWithTag("tv-panorama-motion").performKeyInput { pressKey(Key.DirectionCenter) }
-        rule.runOnIdle { assertFalse(TvAppearance.motion.value) }
+        rule.runOnIdle { assertEquals(TvAppearance.Motion.FULL,TvAppearance.motion.value) }
+        rule.onNodeWithTag("tv-panorama-motion").performKeyInput { pressKey(Key.DirectionCenter) }
+        rule.runOnIdle { assertEquals(TvAppearance.Motion.OFF,TvAppearance.motion.value) }
         rule.onNodeWithTag("tv-style-CLASSIC").performSemanticsAction(SemanticsActions.RequestFocus)
         rule.onNodeWithTag("tv-style-CLASSIC").performKeyInput { pressKey(Key.DirectionCenter) }
         rule.runOnIdle { assertEquals(TvAppearance.Mode.CLASSIC,TvAppearance.mode.value) }
@@ -139,4 +142,41 @@ class PanoramaTest {
         rule.onNodeWithTag("panorama-hero-primary").performKeyInput { pressKey(Key.DirectionCenter) }
         rule.runOnIdle { assertEquals(hero.id,(nav.stack.last() as TitleRoute).title.id) }
     }
+    @Test fun selectedVoiceFarDownTheListReceivesFocusWhenTheDialogOpens() {
+        rule.setContent { AnixTheme { CinemaTheme {
+            ChoiceDialog("Озвучка", List(30) { Choice("Студия $it", it == 24) }, {}, {})
+        } } }
+        rule.waitUntil(3000) { runCatching { rule.onNodeWithText("Студия 24").assertIsFocused() }.isSuccess }
+    }
+    @Test fun longSynopsisScrollsWithTheRemoteAndCanReturnToTheStart() {
+        Focus.reset("panorama:synopsis")
+        rule.setContent { AnixTheme { CinemaTheme { Column(Modifier.width(650.dp)) {
+            SynopsisBody(("Длинное описание истории. ".repeat(15) + "\n\n").repeat(20))
+            PButton("Закрыть") {}
+        } } } }
+        rule.waitUntil(3000) { runCatching { rule.onNodeWithTag("panorama-synopsis").assertIsFocused() }.isSuccess }
+        fun offset() = rule.onNodeWithTag("panorama-synopsis").fetchSemanticsNode().config[androidx.compose.ui.semantics.SemanticsProperties.VerticalScrollAxisRange].value()
+        assertEquals(0f, offset(), .1f)
+        rule.onNodeWithTag("panorama-synopsis").performKeyInput { pressKey(Key.DirectionDown) }
+        rule.waitUntil(3000) { offset() > 0f }
+        rule.waitForIdle()
+        rule.onNodeWithTag("panorama-synopsis").performKeyInput { pressKey(Key.DirectionUp) }
+        rule.waitUntil(3000) { offset() <= .1f }
+    }
+
+    @Test fun loadingTheFirstSceneKeepsFocusOnTheHeroAction() {
+        Focus.reset("panorama:loading-test")
+        val title = titles[1]
+        TitleCache.detail[title.slug] = Detail(title,fixture.getJSONObject(1).getString("description"),null,emptyList())
+        val target = mutableStateOf<Title?>(null)
+        val nav = Nav()
+        rule.setContent { AnixTheme { CinemaTheme { Box(Modifier.fillMaxSize().background(P.bg)) {
+            Box(Modifier.padding(start=84.dp)) { PanoramaHero(target.value,nav,"panorama:loading-test") }
+            PButton("Навигация",modifier=Modifier.width(84.dp).testTag("fallback-rail")) {}
+        } } } }
+        rule.runOnIdle { target.value = title }
+        rule.waitUntil(3000) { runCatching { rule.onNodeWithTag("panorama-hero-primary").assertIsFocused() }.isSuccess }
+        rule.onNodeWithTag("fallback-rail").assertIsNotFocused()
+    }
+
 }

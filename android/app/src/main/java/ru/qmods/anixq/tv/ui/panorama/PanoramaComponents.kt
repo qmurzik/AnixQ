@@ -3,6 +3,9 @@ package ru.qmods.anixq.tv.ui.panorama
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.gestures.BringIntoViewSpec
+import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
@@ -25,6 +28,8 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -54,9 +59,28 @@ private val CinemaFont = FontFamily(
     Font(R.font.manrope_700, FontWeight.Bold),
 )
 
+/** TV's default pivot scrolls even fully-visible buttons; cinema scenes should stay put. */
+@OptIn(ExperimentalFoundationApi::class)
+internal class CinemaViewportSpec(duration: Int) : BringIntoViewSpec {
+    override val scrollAnimationSpec = tween<Float>(duration)
+    override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float {
+        val margin = containerSize * .025f
+        return when {
+            size > containerSize - margin * 2 -> offset - margin
+            offset < margin -> offset - margin
+            offset + size > containerSize - margin -> offset + size - containerSize + margin
+            else -> 0f
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 internal fun CinemaTheme(content: @Composable () -> Unit) {
-    CompositionLocalProvider(LocalCinema provides true, LocalTextStyle provides TextStyle(fontFamily = CinemaFont), LocalContentColor provides P.ink, content = content)
+    val duration = motionMillis(260)
+    val viewport = remember(duration) { CinemaViewportSpec(duration) }
+    CompositionLocalProvider(LocalCinema provides true, LocalBringIntoViewSpec provides viewport,
+        LocalTextStyle provides TextStyle(fontFamily = CinemaFont), LocalContentColor provides P.ink, content = content)
 }
 
 internal fun Modifier.cinemaEntrance(key: Any) = composed {
@@ -68,8 +92,12 @@ internal fun Modifier.cinemaEntrance(key: Any) = composed {
 
 @Composable
 internal fun motionMillis(normal: Int): Int {
-    val enabled by TvAppearance.motion.collectAsState()
-    return if (enabled && !Store.weakDevice) normal else 0
+    val policy by TvAppearance.motion.collectAsState()
+    return when (policy) {
+        TvAppearance.Motion.OFF -> 0
+        TvAppearance.Motion.FULL -> normal
+        TvAppearance.Motion.AUTO -> if (Store.weakDevice) 0 else normal
+    }
 }
 
 /** Focus uses colour + a steady frame; no blur, perpetual shimmer or layout changes. */
@@ -136,7 +164,7 @@ internal fun PPoster(title: Title, onClick: () -> Unit, modifier: Modifier = Mod
     var focused by remember { mutableStateOf(false) }
     val alpha by animateFloatAsState(if (focused) 1f else 0.55f, tween(motionMillis(180)), label = "poster-rule")
     Column(modifier.then(if (width != null) Modifier.width(width) else Modifier.fillMaxWidth())) {
-        PSurface(onClick, Modifier.fillMaxWidth().testTag("panorama-title-${title.id}"), onFocus = { focused = it; if (it) onFocus() }, radius = 9.dp) {
+        PSurface(onClick, Modifier.fillMaxWidth().testTag("panorama-title-${title.id}").semantics { contentDescription = title.title }, onFocus = { focused = it; if (it) onFocus() }, radius = 9.dp) {
             Box(Modifier.fillMaxWidth().aspectRatio(0.69f).background(P.panel)) {
                 Cover(title.poster, Modifier.fillMaxSize())
                 Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.6f to Color.Transparent, 1f to P.bg.copy(alpha = .92f))))

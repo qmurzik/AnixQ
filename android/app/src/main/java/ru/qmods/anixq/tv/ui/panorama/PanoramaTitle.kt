@@ -1,6 +1,11 @@
 package ru.qmods.anixq.tv.ui.panorama
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.focusable
+import androidx.compose.foundation.border
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.foundation.gestures.animateScrollBy
+import androidx.compose.ui.input.key.*
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -123,7 +128,7 @@ fun PanoramaTitle(nav: Nav, start: Title) {
                             else Text("Серий пока нет", color = P.muted, fontSize = 14.sp)
                             PButton(bookmark?.title ?: "В коллекцию", if (bookmark == null) Icons.Rounded.Add else Icons.Rounded.Check,
                                 modifier = Modifier.memo(focusScope, "bookmark").testTag("panorama-title-bookmark")) { picker = "bookmark" }
-                            if (!detail?.summary.isNullOrBlank()) PButton("О тайтле", Icons.Rounded.Notes) { picker = "synopsis" }
+                            if (!detail?.summary.isNullOrBlank()) PButton("О тайтле", Icons.Rounded.Notes) { Focus.reset("panorama:synopsis"); picker = "synopsis" }
                         }
                         plan?.sub?.let { Text(it, color = P.muted, fontSize = 11.sp, modifier = Modifier.padding(top = 10.dp)) }
                         Recap.daysAway(start.id)?.let { days -> Text("Прошло $days дн. — начнём на 30 секунд раньше", color = P.accent, fontSize = 11.sp, modifier = Modifier.padding(top = 8.dp)) }
@@ -159,8 +164,8 @@ fun PanoramaTitle(nav: Nav, start: Title) {
         "synopsis" -> Dialog(onDismissRequest = { picker = null }) {
             Column(Modifier.width(650.dp).background(P.panel, androidx.compose.foundation.shape.RoundedCornerShape(16.dp)).padding(28.dp)) {
                 Text(title.title, color = P.ink, fontSize = 25.sp, fontWeight = FontWeight.Medium, maxLines = 2)
-                LazyColumn(Modifier.heightIn(max = 300.dp).padding(vertical = 20.dp)) { item { Text(detail?.summary.orEmpty(), color = P.muted, fontSize = 16.sp, lineHeight = 25.sp) } }
-                PButton("Закрыть", modifier = Modifier.memo("panorama:synopsis", "close", initial = true)) { picker = null }
+                SynopsisBody(detail?.summary.orEmpty())
+                PButton("Закрыть", modifier = Modifier.memo("panorama:synopsis", "close")) { picker = null }
             }
         }
     }
@@ -232,5 +237,29 @@ private fun PanoramaEpisodes(title: Title, episodes: List<Episode>, current: Int
                 }
             }
         } }
+    }
+}
+
+
+/** D-pad scrolls long descriptions, then can leave the body for the Close button. */
+@Composable
+internal fun SynopsisBody(text: String) {
+    val synopsis = rememberLazyListState()
+    val scope = rememberCoroutineScope()
+    var focused by remember { mutableStateOf(false) }
+    LazyColumn(state = synopsis, modifier = Modifier.heightIn(max = 300.dp).padding(vertical = 20.dp)
+        .testTag("panorama-synopsis")
+        .border(1.dp, if (focused) P.accent.copy(alpha=.6f) else Color.Transparent, androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
+        .memo("panorama:synopsis", "text", initial = true)
+        .onFocusChanged { focused = it.isFocused }
+        .onPreviewKeyEvent { event ->
+            val down = event.key == Key.DirectionDown && synopsis.canScrollForward
+            val up = event.key == Key.DirectionUp && synopsis.canScrollBackward
+            if (event.type == KeyEventType.KeyDown && (down || up)) {
+                scope.launch { synopsis.animateScrollBy(if (down) 150f else -150f) }
+                true
+            } else false
+        }.focusable()) {
+        item { Text(text, color = P.muted, fontSize = 16.sp, lineHeight = 25.sp, modifier = Modifier.padding(10.dp)) }
     }
 }

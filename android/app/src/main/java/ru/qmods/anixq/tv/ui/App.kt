@@ -407,7 +407,8 @@ fun ChoiceDialog(title: String, choices: List<Choice>, onDismiss: () -> Unit, on
         Column(Modifier.widthIn(min = 360.dp, max = 520.dp).background(C.card, RoundedCornerShape(20.dp)).padding(20.dp)) {
             Text(title, fontSize = 22.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 14.dp))
             val initial = choices.indexOfFirst { it.selected }.coerceAtLeast(0)
-            LazyColumn(Modifier.height((choices.size.coerceAtMost(7) * 58).dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            val list = androidx.compose.foundation.lazy.rememberLazyListState(initialFirstVisibleItemIndex = (initial - 2).coerceAtLeast(0))
+            LazyColumn(state = list, modifier = Modifier.height((choices.size.coerceAtMost(7) * 58).dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 itemsIndexed(choices) { i, c ->
                     val fr = remember { FocusRequester() }
                     if (i == initial) LaunchedEffect(Unit) { delay(60); runCatching { fr.requestFocus() } }

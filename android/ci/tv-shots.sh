@@ -8,12 +8,18 @@ A=$P/.MainActivity
 S=14421--kimetsu-no-yaiba-anime
 shot() { sleep "$2"; adb exec-out screencap -p > "shots/$1.png"; test -s "shots/$1.png"; }
 key() { for k in "$@"; do adb shell input keyevent "$k"; sleep 0.5; done; }
-launch() { adb shell am force-stop "$P"; adb shell am start -W -n "$A" "$@"; }
+launch() { adb shell am force-stop "$P"; adb shell am start -W -n "$A" --es motion full "$@"; }
 adb logcat -c
+adb shell settings put global window_animation_scale 1
+adb shell settings put global transition_animation_scale 1
+adb shell settings put global animator_duration_scale 1
+adb shell getprop ro.config.low_ram > shots/device-low-ram.txt
+adb shell cat /proc/meminfo > shots/device-memory.txt
 launch --es ui classic;                       shot 01-classic-home 22
 launch --es ui classic --es tab 5;            shot 02-classic-settings 5
 launch --es ui panorama;                      shot 10-panorama-home 22
-key DPAD_LEFT;                               shot 11-panorama-navigation 2
+key DPAD_DOWN DPAD_RIGHT;                     shot 10b-panorama-filmstrip 3
+key BACK;                                    shot 11-panorama-navigation 2
 key DPAD_DOWN DPAD_CENTER DPAD_RIGHT;         shot 12-panorama-catalog-remote 12
 launch --es ui panorama --es tab 2;           shot 13-panorama-search 7
 launch --es ui panorama -a android.intent.action.SEARCH --es query Naruto; shot 14-panorama-search-results 15
@@ -28,7 +34,11 @@ sleep 10
 adb shell screenrecord --time-limit 35 --bit-rate 5000000 /sdcard/panorama-navigation.mp4 &
 RECORD_PID=$!
 sleep 2
-key DPAD_LEFT DPAD_DOWN DPAD_CENTER DPAD_RIGHT
+key DPAD_RIGHT DPAD_CENTER
+sleep 2
+key DPAD_DOWN DPAD_RIGHT DPAD_RIGHT
+sleep 2
+key BACK DPAD_DOWN DPAD_CENTER DPAD_RIGHT
 sleep 3
 key DPAD_DOWN DPAD_RIGHT DPAD_RIGHT DPAD_LEFT BACK
 sleep 2

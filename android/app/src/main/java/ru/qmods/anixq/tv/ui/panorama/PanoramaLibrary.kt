@@ -7,6 +7,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.grid.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
@@ -46,7 +48,7 @@ fun PanoramaLibrary(nav: Nav) {
                     PClock()
                 }
                 Row(Modifier.fillMaxWidth().background(P.panel, androidx.compose.foundation.shape.RoundedCornerShape(12.dp)).padding(vertical = 20.dp)) {
-                    listOf("${stats.first}" to "СЕРИЙ ПРОСМОТРЕНО", "${stats.second} ч" to "В ХОРОШИХ ИСТОРИЯХ", "${stats.third}" to "ТАЙТЛОВ ЗАВЕРШЕНО", "${Store.bookmarks.size}" to "В КОЛЛЕКЦИИ").forEach { (value, label) ->
+                    listOf("${stats.first}" to "СЕРИЙ ПРОСМОТРЕНО", "${stats.second} ч" to "ВРЕМЯ ПРОСМОТРА", "${stats.third}" to "ТАЙТЛОВ ЗАВЕРШЕНО", "${Store.bookmarks.size}" to "В КОЛЛЕКЦИИ").forEach { (value, label) ->
                         Column(Modifier.weight(1f).padding(start = 22.dp)) {
                             Text(value, color = P.accent, fontSize = 28.sp, fontWeight = FontWeight.Light)
                             Text(label, color = P.muted, fontSize = 9.sp, letterSpacing = 1.sp, modifier = Modifier.padding(top = 6.dp))
@@ -78,19 +80,32 @@ fun PanoramaLibrary(nav: Nav) {
 fun PanoramaSchedule(nav: Nav) {
     var schedule by remember { mutableStateOf<List<Schedule.Item>?>(null) }
     var note by remember { mutableStateOf<String?>(null) }
-    var selectedDay by rememberSaveable { mutableIntStateOf(0) }
+    var selectedDay by rememberSaveable { mutableIntStateOf(-1) }
     var retry by remember { mutableIntStateOf(0) }
     var opening by remember { mutableStateOf<Int?>(null) }
     val scope = rememberCoroutineScope()
-    LaunchedEffect(retry) { schedule = try { Schedule.load() } catch(e: CancellationException) { throw e } catch(_: Exception) { emptyList() } }
+    LaunchedEffect(retry) { schedule = try { Schedule.load(force = retry > 0) } catch(e: CancellationException) { throw e } catch(_: Exception) { emptyList() } }
     val groups = remember(schedule) { schedule.orEmpty().groupBy { SimpleDateFormat("yyyy-MM-dd", Locale.ROOT).format(Date(it.at)) }.toSortedMap().values.toList() }
+    LaunchedEffect(groups) {
+        if (groups.isNotEmpty() && selectedDay !in groups.indices) {
+            val today = SimpleDateFormat("yyyy-MM-dd", Locale.ROOT).format(Date())
+            selectedDay = groups.indexOfFirst { SimpleDateFormat("yyyy-MM-dd", Locale.ROOT).format(Date(it.first().at)) >= today }.coerceAtLeast(0)
+        }
+    }
     val day = groups.getOrNull(selectedDay) ?: groups.firstOrNull().orEmpty()
     Column(Modifier.fillMaxSize().testTag("panorama-schedule")) {
-        PageHeading("На этой неделе", "Расписание новых серий · время вашего устройства") { PClock() }
+        PageHeading("На этой неделе", "Расписание новых серий · время вашего устройства") {
+            PButton(if (schedule == null) "Загружаем…" else "Обновить", Icons.Rounded.Refresh,
+                modifier = Modifier.memo("panorama:schedule", "refresh", initial = true)) {
+                if (schedule != null) { schedule = null; retry++ }
+            }
+            Spacer(Modifier.width(18.dp))
+            PClock()
+        }
         if (groups.isNotEmpty()) Row(Modifier.fillMaxWidth().padding(start = 38.dp, end = 38.dp, bottom = 22.dp).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             groups.forEachIndexed { index, items ->
                 val label = SimpleDateFormat("EEE, d MMM", Locale("ru")).format(Date(items.first().at)).replaceFirstChar { it.uppercase() }
-                PButton(label, selected = index == selectedDay, modifier = Modifier.memo("panorama:schedule", "day/$index", initial = index == 0)) { selectedDay = index }
+                PButton(label, selected = index == selectedDay, modifier = Modifier.memo("panorama:schedule", "day/$index")) { selectedDay = index }
             }
         }
         note?.let { Text(it, color = P.accent, fontSize = 13.sp, modifier = Modifier.padding(start = 38.dp, bottom = 12.dp)) }

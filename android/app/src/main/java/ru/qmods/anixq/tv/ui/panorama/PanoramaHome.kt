@@ -56,7 +56,7 @@ fun PanoramaHome(nav: Nav) {
         }
     }
     val list = rememberLazyListState()
-    Pivot { LazyColumn(state = list, modifier = Modifier.fillMaxSize().testTag("panorama-home"), contentPadding = PaddingValues(bottom = 50.dp)) {
+    LazyColumn(state = list, modifier = Modifier.fillMaxSize().testTag("panorama-home"), contentPadding = PaddingValues(bottom = 50.dp)) {
         item("hero") {
             PanoramaHero(featured ?: candidates.getOrNull(slot % candidates.size.coerceAtLeast(1)), nav,
                 scope = "panorama:home", hasMore = candidates.size > 1, onNext = { featured = null; slot++ })
@@ -105,7 +105,7 @@ fun PanoramaHome(nav: Nav) {
                 Text("Ваши закладки и доступные источники воспроизведения", color = P.muted, fontSize = 12.sp)
             }
         }
-    } }
+    }
 }
 
 private data class HeroFrame(val title: Title?, val detail: Detail?)
@@ -160,17 +160,20 @@ internal fun PanoramaHero(target: Title?, nav: Nav, scope: String, hasMore: Bool
                 Text(detail?.takeIf { it.title.id==title.id }?.summary?.replace("\n"," ")?.trim().orEmpty(),color=P.muted,
                     fontSize=13.sp,lineHeight=20.sp,maxLines=2,overflow=TextOverflow.Ellipsis,
                     modifier=Modifier.padding(top=14.dp).width(540.dp).height(40.dp))
-                Row(Modifier.padding(top=24.dp),horizontalArrangement=Arrangement.spacedBy(11.dp)) {
-                    val last=Store.lastEntry(title.id)
-                    PButton(if(last!=null&&last.progress<=.92) "Продолжить просмотр" else "Открыть тайтл",Icons.Rounded.PlayArrow,primary=true,
-                        modifier=Modifier.memo(scope,"hero-primary",initial=true).testTag("panorama-hero-primary")) {
-                        if(last!=null&&last.progress<=.92)nav.play(title,last.episodeId,last.teamId,resume=true)else nav.open(title)
-                    }
-                    if(hasMore)PButton("Следующая история",Icons.Rounded.ArrowForward,onClick=onNext)
-                }
             } else {
                 Text("Здесь начинается\nваш кинозал.",color=P.ink,fontSize=49.sp,lineHeight=56.sp,fontWeight=FontWeight.Medium)
-                PButton("Выбрать аниме",modifier=Modifier.padding(top=25.dp).memo(scope,"empty-catalog",initial=true)) { nav.tab=Tab.CATALOG }
+            }
+            // Keep one focus target alive while the initial catalogue/scene loads.
+            Row(Modifier.padding(top=24.dp),horizontalArrangement=Arrangement.spacedBy(11.dp)) {
+                val last=title?.let { Store.lastEntry(it.id) }
+                val label=if(title==null) "Выбрать аниме" else if(last!=null&&last.progress<=.92) "Продолжить просмотр" else "Открыть тайтл"
+                PButton(label,Icons.Rounded.PlayArrow,primary=true,
+                    modifier=Modifier.memo(scope,"hero-primary",initial=true).testTag("panorama-hero-primary")) {
+                    if(title==null)nav.tab=Tab.CATALOG
+                    else if(last!=null&&last.progress<=.92)nav.play(title,last.episodeId,last.teamId,resume=true)
+                    else nav.open(title)
+                }
+                if(hasMore&&title!=null)PButton("Следующая история",Icons.Rounded.ArrowForward,onClick=onNext)
             }
         }
         Text("ANIXQ / CINEMA",color=P.muted.copy(alpha=.5f),fontSize=9.sp,letterSpacing=2.sp,

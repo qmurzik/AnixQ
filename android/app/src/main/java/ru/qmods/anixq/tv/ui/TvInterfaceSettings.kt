@@ -35,7 +35,7 @@ fun TvInterfaceSettings() {
                         InterfaceThumbnail(item, Modifier.width(144.dp).height(81.dp))
                         Column(Modifier.weight(1f)) {
                             Text(if (item == TvAppearance.Mode.CLASSIC) "Классический" else "Панорама", fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
-                            Text(if (item == TvAppearance.Mode.CLASSIC) "Знакомый интерфейс AnixQ" else "Кино, воздух и боковая навигация", fontSize = 12.sp, maxLines = 2,
+                            Text(if (item == TvAppearance.Mode.CLASSIC) "Знакомый интерфейс AnixQ" else "Крупные арты и боковая навигация", fontSize = 12.sp, maxLines = 2,
                                 modifier = Modifier.padding(top = 5.dp))
                             Text(if (selected) "✓ ВЫБРАН" else "ВЫБРАТЬ", fontSize = 10.sp, letterSpacing = 1.sp, modifier = Modifier.padding(top = 10.dp))
                         }
@@ -44,8 +44,9 @@ fun TvInterfaceSettings() {
             }
         }
         if (mode == TvAppearance.Mode.PANORAMA) Row(Modifier.padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Chip(if (motion) "Анимации: включены" else "Анимации: выключены", motion, modifier = Modifier.testTag("tv-panorama-motion")) { TvAppearance.animate(!motion) }
-            Text("Режим слабого устройства также сокращает анимации", fontSize = 12.sp, color = C.muted)
+            Chip("Анимации: " + when (motion) { TvAppearance.Motion.AUTO -> "авто"; TvAppearance.Motion.FULL -> "полные"; TvAppearance.Motion.OFF -> "выключены" },
+                motion != TvAppearance.Motion.OFF, modifier = Modifier.testTag("tv-panorama-motion")) { TvAppearance.cycleMotion() }
+            Text("Авто учитывает производительность устройства", fontSize = 12.sp, color = C.muted)
         }
     }
 }

@@ -113,8 +113,8 @@ object Schedule {
 
     private var cache: Pair<Long, List<Item>>? = null
 
-    suspend fun load(): List<Item> {
-        cache?.let { if (System.currentTimeMillis() - it.first < 30 * 60_000) return it.second }
+    suspend fun load(force: Boolean = false): List<Item> {
+        cache?.let { if (!force && System.currentTimeMillis() - it.first < 30 * 60_000) return it.second }
         val list = withContext(Dispatchers.IO) {
             runCatching {
                 val req = Request.Builder().url("https://shikimori.io/api/calendar").header("User-Agent", "AnixQ").build()

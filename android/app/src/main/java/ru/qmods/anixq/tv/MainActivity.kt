@@ -72,6 +72,11 @@ class MainActivity : ComponentActivity() {
                 "panorama" -> ru.qmods.anixq.tv.ui.TvAppearance.select(ru.qmods.anixq.tv.ui.TvAppearance.Mode.PANORAMA)
             }
         }
+        i.getStringExtra("motion")?.let { value ->
+            runCatching { ru.qmods.anixq.tv.ui.TvAppearance.Motion.valueOf(value.uppercase()) }.getOrNull()
+                ?.let(ru.qmods.anixq.tv.ui.TvAppearance::chooseMotion)
+        }
+        android.util.Log.i("AnixQ", "TV ui=${ru.qmods.anixq.tv.ui.TvAppearance.mode.value}; motion=${ru.qmods.anixq.tv.ui.TvAppearance.motion.value}; weakDevice=${Store.weakDevice}")
         i.getStringExtra("rc_play")?.let { runCatching { nav.playFromPhone(org.json.JSONObject(it)) }; return }
         if (handleSearch(i, nav)) return
         i.getStringExtra("tab")?.toIntOrNull()?.let { nav.tab = Tab.entries.getOrElse(it) { Tab.HOME } }

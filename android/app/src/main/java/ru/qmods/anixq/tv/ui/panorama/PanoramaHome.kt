@@ -17,6 +17,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -123,7 +124,7 @@ internal fun PanoramaHero(target: Title?, nav: Nav, scope: String, hasMore: Bool
     val duration = motionMillis(750)
     val depth = remember(title?.slug) { androidx.compose.animation.core.Animatable(if (duration == 0) 1f else 1.055f) }
     LaunchedEffect(title?.slug) { depth.animateTo(1f, tween(duration * 2)) }
-    Box(Modifier.fillMaxWidth().height(442.dp)) {
+    Box(Modifier.fillMaxWidth().height(442.dp).clipToBounds()) {
         Crossfade(HeroFrame(title, currentDetail), animationSpec = tween(duration), label = "cinema-scene") { frame ->
             val art = frame.title
             if (art != null) Box(Modifier.fillMaxSize()) {

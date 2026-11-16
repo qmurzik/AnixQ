@@ -82,6 +82,7 @@ fun NeonHome(nav: Nav) {
                 Column(Modifier.padding(bottom = 24.dp)) {
                     NSign("気", "Какое настроение?", N.amber, Modifier.padding(start = 44.dp, end = 44.dp, bottom = 12.dp))
                     LazyRow(contentPadding = PaddingValues(horizontal = 44.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        item { NButton("Режим «фон»", Icons.Rounded.MusicNote, N.pink) { nav.push(RadioRoute) } }
                         item { NButton("Мне повезёт", Icons.Rounded.Casino, N.amber) {
                             scope.launch { runCatching { Api.catalog(CatalogQuery(sort = CatalogSort.RATING), (1..5).random()).first.randomOrNull() }.getOrNull()?.let(nav::open) }
                         } }

@@ -86,6 +86,7 @@ fun PanoramaHome(nav: Nav) {
                 Column(Modifier.padding(bottom = 26.dp)) {
                     Text("Какое сегодня настроение?", color = P.ink, fontSize = 21.sp, modifier = Modifier.padding(start = 38.dp, bottom = 14.dp))
                     LazyRow(contentPadding = PaddingValues(horizontal = 38.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        item { PButton("Режим «фон»", Icons.Rounded.MusicNote) { nav.push(RadioRoute) } }
                         item { PButton("Мне повезёт", Icons.Rounded.Shuffle) {
                             scope.launch { runCatching { Api.catalog(CatalogQuery(sort = CatalogSort.RATING), (1..5).random()).first.randomOrNull() }.getOrNull()?.let(nav::open) }
                         } }

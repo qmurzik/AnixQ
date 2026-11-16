@@ -168,7 +168,7 @@ fun App(nav: Nav) {
     LaunchedEffect(top) {
         while (true) {
             val idle = System.currentTimeMillis() - lastKey
-            view.keepScreenOn = top is PlayerRoute || (Store.screensaver && idle < 2 * 3600_000L)
+            view.keepScreenOn = top is PlayerRoute || top == RadioRoute || (Store.screensaver && idle < 2 * 3600_000L)
             if (nav.stack.lastOrNull() == null && Store.screensaver && idle > 180_000) saver = true
             delay(5_000)
         }
@@ -217,6 +217,7 @@ fun App(nav: Nav) {
             }
             is PlayerRoute -> PlayerScreen(nav, top)
             LoginRoute -> LoginScreen(nav)
+            RadioRoute -> OpeningsRadio(nav)
         }
         LaunchedEffect(saver) { PreviewClips.saverActive = saver }
         androidx.compose.animation.AnimatedVisibility(saver, enter = androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(1200)),

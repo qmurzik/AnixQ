@@ -211,6 +211,7 @@ fun HomeScreen(nav: Nav) {
                     if (i == 1) {
                     if (genres.isNotEmpty()) item("genres") {
                         Shelf("Жанры") {
+                            item("radio") { GenreTile("Режим «фон»", "опенинги ваших тайтлов", 0xFFFF4D7A) { nav.push(RadioRoute) } }
                             item("lucky") { GenreTile("Мне повезёт", "случайный хит", 0xFFFFC94D) { scope.launch {
                                 val page = (1..5).random()
                                 runCatching { Api.catalog(CatalogQuery(sort = CatalogSort.RATING), page).first }.getOrNull()?.randomOrNull()?.let { nav.open(it) }

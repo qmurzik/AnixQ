@@ -227,7 +227,7 @@ fun App(nav: Nav) {
 /** Muted 30-second clips of what you watch and what's popular, with a clock; covers when video isn't possible. */
 @Composable
 internal fun Screensaver() {
-    if (!Store.screensaverVideo) { SlideshowSaver(); return }
+    if (!Store.screensaverVideo) { FavouritesSaver(); return }
     val context = androidx.compose.ui.platform.LocalContext.current
     val titles = remember {
         val mine = Store.continueList.map { it.title } + Store.titles(ru.qmods.anixq.tv.data.Bookmark.WATCHING)
@@ -290,6 +290,7 @@ internal fun Screensaver() {
             modifier = Modifier.fillMaxSize().alpha(a))
         Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(0f to Color.Black.copy(alpha = 0.75f), 0.55f to Color.Transparent)))
         Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.55f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.7f))))
+        NextEpisodeCountdown(Modifier.align(Alignment.TopEnd).padding(48.dp))
         Column(Modifier.align(Alignment.BottomStart).padding(start = 72.dp, bottom = 70.dp).width(620.dp)) {
             Text(java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(java.util.Date(now)),
                 fontSize = 84.sp, fontWeight = FontWeight.Light, color = Color.White)
@@ -299,34 +300,6 @@ internal fun Screensaver() {
                 Spacer(Modifier.height(28.dp))
                 Text(cur.title, fontSize = 26.sp, fontWeight = FontWeight.SemiBold, color = Color.White, maxLines = 2)
                 Text(cur.meta, fontSize = 16.sp, color = Color.White.copy(alpha = 0.7f))
-            }
-        }
-    }
-}
-
-/** Slow slideshow of the catalogue with a big clock — nicer than the TV going grey. */
-@Composable
-private fun SlideshowSaver() {
-    val titles = remember { HomeData.rows.value.flatMap { it.second }.distinctBy { it.id }.shuffled().take(30) }
-    var i by remember { mutableStateOf(0) }
-    var now by remember { mutableStateOf(System.currentTimeMillis()) }
-    LaunchedEffect(Unit) { while (true) { delay(9_000); i += 1; now = System.currentTimeMillis() } }
-    Box(Modifier.fillMaxSize().background(Color.Black)) {
-        val t = titles.getOrNull(if (titles.isEmpty()) 0 else i % titles.size)
-        androidx.compose.animation.Crossfade(t, animationSpec = androidx.compose.animation.core.tween(1500), label = "saver") { cur ->
-            if (cur != null) Box(Modifier.fillMaxSize()) {
-                Ambient(cur.thumb, Modifier.fillMaxSize(), alpha = 0.55f)
-                Cover(cur.poster, Modifier.align(Alignment.CenterEnd).padding(end = 110.dp).height(440.dp).aspectRatio(2f / 3f)
-                    .clip(RoundedCornerShape(16.dp)))
-                Column(Modifier.align(Alignment.BottomStart).padding(start = 72.dp, bottom = 70.dp).width(620.dp)) {
-                    Text(java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(java.util.Date(now)),
-                        fontSize = 84.sp, fontWeight = FontWeight.Light, color = Color.White)
-                    Text(java.text.SimpleDateFormat("EEEE, d MMMM", java.util.Locale("ru")).format(java.util.Date(now)),
-                        fontSize = 20.sp, color = Color.White.copy(alpha = 0.75f))
-                    Spacer(Modifier.height(28.dp))
-                    Text(cur.title, fontSize = 26.sp, fontWeight = FontWeight.SemiBold, color = Color.White, maxLines = 2)
-                    Text(cur.meta, fontSize = 16.sp, color = Color.White.copy(alpha = 0.7f))
-                }
             }
         }
     }

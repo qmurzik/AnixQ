@@ -940,12 +940,14 @@ fun PlayerScreen(nav: Nav, route: PlayerRoute) {
                 m.sleepAt > 0 -> "через ${((m.sleepAt - System.currentTimeMillis()) / 60_000).coerceAtLeast(1)} мин"
                 else -> "выключен"
             }),
+            if (m.native) Choice("Кадр в заставку", hint = "этот момент появится в заставке ТВ") else null,
         ).let { opts -> opts }, { dialog = null }) { i ->
             val hasSubs = m.native && m.player?.subtitles?.isNotEmpty() == true
             val keys = listOfNotNull(if (m.sourceOptions.size > 1) "source" else null, if (m.balancerOptions.size > 1) "balancer" else null, if (m.native) "speed" else null, if (hasSubs) "subs" else null, if (m.native) "upscale" else null,
-                if (m.native) "color" else null, if (m.native) "sound" else null, "marathon", "room", "sleep")
+                if (m.native) "color" else null, if (m.native) "sound" else null, "marathon", "room", "sleep", if (m.native) "frame" else null)
             when (val k = keys.getOrNull(i)) {
                 "subs" -> { dialog = null; m.toggleSubtitles() }
+                "frame" -> { dialog = null; m.exo?.captureFrame { b -> if (b != null && SaverFrames.save(b, m.title.title)) m.say("Кадр добавлен в заставку") else m.say("Не удалось взять кадр") } }
                 "marathon" -> { dialog = null; Store.marathon = !Store.marathon; m.say(if (Store.marathon) "Марафон: без опенингов и эндингов, серии подряд" else "Марафон выключен") }
                 else -> dialog = k
             }

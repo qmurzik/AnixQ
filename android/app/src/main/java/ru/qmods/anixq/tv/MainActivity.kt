@@ -25,6 +25,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         Updater.versionCode = BuildConfig.VERSION_CODE
         ru.qmods.anixq.tv.ui.TvAppearance.init(applicationContext)
+        ru.qmods.anixq.tv.ui.SaverFrames.init(applicationContext)
         Store.init(applicationContext)
         Api.diskDir = cacheDir
         ru.qmods.anixq.tv.data.Crashes.install(applicationContext, "AnixQ TV", BuildConfig.VERSION_NAME)

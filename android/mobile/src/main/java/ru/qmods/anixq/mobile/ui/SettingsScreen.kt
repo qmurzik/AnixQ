@@ -130,25 +130,30 @@ fun SettingsScreen(nav: Nav) {
     var authPassword by remember { mutableStateOf("") }
     var personalToken by remember { mutableStateOf("") }
     var authOpen by remember { mutableStateOf(false) }
+    var tokenLogin by remember { mutableStateOf(false) }
+    var yummyAdvanced by remember { mutableStateOf(false) }
     var authBusy by remember { mutableStateOf(false) }
+    var authJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
     var authMessage by remember { mutableStateOf<String?>(null) }
-    fun auth(block: suspend () -> Unit) { if (!authBusy) authScope.launch {
+    fun auth(block: suspend () -> Unit) { if (!authBusy) authJob = authScope.launch {
         authBusy = true
         try { block(); authOpen = false; authMessage = "Готово"; Store.accountChanged() }
         catch(e: kotlinx.coroutines.CancellationException) { throw e }
         catch(e: Exception) { authMessage = e.message ?: "Не удалось войти" }
         finally { authBusy = false; authPassword = ""; personalToken = "" }
     } }
-    if (authOpen) androidx.compose.material3.AlertDialog(onDismissRequest = { if (!authBusy) { authOpen = false; authPassword = ""; personalToken = "" } },
+    if (authOpen) androidx.compose.material3.AlertDialog(onDismissRequest = { authJob?.cancel(); authOpen = false; authPassword = ""; personalToken = "" },
         title = { Text("Вход в YummyAnime") }, text = { Column {
-            androidx.compose.material3.OutlinedTextField(authEmail, { authEmail = it.take(254) }, singleLine = true, label = { Text("Email") })
-            androidx.compose.material3.OutlinedTextField(authPassword, { authPassword = it.take(1024) }, singleLine = true, label = { Text("Пароль") }, visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation())
-            Text("Или ваш личный токен аккаунта:")
-            androidx.compose.material3.OutlinedTextField(personalToken, { personalToken = it.take(4096) }, singleLine = true, label = { Text("Мой токен") }, visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation())
+            Text("AnixQ настроит доступ API вашего аккаунта автоматически.")
+            if (!tokenLogin) {
+                androidx.compose.material3.OutlinedTextField(authEmail, { authEmail = it.take(254) }, singleLine = true, label = { Text("Email") })
+                androidx.compose.material3.OutlinedTextField(authPassword, { authPassword = it.take(1024) }, singleLine = true, label = { Text("Пароль") }, visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation())
+            } else androidx.compose.material3.OutlinedTextField(personalToken, { personalToken = it.take(4096) }, singleLine = true, label = { Text("Личный токен") }, visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation())
+            androidx.compose.material3.TextButton({ tokenLogin = !tokenLogin; authPassword = ""; personalToken = "" }) { Text(if (tokenLogin) "Войти по email" else "Войти по личному токену") }
             authMessage?.let { Text(it, color = Pal.muted) }
         } }, confirmButton = { androidx.compose.material3.TextButton(enabled = !authBusy, onClick = {
-            auth { if (personalToken.isNotBlank()) ru.qmods.anixq.tv.data.sources.YummyAccount.usePersonalToken(personalToken) else ru.qmods.anixq.tv.data.sources.YummyAccount.login(authEmail, authPassword) }
-        }) { Text(if (authBusy) "Подключение…" else "Войти") } }, dismissButton = { androidx.compose.material3.TextButton(enabled = !authBusy, onClick = { authOpen = false; authPassword = ""; personalToken = "" }) { Text("Отмена") } })
+            auth { if (tokenLogin) ru.qmods.anixq.tv.data.sources.YummyAccount.usePersonalToken(personalToken) else ru.qmods.anixq.tv.data.sources.YummyAccount.login(authEmail, authPassword) }
+        }) { Text(if (authBusy) "Подключаем аккаунт…" else "Войти") } }, dismissButton = { androidx.compose.material3.TextButton(onClick = { authJob?.cancel(); authOpen = false; authPassword = ""; personalToken = "" }) { Text("Отмена") } })
     var yummyConfig by remember { mutableStateOf(false) }
     var yummyToken by remember { mutableStateOf(Store.yummyApplicationToken.orEmpty()) }
     if (yummyConfig) androidx.compose.material3.AlertDialog(onDismissRequest = { yummyConfig = false },
@@ -165,11 +170,12 @@ fun SettingsScreen(nav: Nav) {
     val update by Updater.state.collectAsState()
     Column(Modifier.fillMaxSize().statusBarsPadding().verticalScroll(rememberScrollState()).padding(bottom = 32.dp)) {
         TopBar("Настройки", { nav.pop() })
-        Group("YummyAnime") {
-            GroupRow("Настроить X-Application", "Токен вашего приложения YummyAnime", Icons.Default.Language, Pal.teal) { yummyConfig = true }
+        Group("YummyAnime", "Войдите в аккаунт — доступ к каталогу и видео настроится автоматически.") {
             GroupRow(if (ru.qmods.anixq.tv.data.sources.YummyAccount.signedIn) "Выйти из YummyAnime" else "Войти в YummyAnime", icon = Icons.Default.AccountCircle, iconColor = Pal.pink) {
-                if (ru.qmods.anixq.tv.data.sources.YummyAccount.signedIn) auth { ru.qmods.anixq.tv.data.sources.YummyAccount.logout() } else authOpen = true
+                if (ru.qmods.anixq.tv.data.sources.YummyAccount.signedIn) auth { ru.qmods.anixq.tv.data.sources.YummyAccount.logout() } else { tokenLogin = false; authMessage = null; authOpen = true }
             }
+            GroupRow("Дополнительно", if (yummyAdvanced) "Скрыть ручные настройки" else "Ручная настройка доступа", Icons.Default.SettingsRemote, Pal.muted) { yummyAdvanced = !yummyAdvanced }
+            if (yummyAdvanced) GroupRow("Ключ приложения", "Только если автоматическое подключение недоступно", Icons.Default.Language, Pal.teal) { yummyConfig = true }
             authMessage?.let { Text(it, color = Pal.muted, modifier = Modifier.padding(16.dp)) }
         }
 

@@ -8,9 +8,16 @@ Reference snapshots: AnixQ `181a347`; YummyTV
 
 ## Authentication and access
 
-Register your own application at https://yummyani.me/dev/applications and configure
-its public `X-Application` in Settings → YummyAnime, or build with
-`YANI_APPLICATION_TOKEN`. Then sign in to your own YummyAnime account in Settings.
+Sign in to your own YummyAnime account in Settings. AnixQ attempts to find the
+signed-in user's own `AnixQ` application via `/apps`, or register it if absent,
+and retrieves only its public `X-Application` key. Ownership is verified with
+`/profile` and `/apps/{id}`. Registration is serialized and its ID is retained
+before fetching the key, so a failed detail request does not create another app.
+No application key from another client is used. If the service denies bootstrap,
+Settings → YummyAnime → Advanced offers a manual public key from
+https://yummyani.me/dev/applications (or the build-time `YANI_APPLICATION_TOKEN`).
+Automatic setup is fixture-tested; account-authorized live registration has not
+been verified without caller-owned credentials.
 The official `/profile/login` request uses `need_json: true`; a personal token can
 also be entered, but is verified with `/profile` before being stored. Passwords
 are held only while submitting the login form. Tokens are encrypted using Android
@@ -64,6 +71,15 @@ cards in a mixed feed.
 
 ## Playback
 
+Title cards on phone and TV separate source, balancer and dubbing into three
+short fields. The phone uses bounded bottom sheets with voice search; TV uses
+focusable fields and bounded D-pad dialogs. Voices are filtered to the selected
+balancer, generic prefixes are removed, and subtitle translations retain their
+type. Source/balancer changes keep the same studio where available. Explicit
+AnimeLib selections are no longer silently replaced by the AniLibria preference.
+Quality changes reuse the current resolved stream instead of repeating extraction.
+A signed-out YummyAnime viewer can still switch back to AnimeLib.
+
 Sources resolve only when selected. Native streams play through the existing
 ExoEngine, including HLS, MP4 and DASH. Each media source, including a queued next
 episode, gets its own immutable header map. Absolute URLs bypass AnimeLib mirrors.
@@ -110,7 +126,7 @@ Run from `android` with JDK 17 and Android SDK 35:
 
 ```sh
 gradle :core:testDebugUnitTest
-gradle :app:testDebugUnitTest --tests 'ru.qmods.anixq.tv.focus.YummySourceTest'
+gradle :app:testDebugUnitTest --tests 'ru.qmods.anixq.tv.focus.YummySourceTest' --tests 'ru.qmods.anixq.tv.focus.PlaybackSelectorTest'
 gradle :mobile:testDebugUnitTest
 gradle :app:assembleDebug :mobile:assembleDebug :app:assembleRelease :mobile:assembleRelease
 ```
@@ -148,28 +164,22 @@ by the verified workflow artifacts from run 43778445569.
 
 ## Executed results (2026-11-16 UTC)
 
-- `:core:testDebugUnitTest`: 27 passed (23 integration + 4 existing recovery tests), 3 opt-in authenticated live checks skipped.
-- `:app:testDebugUnitTest --tests ru.qmods.anixq.tv.focus.YummySourceTest`: 2 passed (D-pad and history/sync).
-- `:mobile:testDebugUnitTest`: 2 passed (source switching/position and existing PiP layout).
-- Both `assembleDebug` and `assembleRelease` tasks passed for `:app` and `:mobile`.
-- Combined final Gradle run: **BUILD SUCCESSFUL**, 233 tasks, 31 tests passed, 3 skipped.
-- LICENSE and NOTICE verified inside all four APKs. DASH classes remain in the TV release R8 output.
-- Full upstream screenshot/focus suite is **not green**: the fixture and baseline failures described above remain.
-- Authenticated complete episodes, Android hardware decoding and physical remote operation are **not verified**.
-
-Release signing correction: [CI run 43778445569](https://github.com/qmurzik/AnixQ/actions/runs/43778445569)
-completed successfully on commit `2b710e87834d67e22e8c5d5caf8f77106026f79a`.
-The CI artifact ZIP digests were verified against GitHub, and both extracted APKs
-were verified locally with `apksigner` and `aapt`. Their package IDs match the
-published apps, versionCode is **68** (published: **67**), and both certificates
-match the published phone/TV releases:
+The initial signed CI build 1.0.68 was verified in
+[run 43778445569](https://github.com/qmurzik/AnixQ/actions/runs/43778445569).
+Both APKs match the published certificate:
 `fea95b7474d396516665375c40637f1fe71c84b3af9d75aca2d4635fcc47c2a8`.
-The signed files replace the earlier local release APKs and are also available
-under `android/build/signed/AnixQ.apk` and `AnixQ-TV.apk`. No release was published;
-the workflow used `workflow_dispatch` on the integration branch.
 
-Artifact sizes, SHA-256 hashes and test suite counts are in
-[yummyanime-verification.json](yummyanime-verification.json).
+The subsequent UX/auth revision adds six bootstrap fixture tests, four shared
+selection tests, two core regressions, a signed-out fallback regression and real
+phone/TV picker interaction tests. Functional checks use Compose/Robolectric;
+these do not claim physical device or authenticated playback validation.
+
+The full upstream screenshot/focus suite is **not green**: the absent fixture and
+baseline focus failure described above remain. Authenticated complete episodes,
+Android hardware decoding and physical remote operation are **not verified**.
+
+Final release version, signing verification, APK hashes and suite counts are
+recorded in [yummyanime-verification.json](yummyanime-verification.json).
 
 ## Attribution
 

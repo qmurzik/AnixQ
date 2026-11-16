@@ -11,6 +11,10 @@ import ru.qmods.anixq.tv.data.*
 
 class YummyAnime(private val http: SourceHttp = SourceHttp(), private val base: String = "https://api.yani.tv") : AnimeCatalog, EpisodeSource {
     private val mutex = Mutex()
+    private val registrationMutex = Mutex()
+    var managedApplicationOwner: Int? = null
+    var applicationReceipts: YummyApplicationReceipts? = null
+    private val pendingApps = HashMap<Int, Int>()
     private val cache = LinkedHashMap<String, Triple<Long, JSONObject, Int>>()
     /** Only caller-owned application credentials; video access also requires a user session. */
     var applicationToken: String? = ru.qmods.anixq.core.BuildConfig.YANI_APPLICATION_TOKEN.takeIf { it.isNotBlank() }
@@ -26,14 +30,58 @@ class YummyAnime(private val http: SourceHttp = SourceHttp(), private val base: 
         token?.takeIf { it.isNotBlank() }?.let { put("Authorization", "Bearer $it") }
     }
     suspend fun login(email: String, password: String): String {
-        check(!applicationToken.isNullOrBlank()) { "Сначала укажите токен собственного приложения X-Application" }
         val body = JSONObject().put("login", email).put("password", password).put("need_json", true)
         val response = JSONObject(http.request("$base/profile/login", headers(null), body.toString().toRequestBody("application/json".toMediaType())).text).obj("response")
         return response?.str("token")?.takeIf { response.optBoolean("success") } ?: error("YummyAnime: не удалось войти")
     }
-    suspend fun verifyToken(token: String) {
+    suspend fun verifyToken(token: String) { profileId(token) }
+    private suspend fun profileId(token: String): Int {
         val profile = JSONObject(http.request("$base/profile", headers(token)).text).obj("response")
-        check((profile?.int("id") ?: 0) > 0) { "YummyAnime: токен не подтверждён" }
+        val id = profile?.int("id") ?: 0
+        check(id > 0) { "YummyAnime: токен не подтверждён" }
+        return id
+    }
+    /** Sets up only the signed-in user's own AnixQ app; never borrows another owner's key. */
+    suspend fun connectApplication(token: String): YummyConnection = registrationMutex.withLock {
+        val owner = profileId(token)
+        applicationToken?.takeIf { it.isNotBlank() && (managedApplicationOwner == null || managedApplicationOwner == owner) }?.let {
+            return@withLock YummyConnection(it, managedApplicationOwner)
+        }
+        val auth = headers(token).filterKeys { !it.equals("X-Application", true) }
+        suspend fun appRequest(path: String, body: JSONObject? = null): JSONObject = try {
+            JSONObject(http.request("$base$path", auth, body?.toString()?.toRequestBody("application/json".toMediaType())).text)
+        } catch (e: SourceHttp.HttpError) {
+            if (e.status == 401 || e.status == 403) error("YummyAnime не разрешил автоматическую настройку. Откройте Дополнительно → Ключ приложения")
+            throw e
+        }
+        suspend fun detail(id: Int): String {
+            val app = appRequest("/apps/$id").obj("response") ?: error("YummyAnime: нет данных приложения")
+            check(app.obj("owner")?.int("id") == owner) { "YummyAnime: приложение принадлежит другому аккаунту" }
+            return app.str("public_token") ?: error("YummyAnime: публичный ключ не получен")
+        }
+        var id = applicationReceipts?.get(owner) ?: pendingApps[owner]
+        if (id != null) {
+            try { return@withLock YummyConnection(detail(id), owner) }
+            catch (e: SourceHttp.HttpError) { if (e.status != 404) throw e; id = null }
+        }
+        // Finish pagination before creating; a truncated list must not cause duplicate apps.
+        var offset = 0
+        while (id == null) {
+            val page = appRequest("/apps?limit=100&offset=$offset")
+            check(page.optJSONArray("response") != null) { "YummyAnime: неверный список приложений" }
+            val list = page.arr("response")
+            id = list.filter { it.obj("owner")?.int("id") == owner && it.str("name") == "AnixQ" }.mapNotNull { it.int("app_id") }.minOrNull()
+            if (id != null || list.size < 100) break
+            offset += 100
+            check(offset < 1000) { "YummyAnime: слишком много приложений. Настройте ключ в дополнительных настройках" }
+        }
+        if (id == null) {
+            val body = JSONObject().put("name", "AnixQ").put("description", "AnixQ for Android and Android TV. Personal catalogue and playback access.")
+            id = appRequest("/apps", body).obj("response")?.int("app_id")?.takeIf { it > 0 } ?: error("YummyAnime: не удалось зарегистрировать приложение")
+        }
+        pendingApps[owner] = id
+        applicationReceipts?.save(owner, id)
+        YummyConnection(detail(id), owner)
     }
     suspend fun logout() {
         try { http.request("$base/profile/logout", headers(), "{}".toRequestBody("application/json".toMediaType())) }
@@ -92,7 +140,7 @@ class YummyAnime(private val http: SourceHttp = SourceHttp(), private val base: 
         }
     override suspend fun players(id: Int, number: String): List<Player> = videos(id).filter { sameNumber(it.number, number) }.map { v ->
         // video_id is unique per episode/voice/balancer, unlike dubbing labels and player_id.
-        Player(Team(SourceIds.yummy(v.id), v.dubbing, false), "yummy", null, emptyMap(), v.segments, null, null,
+        Player(Team(SourceIds.yummy(v.id), v.dubbing, Regex("(?iu)^(субтитры|subtitles)\\s").containsMatchIn(v.dubbing)), "yummy", null, emptyMap(), v.segments, null, null,
             source = "yummy", headers = emptyMap(), resolverUrl = v.url, balancer = v.balancer)
     }
     companion object {

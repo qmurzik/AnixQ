@@ -58,6 +58,7 @@ import ru.qmods.anixq.tv.data.Bookmark
 import ru.qmods.anixq.tv.data.Detail
 import ru.qmods.anixq.tv.data.Episode
 import ru.qmods.anixq.tv.data.Store
+import ru.qmods.anixq.tv.data.PlaybackChoices
 import ru.qmods.anixq.tv.data.TeamOption
 import ru.qmods.anixq.tv.data.Title
 
@@ -117,14 +118,13 @@ fun TitleScreen(nav: Nav, start: Title) {
             episodes = eps; TitleCache.episodes[start.slug] = eps
             val target = resumePlan(start, eps)?.episode ?: return@LaunchedEffect
             val players = ru.qmods.anixq.tv.data.sources.AnimeSources.players(start, target).filter(ru.qmods.anixq.tv.data.sources.AnimeSources::supported)
-            val opts = players.groupBy { it.team.id }.map { (_, ps) -> TeamOption(ps.first().team, ps.any { it.isNative || it.canResolve }, ps.any { it.isKodik }, ps.first().sourceLabel, ps.first().balancer) }
-                .sortedWith(compareBy({ !it.native }, { it.team.isSubtitles }))
+            val opts = PlaybackChoices.options(players)
             teams = opts; TitleCache.teams[start.slug] = opts
             // Warm the video mirrors now, so pressing "Смотреть" starts in a moment.
             launch { players.firstOrNull { it.isNative }?.hrefs?.values?.firstOrNull()?.let { if (!it.startsWith("http")) runCatching { Api.rankServers(it) } } }
-            if (teamId == null || opts.none { it.team.id == teamId }) {
-                teamId = opts.firstOrNull { o -> Store.dubs.any { it.equals(o.team.name, true) } }?.team?.id ?: opts.firstOrNull()?.team?.id
-            }
+            teamId = Store.playbackOption(start, opts)?.team?.id ?: teamId?.takeIf { id -> opts.any { it.team.id == id } }
+                ?: opts.firstOrNull { o -> Store.dubs.any { PlaybackChoices.sameDub(it, o.team.name) } }?.team?.id ?: opts.firstOrNull()?.team?.id
+
         } catch (e: Exception) { error = e.message ?: "Ошибка загрузки" }
     }
 
@@ -188,10 +188,11 @@ fun TitleScreen(nav: Nav, start: Title) {
                         episodes?.isEmpty() == true -> Text("Серий пока нет", color = C.muted, fontSize = 17.sp)
                         else -> Text("Загрузка серий…", color = C.muted, fontSize = 17.sp)
                     }
-                    if (teams.size > 1) PillButton(team?.label ?: "Источник / озвучка", Icons.Rounded.RecordVoiceOver,
-                        modifier = Modifier.memo(sc, "dub")) { dialog = "dub" }
                     PillButton(bookmark?.title ?: "", if (bookmark != null) Icons.Rounded.BookmarkAdded else Icons.Rounded.BookmarkAdd,
                         modifier = Modifier.memo(sc, "bm")) { dialog = "bookmark" }
+                }
+                if (teams.isNotEmpty()) PlaybackSelector(teams, teamId) { option ->
+                    teamId = option.team.id; Store.setPlaybackOption(title, option); Store.useDub(option.team.name)
                 }
                 Text(listOfNotNull(plan?.sub, team?.let { if (it.native) "без рекламы" else "плеер Kodik" }).joinToString("  ·  "),
                     fontSize = 13.sp, color = C.muted, modifier = Modifier.padding(start = 4.dp, top = 8.dp))

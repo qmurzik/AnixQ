@@ -38,6 +38,22 @@ class YummyIntegrationTest {
         assertFalse(AnimeSources.safelyMatches(lib.copy(shikiId = null), candidate))
         assertTrue(AnimeSources.safelyMatches(lib.copy(malId = 100, shikiId = 99), candidate))
     }
+    @Test fun subtitlesRetainTheirTypeWhileLabelsStayShort() = runBlocking {
+        MockWebServer().use { server ->
+            server.enqueue(MockResponse().setBody("""{"response":[{"video_id":1,"number":"1","iframe_url":"https://player.aksor.tv/video/sub","data":{"player":"Плеер Aksor","dubbing":"Субтитры FSG YakuSub Studio"}}]}"""))
+            val api = YummyAnime(SourceHttp(),server.url("/").toString().trimEnd('/')).apply { applicationToken="my-app"; userToken="my-session" }
+            val player = api.players(45,"1").single()
+            assertTrue(player.team.isSubtitles)
+            assertEquals("FSG YakuSub Studio", PlaybackLabels.dub(player.team.name))
+        }
+    }
+    @Test fun aQualityChangeCanReuseTheCurrentResolvedStreamWithoutNetwork() = runBlocking {
+        val unresolved = Player(Team(-1,"Dub",false),"yummy",null,emptyMap(),emptyList(),null,null,source="yummy",resolverUrl="https://unsupported.example.test/frame")
+        val resolved = unresolved.copy(player="animelib",hrefs=mapOf("720p" to "https://cdn.example.test/video.mp4"))
+        val title = Title(1,"1--test"); val episode = Episode(2,"1",null,0)
+        assertSame(resolved,AnimeSources.resolve(unresolved,title,episode,cached=resolved))
+        assertNotNull(runCatching { AnimeSources.resolve(unresolved.copy(team=unresolved.team.copy(id=-2)),title,episode,cached=resolved) }.exceptionOrNull())
+    }
     @Test fun videoVariantsRetainTheirOwnEpisodeDubAndBalancer() {
         val videos = YummyAnime.parseVideos(JSONObject(fixture("videos")))
         assertEquals(listOf("1", "2"), videos.map { it.number })

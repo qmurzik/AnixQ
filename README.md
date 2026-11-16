@@ -60,14 +60,15 @@ Changes: AnixQ models, cancellable OkHttp transport, per-stream Media3 headers,
 conservative matching, source identity and existing phone/TV controls.
 These adapted portions are for noncommercial use under that license.
 
-YummyAnime requires your own registered application's `X-Application` token:
-https://yummyani.me/dev/applications. Set `YANI_APPLICATION_TOKEN` when building,
-or enter your own value in Settings → YummyAnime on each device. Sign in to your
-own YummyAnime account there as well; application authentication and user login
-are separate. Anonymous catalogue reads do not prove video access: unauthenticated
-video endpoints can return placeholders. The app requires both credentials before
-requesting YummyAnime video variants. Account tokens use Android Keystore encryption,
-are not included in Gist/room messages/backups, and are only sent to `api.yani.tv`.
+Sign in to your own YummyAnime account in Settings. AnixQ attempts to reuse or
+register your own `AnixQ` application via the official API and obtain its public
+`X-Application` key automatically. If the service denies automatic setup, the
+Advanced section accepts your public key from https://yummyani.me/dev/applications
+(or configure `YANI_APPLICATION_TOKEN` at build time). User and application
+authorization are separate: unauthenticated video endpoints can return placeholders.
+Tokens use Android Keystore encryption, are excluded from Gist/room messages/backups,
+and are sent only to `api.yani.tv`. Phone and TV offer separate source, balancer
+and voice controls, retaining the selected studio and playback position.
 No third-party application or user tokens are bundled.
 
 See [Android integration and verification](docs/yummyanime-android.md) for behavior,

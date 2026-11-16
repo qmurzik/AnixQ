@@ -17,6 +17,7 @@ import kotlinx.coroutines.launch
 import ru.qmods.anixq.tv.data.AniSkip
 import ru.qmods.anixq.tv.data.sources.AnimeSources
 import ru.qmods.anixq.tv.data.sources.qualityHeight
+import ru.qmods.anixq.tv.data.PlaybackLabels
 import ru.qmods.anixq.tv.data.Api
 import ru.qmods.anixq.tv.data.Episode
 import ru.qmods.anixq.tv.data.Player
@@ -103,13 +104,14 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
     val sourceOptions get() = players.filter(AnimeSources::supported).map { it.source }.distinct()
     val balancerOptions get() = players.filter { it.source == player?.source && AnimeSources.supported(it) }.mapNotNull { it.balancer }.distinct()
     val dubOptions get() = players.filter { it.source == player?.source && it.balancer == player?.balancer && AnimeSources.supported(it) }
+        .groupBy { PlaybackLabels.dubKey(it.team) }.values.map { ps -> ps.firstOrNull { it.team.id == player?.team?.id } ?: ps.firstOrNull { it.isNative } ?: ps.first() }
     fun selectSource(source: String) {
-        val p = players.firstOrNull { it.source == source && AnimeSources.supported(it) } ?: return
+        val p = AnimeSources.chooseSource(players, player, source) ?: return
         load(index, p.team.id, keepPos = engine?.position ?: pos)
     }
     fun selectBalancer(name: String) {
         val choices = players.filter { it.source == player?.source && it.balancer == name && AnimeSources.supported(it) }
-        val p = choices.firstOrNull { it.team.name == player?.team?.name } ?: choices.firstOrNull() ?: return
+        val p = choices.firstOrNull { player?.team?.let { old -> PlaybackLabels.dubKey(it.team) == PlaybackLabels.dubKey(old) } == true } ?: choices.firstOrNull() ?: return
         load(index, p.team.id, keepPos = engine?.position ?: pos)
     }
     private var servers: List<String> = emptyList()
@@ -270,10 +272,13 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
                     if (generation == loadGeneration && episode?.id == ep.id) players = (players + extra).distinctBy { "${it.source}:${it.team.id}" }
                 }
                 if (list.isEmpty()) { message = "Для этой серии нет видео"; failed = true; return@launch }
-                if ((previousChoice?.isYummy == true || (previousChoice == null && Store.prefersExternal(title) && (teamId == null || teamId < 0))) && !ru.qmods.anixq.tv.data.sources.YummyAccount.signedIn) {
+                val requested = list.firstOrNull { it.team.id == teamId }
+                val needsYummyLogin = requested?.let { it.isYummy && it.canResolve }
+                    ?: (previousChoice?.isYummy == true || (previousChoice == null && Store.prefersYummy(title)))
+                if (needsYummyLogin && !ru.qmods.anixq.tv.data.sources.YummyAccount.signedIn) {
                     message = "Войдите в YummyAnime в настройках или выберите AnimeLib"; failed = true; return@launch
                 }
-                val forTeam = { id: Int? -> list.filter { it.team.id == id }.ifEmpty { list.filter { it.source == previousChoice?.source && it.balancer == previousChoice?.balancer && it.team.name == previousChoice?.team?.name } } }
+                val forTeam = { id: Int? -> list.filter { it.team.id == id }.ifEmpty { list.filter { previousChoice != null && it.source == previousChoice.source && it.balancer == previousChoice.balancer && PlaybackLabels.dubKey(it.team) == PlaybackLabels.dubKey(previousChoice.team) } } }
                 val preferredChoice = Store.playbackChoice(title, list)
                 val favourite = list.firstOrNull { p -> Store.dubs.any { it.equals(p.team.name, true) } }?.team?.id
                 val candidates = forTeam(teamId).ifEmpty { preferredChoice?.let { listOf(it) }.orEmpty() }.ifEmpty { forTeam(favourite) }.ifEmpty { list.filter { it.isNative }.ifEmpty { list } }
@@ -282,9 +287,9 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
                     ?: list.firstOrNull { it.isNative || (it.canResolve && AnimeSources.supported(it)) } ?: list.firstOrNull { it.isKodik || it.isNative }
                 if (first == null) { message = "Для этой серии нет видео"; failed = true; return@launch }
                 player = first
-                var chosen: Player = AnimeSources.resolve(first, title, ep)
+                var chosen: Player = AnimeSources.resolve(first, title, ep, cached = previousChoice.takeIf { sameEpisode && qualityKey != null })
                 // AniLibria dub: their own servers when they have the episode (no ads, often faster than AnimeLib).
-                if (offline == null && !preferKodik && !avoidLibria && !chosen.isYummy && Store.libriaDirect && ru.qmods.anixq.tv.data.Libria.isLibria(chosen.team.name)) {
+                if (offline == null && !preferKodik && !avoidLibria && !chosen.isYummy && !Store.hasPlaybackChoice(title) && Store.libriaDirect && ru.qmods.anixq.tv.data.Libria.isLibria(chosen.team.name)) {
                     ru.qmods.anixq.tv.data.Libria.player(title, ep.number, chosen, probeAt = keepPos ?: Store.resumeEpisode(title, ep) ?: 0.0)?.let { chosen = it; if (!sameEpisode) say("AniLibria: видео с их сервера") }
                 }
                 currentCoroutineContext().ensureActive()

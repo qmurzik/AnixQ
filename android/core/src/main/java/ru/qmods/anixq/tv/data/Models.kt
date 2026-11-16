@@ -124,8 +124,11 @@ data class Player(
 }
 
 /** A dub / subtitle team offered for a title, with the players it has. */
-data class TeamOption(val team: Team, val native: Boolean, val kodik: Boolean, val sourceLabel: String = "AnimeLib", val balancer: String? = null) {
-    val label get() = listOfNotNull(sourceLabel, balancer, team.name).joinToString(" · ") + if (native || !kodik) "" else " · Kodik"
+data class TeamOption(val team: Team, val native: Boolean, val kodik: Boolean, val sourceLabel: String = "AnimeLib", val balancer: String? = null, val source: String = "animelib") {
+    val balancerKey get() = balancer ?: if (source == "animelib" && !native && kodik) "kodik" else "native"
+    val balancerLabel get() = balancer?.let(PlaybackLabels::balancer) ?: if (balancerKey == "kodik") "Kodik" else if (source == "anilibria") "Свой сервер" else "Основной"
+    val dubLabel get() = PlaybackLabels.dub(team.name)
+    val label get() = dubLabel
 }
 
 enum class Bookmark(val raw: Int, val title: String) {

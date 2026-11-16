@@ -90,6 +90,7 @@ import ru.qmods.anixq.tv.data.Detail
 import ru.qmods.anixq.tv.data.Episode
 import ru.qmods.anixq.tv.data.Remote
 import ru.qmods.anixq.tv.data.Store
+import ru.qmods.anixq.tv.data.PlaybackChoices
 import ru.qmods.anixq.tv.data.TeamOption
 import ru.qmods.anixq.tv.data.Title
 
@@ -129,7 +130,6 @@ fun TitleScreen(nav: Nav, start: Title) {
     var related by remember { mutableStateOf(TitleCache.related[start.slug] ?: emptyList()) }
     var similar by remember { mutableStateOf(TitleCache.similar[start.slug] ?: emptyList()) }
     var expanded by remember { mutableStateOf(false) }
-    var teamMenu by remember { mutableStateOf(false) }
     var bookmarkMenu by remember { mutableStateOf(false) }
     var allEpisodes by remember { mutableStateOf(false) }
     var epMenu by remember { mutableStateOf<Episode?>(null) }
@@ -168,17 +168,12 @@ fun TitleScreen(nav: Nav, start: Title) {
             // Teams can differ between early and recent episodes: look at both ends.
             val target = eps[nextIndex(start, eps)]
             val players = ru.qmods.anixq.tv.data.sources.AnimeSources.players(start, target).filter(ru.qmods.anixq.tv.data.sources.AnimeSources::supported)
-            val order = LinkedHashMap<Int, TeamOption>()
-            players.forEach { p ->
-                val o = order[p.team.id]
-                order[p.team.id] = TeamOption(p.team, (o?.native ?: false) || p.isNative || p.canResolve, (o?.kodik ?: false) || p.isKodik, p.sourceLabel, p.balancer)
-            }
-            val opts = order.values.let { v -> v.filter { it.native && !it.team.isSubtitles } + v.filter { it.native && it.team.isSubtitles } + v.filter { !it.native } }
+            val opts = PlaybackChoices.options(players)
             teams = opts; TitleCache.teams[start.slug] = opts
             launch { players.firstOrNull { it.isNative && (teamId == null || it.team.id == teamId) }?.hrefs?.values?.firstOrNull()?.let { if (!it.startsWith("http")) runCatching { Api.rankServers(it) } } }
-            if (teamId == null || opts.none { it.team.id == teamId }) {
-                teamId = opts.firstOrNull { o -> Store.dubs.any { it.equals(o.team.name, true) } }?.team?.id ?: opts.firstOrNull()?.team?.id
-            }
+            teamId = Store.playbackOption(start, opts)?.team?.id ?: teamId?.takeIf { id -> opts.any { it.team.id == id } }
+                ?: opts.firstOrNull { o -> Store.dubs.any { PlaybackChoices.sameDub(it, o.team.name) } }?.team?.id ?: opts.firstOrNull()?.team?.id
+
         } catch (e: Exception) { error = e.message ?: "Ошибка загрузки" }
     }
 
@@ -280,6 +275,11 @@ fun TitleScreen(nav: Nav, start: Title) {
                 }
             }
             title.shikiId?.let { sid -> item(key = "shiki") { ShikiRateCard(sid, eps.size) } }
+            if (teams.isNotEmpty()) item(key = "playback") {
+                PlaybackSelector(teams, teamId) { option ->
+                    teamId = option.team.id; Store.setPlaybackOption(title, option); Store.useDub(option.team.name)
+                }
+            }
             item(key = "episodes") {
                 Column(Modifier.padding(top = 26.dp)) {
                     SectionHeader("Серии", if (eps.size > 6) "Все ${eps.size}" else null) { allEpisodes = true }
@@ -289,22 +289,6 @@ fun TitleScreen(nav: Nav, start: Title) {
                         Toast.makeText(context, it, Toast.LENGTH_SHORT).show()
                     }
                     Row(Modifier.padding(top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                    if (teams.isNotEmpty()) Box(Modifier.padding(start = 16.dp)) {
-                        Row(Modifier.clip(CircleShape).background(Pal.cardHi).clickable { teamMenu = true }.padding(horizontal = 14.dp, vertical = 9.dp),
-                            verticalAlignment = Alignment.CenterVertically) {
-                            Icon(if (team?.team?.isSubtitles == true) Icons.Default.ClosedCaption else Icons.Default.GraphicEq, null, Modifier.size(16.dp))
-                            Text(" " + (team?.let(::teamLabel) ?: "Озвучка"), fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1,
-                                overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 260.dp))
-                            Icon(Icons.Default.UnfoldMore, null, Modifier.size(14.dp))
-                        }
-                        DropdownMenu(teamMenu, { teamMenu = false }, containerColor = Pal.cardHi) {
-                            teams.forEach { o ->
-                                DropdownMenuItem({ Text(teamLabel(o)) }, onClick = { teamMenu = false; teamId = o.team.id; Store.useDub(o.team.name) },
-                                    leadingIcon = { Icon(if (o.team.id == teamId) Icons.Default.Check else if (o.team.isSubtitles) Icons.Default.ClosedCaption else Icons.Default.GraphicEq, null,
-                                        tint = if (o.team.id == teamId) Pal.pink else Pal.muted) })
-                            }
-                        }
-                    }
                     if (eps.isNotEmpty()) Box(Modifier.padding(start = 8.dp)) {
                         val saved = downloads.values.count { it.title.id == title.id }
                         Row(Modifier.clip(CircleShape).background(Pal.cardHi).clickable { dlMenu = true }.padding(horizontal = 12.dp, vertical = 9.dp),

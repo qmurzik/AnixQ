@@ -48,4 +48,26 @@ class PlayerSourceSwitchTest {
             assertEquals(100, Store.lastEntry(100)?.title?.id)
         } finally { model.release(); scope.cancel() }
     }
+    @Test fun aSignedOutYummyViewerCanSwitchBackToAnimeLibWithoutAnotherLogin() {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        Store.init(context, "source-fallback-test")
+        ru.qmods.anixq.tv.data.sources.AnimeSources.yummy.userToken = null
+        val title = Title(101, "101--fallback")
+        val ep = Episode(201,"3",null,0)
+        val lib = Player(Team(1,"AniLibria.TV",false),"animelib",null,mapOf("720p" to "file:///local-lib.mp4"),emptyList(),10,null)
+        val yummy = Player(Team(-301,"Озвучка AniLibria",false),"animelib",null,mapOf("720p" to "file:///local-yummy.mp4"),emptyList(),null,null,source="yummy",headers=emptyMap(),balancer="Плеер CVH")
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val model = PlayerModel(context,scope,title,PlayerRoute(title))
+        try {
+            Store.updateProgress(title,ep,yummy.team,245.0,1400.0,yummy)
+            Store.setPlaybackChoice(title,yummy)
+            model.episodes=listOf(ep); model.players=listOf(lib,yummy); model.player=yummy; model.pos=245.0; model.dur=1400.0
+            model.selectSource("animelib")
+            assertFalse(model.failed)
+            assertEquals("animelib",model.player?.source)
+            assertEquals(245.0,model.exo!!.position,0.01)
+            assertEquals(201,model.episode?.id)
+        } finally { model.release(); scope.cancel() }
+    }
+
 }

@@ -56,13 +56,16 @@ jobs:
       - name: Remote-control focus tests
         continue-on-error: true
         working-directory: android
-        run: gradle --no-daemon :app:testDebugUnitTest --tests 'ru.qmods.anixq.tv.focus.*'
+        run: gradle --no-daemon :app:testDebugUnitTest --tests 'ru.qmods.anixq.tv.focus.FocusTest'
+      - name: Source selection, remote and sync regression tests
+        working-directory: android
+        run: gradle --no-daemon :app:testDebugUnitTest --tests 'ru.qmods.anixq.tv.focus.YummySourceTest' --tests 'ru.qmods.anixq.tv.focus.PlaybackSelectorTest'
       - name: Playback recovery regression tests
         working-directory: android
         run: gradle --no-daemon :core:testDebugUnitTest
-      - name: Phone PiP layout regression test
+      - name: Phone playback, picker and PiP regression tests
         working-directory: android
-        run: gradle --no-daemon :mobile:testDebugUnitTest --tests 'ru.qmods.anixq.mobile.ui.PlayerVideoLayoutTest'
+        run: gradle --no-daemon :mobile:testDebugUnitTest
       - name: Build (TV + phone)
         working-directory: android
         env: { BUILD_NUMBER: "${{ github.run_number }}" }

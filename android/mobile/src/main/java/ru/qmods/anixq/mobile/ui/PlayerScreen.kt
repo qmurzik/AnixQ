@@ -1,5 +1,7 @@
 package ru.qmods.anixq.mobile.ui
 
+import ru.qmods.anixq.tv.data.PlaybackLabels
+
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
@@ -528,8 +530,8 @@ internal fun Controls(
                     LazyRow(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         item { Chip("Серии", Icons.Default.ViewList) { onPanel(Panel.EPISODES) } }
                         if (m.sourceOptions.size > 1) item { Chip(m.player?.sourceLabel ?: "Источник", Icons.Default.GraphicEq) { onPanel(Panel.SOURCE) } }
-                        if (m.balancerOptions.size > 1) item { Chip(m.player?.balancer ?: "Балансер", Icons.Default.GraphicEq) { onPanel(Panel.BALANCER) } }
-                        if (m.players.distinctBy { it.team.id }.size > 1) item { Chip(m.player?.team?.name ?: "Озвучка", Icons.Default.GraphicEq) { onPanel(Panel.TEAMS) } }
+                        if (m.balancerOptions.size > 1) item { Chip(m.player?.balancer?.let(PlaybackLabels::balancer) ?: "Балансер", Icons.Default.GraphicEq) { onPanel(Panel.BALANCER) } }
+                        if (m.players.distinctBy { it.team.id }.size > 1) item { Chip(m.player?.team?.name?.let(PlaybackLabels::dub) ?: "Озвучка", Icons.Default.GraphicEq) { onPanel(Panel.TEAMS) } }
                         item { Chip(if (m.speed == 1f) "1×" else "${m.speed}×", Icons.Default.Speed) { onPanel(Panel.SPEED) } }
                         if (m.qualities.size > 1) item { Chip(m.quality ?: "Качество", Icons.Default.HighQuality) { onPanel(Panel.QUALITY) } }
                         item { Chip(if (m.subtitlesOn && m.player?.subtitles?.isNotEmpty() == true) "Субтитры ✓" else "Субтитры", Icons.Default.ClosedCaption) { onPanel(Panel.SUBS) } }
@@ -686,7 +688,7 @@ private fun PanelContent(p: Panel, m: PlayerModel, onClose: () -> Unit, onPickSu
             OptionRow(when(source) { "yummy" -> "YummyAnime"; "anilibria" -> "AniLibria"; else -> "AnimeLib" }, null, m.player?.source == source) { onClose(); m.selectSource(source) }
         } }
         Panel.BALANCER -> Column { m.balancerOptions.forEach { name ->
-            OptionRow(name, null, m.player?.balancer == name) { onClose(); m.selectBalancer(name) }
+            OptionRow(PlaybackLabels.balancer(name), null, m.player?.balancer == name) { onClose(); m.selectBalancer(name) }
         } }
         Panel.EPISODES -> {
             val st = rememberLazyListState((m.index - 2).coerceAtLeast(0))
@@ -697,8 +699,7 @@ private fun PanelContent(p: Panel, m: PlayerModel, onClose: () -> Unit, onPickSu
             val teams = m.dubOptions.groupBy { it.team.id }.values.map { ps -> ps.first().team to ps }
             teams.forEach { (t, ps) ->
                 item {
-                    OptionRow(t.name, listOfNotNull(ps.first().sourceLabel + (ps.first().balancer?.let { " · $it" } ?: ""), if (t.isSubtitles) "субтитры" else null,
-                        if (ru.qmods.anixq.tv.data.Libria.isLibria(t.name) && Store.libriaDirect) "с сервера AniLibria" else null).joinToString(" · "),
+                    OptionRow(PlaybackLabels.dub(t.name), if (t.isSubtitles) "Субтитры" else null,
                         t.id == m.player?.team?.id) { onClose(); m.setTeam(t.id) }
                 }
             }

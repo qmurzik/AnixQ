@@ -63,7 +63,15 @@ object AnimeSources {
         isolated { match(title)?.let { yummy.players(it, ep.number).sortedBy { p -> extractors.indexOfFirst { e -> e.supports(p.resolverUrl.orEmpty()) }.let { n -> if (n < 0) Int.MAX_VALUE else n } } } }.orEmpty()
         }.orEmpty()
     }
-    suspend fun resolve(player: Player, title: Title, ep: Episode): Player {
+    fun chooseSource(players: List<Player>, current: Player?, source: String): Player? {
+        val options = PlaybackChoices.options(players.filter(::supported))
+        val selected = options.firstOrNull { it.team.id == current?.team?.id && it.source == current?.source }
+        val choice = PlaybackChoices.chooseSource(options, selected, source) ?: return null
+        return players.firstOrNull { it.team.id == choice.team.id && it.source == choice.source && it.isNative }
+            ?: players.firstOrNull { it.team.id == choice.team.id && it.source == choice.source }
+    }
+    suspend fun resolve(player: Player, title: Title, ep: Episode, cached: Player? = null): Player {
+        if (cached != null && cached.hrefs.isNotEmpty() && cached.source == player.source && cached.team.id == player.team.id && cached.resolverUrl == player.resolverUrl) return cached
         if (player.source == Libria.SOURCE && player.canResolve) return Libria.player(title, ep.number, player)
             ?: error("AniLibria: эта серия недоступна. Выберите другой источник")
         val url = player.resolverUrl ?: return player

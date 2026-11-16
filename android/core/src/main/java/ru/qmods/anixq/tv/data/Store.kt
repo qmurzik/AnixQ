@@ -66,12 +66,15 @@ object Store {
     // Accounts (TV storage is private to the app)
     var yummyApplicationToken: String?
         get() = prefs.getString("yummy.applicationToken", null)
-        set(value) {
-            prefs.edit().putString("yummy.applicationToken", value?.trim()?.takeIf { it.isNotEmpty() }).apply()
-            ru.qmods.anixq.tv.data.sources.AnimeSources.yummy.applicationToken = value?.trim()?.takeIf { it.isNotEmpty() }
-                ?: ru.qmods.anixq.core.BuildConfig.YANI_APPLICATION_TOKEN.takeIf { it.isNotEmpty() }
-            bump()
-        }
+        set(value) { setYummyApplication(value, null) }
+    fun setYummyApplication(value: String?, ownerId: Int?) {
+        val token = value?.trim()?.takeIf { it.isNotEmpty() }
+        prefs.edit().putString("yummy.applicationToken", token).putInt("yummy.applicationOwner", ownerId ?: 0).apply()
+        ru.qmods.anixq.tv.data.sources.AnimeSources.yummy.applicationToken = token
+            ?: ru.qmods.anixq.core.BuildConfig.YANI_APPLICATION_TOKEN.takeIf { it.isNotEmpty() }
+        ru.qmods.anixq.tv.data.sources.AnimeSources.yummy.managedApplicationOwner = ownerId
+        bump()
+    }
     val libToken get() = prefs.getString("lib.token", null)
     val libRefresh get() = prefs.getString("lib.refresh", null)
     val libUser get() = prefs.getString("lib.user", null)
@@ -281,6 +284,7 @@ object Store {
         ru.qmods.anixq.tv.data.sources.YummyAccount.init(context, n)
         ru.qmods.anixq.tv.data.sources.AnimeSources.yummy.applicationToken = yummyApplicationToken
             ?: ru.qmods.anixq.core.BuildConfig.YANI_APPLICATION_TOKEN.takeIf { it.isNotEmpty() }
+        ru.qmods.anixq.tv.data.sources.AnimeSources.yummy.managedApplicationOwner = prefs.getInt("yummy.applicationOwner", 0).takeIf { it > 0 }
         prefs.getString("library", null)?.let { runCatching { load(JSONObject(it)) } }
         bump()
     }
@@ -342,18 +346,31 @@ object Store {
     private fun live(titleId: Int) { runCatching { Remote.publishLive(exportFor(titleId)) } }
 
     private fun playbackKey(title: Title) = "playback.${title.slug}"
+    fun prefersYummy(title: Title) = playbackPreference(title)?.optString("source") == "yummy"
+    fun hasPlaybackChoice(title: Title) = prefs.contains(playbackKey(title))
     fun prefersExternal(title: Title): Boolean = prefs.getString(playbackKey(title), null)?.let {
         runCatching { JSONObject(it).optString("source") != "animelib" }.getOrDefault(false)
     } ?: (lastEntry(title.id)?.playbackSource?.let { it != "animelib" } ?: false)
     fun setPlaybackChoice(title: Title, player: Player) {
         prefs.edit().putString(playbackKey(title), JSONObject().put("source", player.source).put("balancer", player.balancer ?: "").put("dub", player.team.name).toString()).apply()
     }
-    fun playbackChoice(title: Title, players: List<Player>): Player? {
-        val last = lastEntry(title.id)
-        val x = prefs.getString(playbackKey(title), null)?.let { runCatching { JSONObject(it) }.getOrNull() }
-            ?: last?.let { JSONObject().put("source", it.playbackSource).put("balancer", it.balancer ?: "").put("dub", it.teamName) } ?: return null
-        return players.firstOrNull { it.source == x.optString("source") && it.balancer.orEmpty() == x.optString("balancer") && it.team.name == x.optString("dub") }
+    fun setPlaybackOption(title: Title, option: TeamOption) {
+        prefs.edit().putString(playbackKey(title), JSONObject().put("source", option.source).put("balancer", option.balancer ?: "").put("dub", option.team.name).toString()).apply()
     }
+    fun playbackOption(title: Title, options: List<TeamOption>): TeamOption? {
+        val saved = playbackPreference(title) ?: return null
+        return options.firstOrNull { it.source == saved.optString("source") && it.balancer.orEmpty() == saved.optString("balancer") && PlaybackChoices.sameDub(it.team.name, saved.optString("dub")) }
+    }
+    private fun playbackPreference(title: Title): JSONObject? {
+        val last = lastEntry(title.id)
+        return prefs.getString(playbackKey(title), null)?.let { runCatching { JSONObject(it) }.getOrNull() }
+            ?: last?.let { JSONObject().put("source", it.playbackSource).put("balancer", it.balancer ?: "").put("dub", it.teamName) }
+    }
+    fun playbackChoice(title: Title, players: List<Player>): Player? {
+        val x = playbackPreference(title) ?: return null
+        return players.firstOrNull { it.source == x.optString("source") && it.balancer.orEmpty() == x.optString("balancer") && PlaybackChoices.sameDub(it.team.name, x.optString("dub")) }
+    }
+
     fun updateProgress(title: Title, ep: Episode, team: Team, pos: Double, dur: Double, player: Player? = null) {
         val t = now()
         positions[ep.id] = Pos(pos, dur, t)

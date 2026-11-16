@@ -26,6 +26,11 @@ object YummyAccount {
     fun init(context: Context, name: String) {
         val profileKey = java.security.MessageDigest.getInstance("SHA-256").digest(name.toByteArray()).joinToString("") { "%02x".format(it) }
         tokenFile = File(context.noBackupFilesDir, "yummy-$profileKey.session")
+        val receipts = context.getSharedPreferences("yummy.application-receipts", Context.MODE_PRIVATE)
+        AnimeSources.yummy.applicationReceipts = object : YummyApplicationReceipts {
+            override fun get(ownerId: Int) = receipts.getInt("owner.$ownerId", 0).takeIf { it > 0 }
+            override fun save(ownerId: Int, applicationId: Int) { check(receipts.edit().putInt("owner.$ownerId", applicationId).commit()) }
+        }
         val saved = tokenFile?.takeIf { it.exists() }?.let { runCatching { it.readText() }.getOrNull() }
         val token = saved?.let { encoded -> runCatching {
             val parts = encoded.split(":", limit = 2)
@@ -50,18 +55,24 @@ object YummyAccount {
         val destination = tokenFile
         val token = AnimeSources.yummy.login(email.trim(), password)
         check(destination === tokenFile) { "Профиль изменился; повторите вход" }
+        completeLogin(token, destination)
+    }
+    private suspend fun completeLogin(token: String, destination: File?) {
+        val connection = AnimeSources.yummy.connectApplication(token)
+        check(destination === tokenFile) { "Профиль изменился; повторите вход" }
         save(token)
+        ru.qmods.anixq.tv.data.Store.setYummyApplication(connection.publicToken, connection.managedOwnerId)
         AnimeSources.yummy.userToken = token
     }
     /** Allows only the user's own token, verified against the official profile API before storing. */
     suspend fun usePersonalToken(token: String) {
         val destination = tokenFile
-        AnimeSources.yummy.verifyToken(token.trim())
-        check(destination === tokenFile) { "Профиль изменился; повторите вход" }
-        save(token.trim())
-        AnimeSources.yummy.userToken = token.trim()
+        completeLogin(token.trim(), destination)
     }
     suspend fun logout() {
-        try { AnimeSources.yummy.logout() } finally { save(null); AnimeSources.yummy.userToken = null }
+        try { AnimeSources.yummy.logout() } finally {
+            save(null); AnimeSources.yummy.userToken = null
+            if (AnimeSources.yummy.managedApplicationOwner != null) ru.qmods.anixq.tv.data.Store.setYummyApplication(null, null)
+        }
     }
 }

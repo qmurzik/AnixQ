@@ -49,7 +49,8 @@ fun SettingsScreen(nav: Nav) {
     var authEmail by remember { mutableStateOf("") }
     var authMessage by remember { mutableStateOf<String?>(null) }
     var authBusy by remember { mutableStateOf(false) }
-    fun auth(block: suspend () -> Unit) { if (!authBusy) authScope.launch {
+    var authJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+    fun auth(block: suspend () -> Unit) { if (!authBusy) authJob = authScope.launch {
         authBusy = true
         try { block(); authMessage = "Готово"; Store.accountChanged() }
         catch(e: kotlinx.coroutines.CancellationException) { throw e }
@@ -67,15 +68,12 @@ fun SettingsScreen(nav: Nav) {
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 56.dp, end = 56.dp, bottom = 48.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         item { ScreenTitle("Настройки") }
         item { Section("YummyAnime") {
-            Text("Токен собственного приложения: yummyani.me/dev/applications", color = C.muted)
-            PillButton("Настроить X-Application") { dialog = "yummyToken" }
+            Text("Войдите в аккаунт — AnixQ автоматически настроит доступ к каталогу и видео.", color = C.muted)
             if (ru.qmods.anixq.tv.data.sources.YummyAccount.signedIn) PillButton("Выйти из YummyAnime") { auth { ru.qmods.anixq.tv.data.sources.YummyAccount.logout() } }
-            else Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                PillButton("Войти в YummyAnime") { if (!authBusy) dialog = "yummyEmail" }
-                PillButton("Мой личный токен") { if (!authBusy) dialog = "yummyPersonalToken" }
-            }
+            else PillButton("Войти в YummyAnime", primary = true) { if (!authBusy) dialog = "yummyEmail" }
+            PillButton("Дополнительно") { if (!authBusy) dialog = "yummyAdvanced" }
             authMessage?.let { Text(it, color = C.muted) }
-            if (authBusy) Text("Подключение…", color = C.muted)
+            if (authBusy) { Text("Подключаем аккаунт…", color = C.muted); PillButton("Отмена") { authJob?.cancel() } }
         } }
 
         item {
@@ -189,6 +187,9 @@ fun SettingsScreen(nav: Nav) {
     }
 
     if (pairing) PairDialog { pairing = false }
+    if (dialog == "yummyAdvanced") ChoiceDialog("Подключение YummyAnime", listOf(Choice("Личный токен", hint = "Вместо входа по паролю"), Choice("Ключ приложения", hint = "Ручная настройка, если автоматическая недоступна")), { dialog = null }) { i ->
+        dialog = if (i == 0) "yummyPersonalToken" else "yummyToken"
+    }
     if (dialog == "yummyEmail") NameDialog("Email YummyAnime", authEmail, maxLength = 254) { email ->
         if (email == null) dialog = null else { authEmail = email; dialog = "yummyPassword" }
     }

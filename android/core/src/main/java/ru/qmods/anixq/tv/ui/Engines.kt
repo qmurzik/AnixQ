@@ -59,6 +59,9 @@ class ExoEngine(private val context: Context, private val onError: (String) -> U
 
     val view: PlayerView = PlayerView(context).apply {
         useController = false
+        // PlayerView is hosted in Compose AndroidView on both clients. Media3 1.5.1
+        // requires this opt-in for Android 14 surface synchronization (#1237).
+        if (android.os.Build.VERSION.SDK_INT == 34) setEnableComposeSurfaceSyncWorkaround(true)
         player = exo
         resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
         isFocusable = false
@@ -192,11 +195,7 @@ class ExoEngine(private val context: Context, private val onError: (String) -> U
         exo.addListener(object : Player.Listener {
             override fun onPlayerError(error: PlaybackException) {
                 if (observed !== exo) return
-                effectFailure = error.errorCode == PlaybackException.ERROR_CODE_VIDEO_FRAME_PROCESSOR_INIT_FAILED ||
-                    error.errorCode == PlaybackException.ERROR_CODE_VIDEO_FRAME_PROCESSING_FAILED ||
-                    generateSequence(error as Throwable?) { it.cause }.take(12).any {
-                        it is androidx.media3.common.VideoFrameProcessingException || it is androidx.media3.common.util.GlUtil.GlException
-                    }
+                effectFailure = isVideoEffectFailure(error, effectsActive)
                 if (effectFailure) bypassEffects = true
                 android.util.Log.w("AnixQ", "native video failure; mode=$appliedMode; effects=$effectFailure", error)
                 onError(error.errorCodeName)

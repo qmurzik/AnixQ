@@ -64,7 +64,7 @@ jobs:
         run: gradle --no-daemon :app:testDebugUnitTest --tests 'ru.qmods.anixq.tv.focus.FocusTest'
       - name: Source selection, remote and sync regression tests
         working-directory: android
-        run: gradle --no-daemon :app:testDebugUnitTest --tests 'ru.qmods.anixq.tv.focus.YummySourceTest' --tests 'ru.qmods.anixq.tv.focus.PlaybackSelectorTest' --tests 'ru.qmods.anixq.tv.focus.PublicSourcePlaybackTest'
+        run: gradle --no-daemon :app:testDebugUnitTest --tests 'ru.qmods.anixq.tv.focus.YummySourceTest' --tests 'ru.qmods.anixq.tv.focus.PlaybackSelectorTest' --tests 'ru.qmods.anixq.tv.focus.PublicSourcePlaybackTest' --tests 'ru.qmods.anixq.tv.focus.VideoEffectFailureTest'
       - name: Alternate TV interface and D-pad regression tests
         working-directory: android
         run: gradle --no-daemon :app:testDebugUnitTest --tests 'ru.qmods.anixq.tv.panorama.PanoramaTest'

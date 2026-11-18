@@ -14,7 +14,43 @@
     "renderer": "Google SwiftShader 4.0.0.1",
     "reported_gles": "3.0"
   },
-  "sources_match_verified_gpu_commit": {
+  "unit_checks": {
+    "core": {
+      "tests": 55,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 3
+    },
+    "app": {
+      "tests": 16,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "mobile": {
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  },
+  "debug_builds": [
+    "app:assembleDebug",
+    "app:assembleDebugAndroidTest",
+    "mobile:assembleDebug"
+  ],
+  "signed_preflight_build_status": "success",
+  "signed_preflight_run": 44377937800,
+  "tested_anime4k_assets": 14,
+  "test_media": "Generated 320x180 H.264 test pattern, debug/test APK only",
+  "limits": [
+    "No physical Mi Box testing",
+    "No 4K throughput, HDR or long thermal-session verification",
+    "Final UI handlers additionally reuse resolved current-quality streams; underlying GPU code matches tested commit",
+    "Full legacy TV focus/Paparazzi suites not included in local targeted regression count",
+    "Android 14 Compose surface workaround is documented and compiled/unit-tested, not exercised by API 30 emulator"
+  ],
+  "gpu_commit_source_hashes": {
     "android/core/src/main/java/ru/qmods/anixq/tv/ui/Upscaler.kt": "f8332dccc7a86238d709edeebd8751c89e82cef8bb9ae3c93332bb04106e6a25",
     "android/core/src/main/java/ru/qmods/anixq/tv/ui/Fsr1.kt": "23ad40adc78232ef4f9a3c7361acc7be65933747d68db2c613840f9376ae0028",
     "android/core/src/main/java/ru/qmods/anixq/tv/ui/Engines.kt": "52189f889d64c07461428e94ae014ff4fafca109239e50d9131fab9c73ad2360",
@@ -43,39 +79,41 @@
     "android/app/src/debug/java/ru/qmods/anixq/tv/upscale/UpscaleHarnessActivity.kt": "9594b43b21ccb2118a54a330035d55baf4fdaa46e44b5e806bf08db61e61312a",
     "android/ci/tv-upscale-checks.sh": "bf14cf5ecc66894211c53169fd97df8320f01dcb5aeeee807a06971d17217b8a"
   },
-  "unit_checks": {
-    "core": {
-      "tests": 55,
-      "failures": 0,
-      "errors": 0,
-      "skipped": 3
-    },
-    "app": {
-      "tests": 13,
-      "failures": 0,
-      "errors": 0,
-      "skipped": 0
-    },
-    "mobile": {
-      "tests": 5,
-      "failures": 0,
-      "errors": 0,
-      "skipped": 0
-    }
+  "final_source_hashes": {
+    "android/core/src/main/java/ru/qmods/anixq/tv/ui/Upscaler.kt": "f8332dccc7a86238d709edeebd8751c89e82cef8bb9ae3c93332bb04106e6a25",
+    "android/core/src/main/java/ru/qmods/anixq/tv/ui/Fsr1.kt": "23ad40adc78232ef4f9a3c7361acc7be65933747d68db2c613840f9376ae0028",
+    "android/core/src/main/java/ru/qmods/anixq/tv/ui/Engines.kt": "3da6131009bbc71afac76047e150e33c5fb9c55e12f3027cc8b384c341945e83",
+    "android/core/src/main/java/ru/qmods/anixq/tv/ui/UpscaleModes.kt": "40c8a93b80df7b99051f353293e1999e6dab2817185fca796e18f69913ee396e",
+    "android/core/src/main/java/ru/qmods/anixq/tv/ui/Anime4K.kt": "fe0812fa18cb135b1482b9dfcf348006625b6ee3e2e6953ee04c4a2411a65088",
+    "android/core/src/main/assets/fsr/easu.glsl": "293a7f605ae944ac192fa75f7a8122a6652092a6956ada263bd005539fdc4f99",
+    "android/core/src/main/assets/fsr/LICENSE": "db089274ce766da70f5b7d791029c3486f9f9e27c8c79c652689603d3192e802",
+    "android/core/src/main/assets/anime4k/Anime4K_Restore_CNN_M.glsl": "67ea3ed26539e8de3b7d307688535d2ff17e8d147e11dda0247da7770dbecf41",
+    "android/core/src/main/assets/anime4k/Anime4K_Restore_CNN_S.glsl": "97c24dc370ab300c108bfaa09db7f175aeff343674842c299cf3940a3d330427",
+    "android/core/src/main/assets/anime4k/Anime4K_Upscale_CNN_x2_M.glsl": "716e02098a68f0d648761f2b96b4dd139e1cb09b174bb369fca3aa34328fff7e",
+    "android/core/src/main/assets/anime4k/Anime4K_Deblur_DoG.glsl": "480367048caca7520b6f66d4db731c96103677d0e5bad69d72adf46f58a59532",
+    "android/core/src/main/assets/anime4k/Anime4K_Upscale_Denoise_CNN_x2_M.glsl": "8c72b042e2301fe66a45c3089720459148e2504cd72af16f9c0d5017ff14181e",
+    "android/core/src/main/assets/anime4k/Anime4K_Upscale_Denoise_CNN_x2_S.glsl": "1a45ad3aa20d8368399f2fd46791deed957c2fd0a4afd131cc92516827abab93",
+    "android/core/src/main/assets/anime4k/Anime4K_Darken_HQ.glsl": "7506e41f3c2b031574897a74fc98a7fa478289747e6131b21d25fbc221460e13",
+    "android/core/src/main/assets/anime4k/Anime4K_Thin_HQ.glsl": "026e245fb49b1d7ab549043d75fcfe9c1b6a5e3170323861fa9abfdbad5abe61",
+    "android/core/src/main/assets/anime4k/Anime4K_Restore_CNN_Soft_M.glsl": "a78a2c76898e08e09e442a9628c64208c26e8e15789649b8755223f009794c02",
+    "android/core/src/main/assets/anime4k/Anime4K_Restore_CNN_Soft_S.glsl": "9f6867f2ef42786729522d86fe24147cb4ea145418e3974df70496acf52dc392",
+    "android/core/src/main/assets/anime4k/Anime4K_Upscale_GAN_x2_M.glsl": "8a1d33fddc8939c1e0eb4d6ad6a7baf653dd420d6b713e385b7c73be90d9affe",
+    "android/core/src/main/assets/anime4k/Anime4K_Upscale_GAN_x2_S.glsl": "ec252b694675ce8e3b3959bd53530a9e94e360ce8a7de95be9a848ac0826649f",
+    "android/core/src/main/assets/anime4k/Anime4K_Upscale_CNN_x2_S.glsl": "4c53ec2e287908f7ee7bcb266b0170421626d663576468b7d7dafc62962649a4",
+    "android/core/src/main/assets/anime4k/Anime4K_Upscale_CNN_x2_L.glsl": "db1fedf7be82f6fd9034e6bf39b64daf2b7576988bb584ec38f24f5236b1cd97",
+    "android/app/src/androidTest/assets/upscale-smoke.mp4": "8d9ecb805bd5b955c8f2753ce0af9a7508f57d39e81e9d9b891f542f671858fd",
+    "android/app/src/androidTest/java/ru/qmods/anixq/tv/upscale/UpscalePlaybackTest.kt": "29ac7934ede53f9b1c0879d2c553002702749607a42ba8dd7924d8642edbb4cb",
+    "android/app/src/androidTest/java/ru/qmods/anixq/tv/upscale/UpscaleGpuTest.kt": "00707fb7d48fbcfabc4644bae1abb6e88d9e509b8307deae0f6feabe4c869f13",
+    "android/app/src/debug/AndroidManifest.xml": "85addc173fa296657ecb2a59e610d1fb956e210634506da4680b4c55dbf7a511",
+    "android/app/src/debug/java/ru/qmods/anixq/tv/upscale/UpscaleHarnessActivity.kt": "9594b43b21ccb2118a54a330035d55baf4fdaa46e44b5e806bf08db61e61312a",
+    "android/ci/tv-upscale-checks.sh": "bf14cf5ecc66894211c53169fd97df8320f01dcb5aeeee807a06971d17217b8a"
   },
-  "debug_builds": [
-    "app:assembleDebug",
-    "app:assembleDebugAndroidTest",
-    "mobile:assembleDebug"
+  "final_runtime_changes_after_gpu_run": [
+    "Engines.kt: enable documented Media3 Compose SurfaceView synchronization workaround only on API 34; API 30 surface initialization unchanged",
+    "VideoEffectErrors.kt: preserve tested GL/frame-processor detection and additionally permit one direct-video recovery for video-renderer failures; new video/audio/network classification tests passed",
+    "Player UI handlers: reuse resolved current-quality streams"
   ],
-  "signed_preflight_build_status": "success",
-  "signed_preflight_run": 44377937800,
-  "tested_anime4k_assets": 14,
-  "test_media": "Generated 320x180 H.264 test pattern, debug/test APK only",
-  "limits": [
-    "No physical Mi Box testing",
-    "No 4K throughput, HDR or long thermal-session verification",
-    "Final UI handlers additionally reuse resolved current-quality streams; underlying GPU code matches tested commit",
-    "Full legacy TV focus/Paparazzi suites not included in local targeted regression count"
-  ]
+  "final_additional_runtime_source_hashes": {
+    "android/core/src/main/java/ru/qmods/anixq/tv/ui/VideoEffectErrors.kt": "ab07eb542a9f6d5bebee5ce428df54fb12cac1f14a891cbea0a98d3ac2daf4f4"
+  }
 }

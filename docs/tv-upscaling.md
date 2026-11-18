@@ -23,6 +23,9 @@ after successful frame drawing. Its existing A/B comparison remains available.
 
 ## Fixes and evidence
 
+- The documented Media3 1.5.1 Compose/SurfaceView synchronization workaround is
+  enabled on Android 14. This addresses a separate surface interoperability problem
+  relevant to newer Mi Box firmware, without changing the surface type or SDK version.
 - The old Anime4K loop skipped both sampler and size uniforms when a sampler was
   optimized out. A Gaussian pass can use `HOOKED_size` without sampling `HOOKED`.
   Its zero sigma caused NaN/black pixels. Instrumented framebuffer testing first
@@ -35,7 +38,9 @@ after successful frame drawing. Its existing A/B comparison remains available.
   preset. Ordinary source/quality reloads do not silently reactivate failed effects;
   an explicit user change permits another attempt. Phone colour recovery uses the
   same shared engine path.
-- GPU failures are distinguished from network failures. Startup drops during the
+- GPU failures are distinguished from network and audio failures. A video codec
+  rejecting the effect's surface can also retry direct video once; a renderer
+  failure on the direct path does not trigger another GPU recovery. Startup drops during the
   first three seconds after the first frame do not disable effects. Steady neural
   overload falls back once to FSR; overload of lightweight effects disables them.
 - Anime4K framebuffer completeness and texture limits are checked, partial shader
@@ -58,6 +63,8 @@ References pinned to the installed Media3 version / upstream implementation:
 - https://github.com/androidx/media/blob/1.5.1/libraries/effect/src/main/java/androidx/media3/effect/DefaultVideoFrameProcessor.java
 - https://github.com/GPUOpen-Effects/FidelityFX-FSR/blob/master/ffx-fsr/ffx_fsr1.h
 - https://github.com/bloc97/Anime4K
+- https://github.com/androidx/media/issues/1237
+- https://github.com/androidx/media/blob/1.5.1/libraries/ui/src/main/java/androidx/media3/ui/PlayerView.java
 
 ## Verification
 
@@ -87,12 +94,16 @@ or equivalence to temporal/neural desktop upscalers is made.
 Final preflight: run **44377937800**, source `441d88e`, **all six GPU/native tests
 passed**, including deliberate graph failure with a non-neutral colour preset.
 Both signed release builds and the signature-compatibility guard passed in that
-preflight. GPU runtime, shaders, test harness and script in the final change are
-byte-for-byte identical to that tested source; hashes are recorded in
+preflight. Shaders, effect factory, test harness and script in the final change
+are byte-for-byte identical to that tested source. The engine additionally enables
+the documented Compose surface workaround on API 34 and classifies video-renderer
+surface failures separately from network/audio failures. Those compatibility cases
+have dedicated API 34 unit coverage; Android 14 graphics are not exercised by the
+API 30 emulator. Both tested and final hashes are recorded in
 `tv-upscaling-verification.json`. Final UI handlers also pass the current quality
 when rebuilding so existing resolved streams are reused.
 
 Local final regressions: core 55 tests (52 passed, three opt-in source-network
-checks skipped), selected TV source/D-pad/Panorama tests 13 passed, phone tests
-five passed. Total: **70 unit/UI checks passed, three skipped**, plus six actual
+checks skipped), selected TV source/D-pad/Panorama/video-error tests 16 passed, phone tests
+five passed. Total: **73 unit/UI checks passed, three skipped**, plus six actual
 GPU/native checks. Both debug APKs and the instrumentation APK assembled.

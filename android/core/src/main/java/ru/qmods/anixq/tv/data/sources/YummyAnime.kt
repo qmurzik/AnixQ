@@ -179,10 +179,14 @@ class YummyAnime(private val http: SourceHttp = SourceHttp(), private val base: 
             val number = x.str("number")?.takeIf { it.toBigDecimalOrNull() != null } ?: return@mapNotNull null
             val url = x.str("iframe_url")?.let(::fullUrl)?.takeIf { it.startsWith("https://") || it.startsWith("http://") } ?: return@mapNotNull null
             val data = x.obj("data") ?: return@mapNotNull null
+            // Marks come as {"time": start, "length": seconds} (older answers: [start, end]), for this very file.
+            val length = x.optDouble("duration", 0.0).takeIf { it > 0 } ?: 0.0
             val segments = listOf("opening", "ending").mapNotNull { kind ->
-                val a = x.obj("skips")?.optJSONArray(kind) ?: return@mapNotNull null
-                val start = a.optDouble(0, -1.0); val end = a.optDouble(1, -1.0)
-                if (start >= 0 && end > start) Segment(kind, start, end) else null
+                val skips = x.obj("skips") ?: return@mapNotNull null
+                val (start, end) = skips.optJSONObject(kind)?.let { o ->
+                    val t = o.optDouble("time", -1.0); t to t + o.optDouble("length", 0.0)
+                } ?: skips.optJSONArray(kind)?.let { a -> a.optDouble(0, -1.0) to a.optDouble(1, -1.0) } ?: return@mapNotNull null
+                if (start >= 0 && end > start) Segment(kind, start, end, length) else null
             }
             YummyVideo(id, number, data.str("dubbing") ?: "Оригинал", data.str("player") ?: "Балансер", url, segments)
         }.distinctBy { it.id }

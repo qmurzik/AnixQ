@@ -411,7 +411,7 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
         val ep0 = episode
         // Opening / ending from every provider (AniLibria, AniSkip…) when the source's own marks miss one of them.
         val own = player?.segments.orEmpty()
-        if (ep0 != null && dur > 60 && aniSkipAsked != ep0.id && (own.none { it.isOpening } || own.none { it.isEnding })) {
+        if (ep0 != null && (dur > 60 || (dur <= 0 && pos > 15)) && aniSkipAsked != ep0.id && (own.none { it.isOpening } || own.none { it.isEnding })) {
             aniSkipAsked = ep0.id
             scope.launch { val g = loadGeneration; val segments = ru.qmods.anixq.tv.data.SkipTimes.find(title, ep0.number, dur, own); if (g == loadGeneration && episode?.id == ep0.id) extraSegments = segments }
         }

@@ -195,12 +195,14 @@ object Anime4K {
                 val prog = programs[i]
                 prog.use()
                 p.binds.distinct().forEachIndexed { unit, b ->
-                    // Unused bindings are optimised away by the compiler: only set what exists.
-                    if (prog.getUniformLocation(b) == -1) return@forEachIndexed
-                    val tex = if (b == "MAIN" || b == "HOOKED") inputTexId else current[b] ?: return@forEachIndexed
-                    prog.setSamplerTexIdUniform(b, tex, unit)
+                    // A pass may use NAME_size without sampling NAME (e.g. Gaussian sigma).
+                    // Set its size independently; skipping it makes sigma zero and pixels NaN.
                     val s = sizes[b] ?: (outSize.width to outSize.height)
                     prog.setFloatsUniformIfPresent("${b}_size", floatArrayOf(s.first.toFloat(), s.second.toFloat()))
+                    if (prog.getUniformLocation(b) != -1) {
+                        val tex = if (b == "MAIN" || b == "HOOKED") inputTexId else current[b] ?: error("Missing Anime4K layer $b")
+                        prog.setSamplerTexIdUniform(b, tex, unit)
+                    }
                 }
                 if (last && compareCapable) prog.setFloatsUniformIfPresent("uSplit", floatArrayOf(Upscaler.split))
                 prog.bindAttributesAndUniforms()

@@ -9,8 +9,8 @@ data class UpscaleMode(val id: Int, val name: String, val hint: String, val chai
 
 val UPSCALE_MODES = listOf(
     UpscaleMode(0, "Выключен", "как есть", emptyList()),
-    UpscaleMode(16, "FSR 1", "EASU до ×2 + RCAS; без нейросети", listOf("easu", "rcas")),
-    UpscaleMode(3, "Anime4K S", "нейросеть ×2 — быстро и чисто, лучший выбор", listOf("Upscale_CNN_x2_S")),
+    UpscaleMode(16, "FSR 1", "Лёгкое увеличение до ×2 и чёткие контуры; начните с него", listOf("easu", "rcas")),
+    UpscaleMode(3, "Anime4K S", "нейросеть ×2 — для более мощных приставок", listOf("Upscale_CNN_x2_S")),
     UpscaleMode(5, "Anime4K M", "нейросеть побольше — точнее", listOf("Upscale_CNN_x2_M"), heavy = true),
     UpscaleMode(6, "Anime4K L", "самая точная сеть, нужна мощная приставка", listOf("Upscale_CNN_x2_L"), heavy = true),
     UpscaleMode(9, "Шумоподавление S", "для сжатых стримов: убирает шум и блоки, ×2", listOf("Upscale_Denoise_CNN_x2_S")),

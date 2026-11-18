@@ -89,10 +89,21 @@ class ExoEngine(private val context: Context, private val onError: (String) -> U
             is android.view.SurfaceView -> {
                 if (android.os.Build.VERSION.SDK_INT < 24) { done(null); return }
                 val bmp = android.graphics.Bitmap.createBitmap(w, h, android.graphics.Bitmap.Config.ARGB_8888)
-                runCatching {
-                    android.view.PixelCopy.request(sv, bmp, { r -> done(if (r == android.view.PixelCopy.SUCCESS) bmp else null) },
-                        android.os.Handler(android.os.Looper.getMainLooper()))
-                }.onFailure { done(null) }
+                val handler = Handler(Looper.getMainLooper())
+                fun copy(remaining: Int) {
+                    runCatching {
+                        android.view.PixelCopy.request(sv, bmp, { result ->
+                            when {
+                                result == android.view.PixelCopy.SUCCESS -> done(bmp)
+                                remaining > 0 && (result == android.view.PixelCopy.ERROR_SOURCE_NO_DATA || result == android.view.PixelCopy.ERROR_TIMEOUT) ->
+                                    handler.postDelayed({ copy(remaining - 1) }, 100)
+                                else -> { android.util.Log.w("AnixQ", "PixelCopy failed: $result"); bmp.recycle(); done(null) }
+                            }
+                        }, handler)
+                    }.onFailure { bmp.recycle(); done(null) }
+                }
+                // Media3's first-frame event may precede SurfaceFlinger's first readable buffer.
+                copy(5)
             }
             else -> done(null)
         }

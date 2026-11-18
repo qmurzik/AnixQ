@@ -51,7 +51,7 @@ class UpscalePlaybackTest {
                 val bitmap=checkNotNull(picture) { "Mode $mode has no visible video surface" }
                 val colors=IntArray(bitmap.width*bitmap.height);bitmap.getPixels(colors,0,bitmap.width,0,0,bitmap.width,bitmap.height)
                 assertTrue("Mode $mode is black",colors.count { (it and 0xffffff)>0x101010 }>colors.size/10)
-                File(instrumentation.targetContext.getExternalFilesDir(null),"upscale-checks").apply { mkdirs() }
+                File(instrumentation.targetContext.filesDir,"upscale-checks").apply { mkdirs() }
                     .resolve("playback-$mode.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG,100,it) }
                 bitmap.recycle()
             }

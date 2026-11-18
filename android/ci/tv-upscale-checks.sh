@@ -6,7 +6,9 @@ adb install -r android/app/build/outputs/apk/androidTest/debug/app-debug-android
 adb logcat -c
 adb shell am instrument -w -r -e class ru.qmods.anixq.tv.upscale.UpscaleGpuTest,ru.qmods.anixq.tv.upscale.UpscalePlaybackTest ru.qmods.anixq.tv.test/androidx.test.runner.AndroidJUnitRunner | tee upscale-checks/instrumentation.txt
 adb logcat -d > upscale-checks/logcat.txt
-adb pull /sdcard/Android/data/ru.qmods.anixq.tv/files/upscale-checks upscale-checks/frames || true
+mkdir -p upscale-checks/frames
+adb exec-out run-as ru.qmods.anixq.tv tar -C files/upscale-checks -cf - . > upscale-checks/frames.tar
+if [ -s upscale-checks/frames.tar ]; then tar -xf upscale-checks/frames.tar -C upscale-checks/frames; fi
 python3 - <<'PY'
 from pathlib import Path
 text=Path('upscale-checks/instrumentation.txt').read_text()

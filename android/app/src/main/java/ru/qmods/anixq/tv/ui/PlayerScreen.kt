@@ -193,6 +193,7 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
     @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
     fun setUpscaleMode(mode: Int) {
         upscale = mode; Store.upscale = mode
+        Anime4K.supported = null
         compare = false; Upscaler.split = 0f; announced = ""; Upscaler.lastInfo = ""
         // A new effect chain needs the pipeline rebuilt: reload at the same moment.
         if (native && exo != null) load(index, keepPos = pos)
@@ -520,8 +521,14 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
         }
         // The box can't keep up with the upscaler: switch it off rather than stutter.
         if (native && upscale > 0 && playing && (exo?.recentDrops ?: 0) > 45) {
-            say("Апскейлер выключен: приставке не хватает мощности (пропуск кадров)")
-            setUpscaleMode(0)
+            val neural = upscaleMode(upscale).chain.any { it != "lanczos" && it != "rcas" && it != "easu" }
+            if (neural) {
+                setUpscaleMode(16)
+                say("Нейросеть не успевает обрабатывать кадры — включён более лёгкий FSR 1")
+            } else {
+                setUpscaleMode(0)
+                say("Апскейлер выключен: приставке не хватает мощности (пропуск кадров)")
+            }
         }
         if (sleepAt > 0 && System.currentTimeMillis() >= sleepAt) { sleepAt = 0; e.pause(); playing = false; saveProgress(force = true); say("Таймер сна: пауза") }
         if (sleepAfterEpisode && ended) { sleepAfterEpisode = false; saveProgress(force = true); say("Таймер сна: серия закончилась") }

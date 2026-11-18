@@ -59,7 +59,7 @@ class UpscaleGpuTest {
             assertTrue("$label: rendered frame must not be black", data.indices.filter { it%4<3 }.count { (data[it].toInt() and 255)>32 } > w*h)
             val image = Bitmap.createBitmap(w,h,Bitmap.Config.ARGB_8888)
             bytes.rewind();image.copyPixelsFromBuffer(bytes)
-            File(context.getExternalFilesDir(null),"upscale-checks").apply { mkdirs() }.resolve("$label.png").outputStream().use { image.compress(Bitmap.CompressFormat.PNG,100,it) }
+            File(context.filesDir,"upscale-checks").apply { mkdirs() }.resolve("$label.png").outputStream().use { image.compress(Bitmap.CompressFormat.PNG,100,it) }
             image.recycle()
             return Frame(w,h,data)
         } finally {

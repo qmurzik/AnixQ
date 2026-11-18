@@ -63,6 +63,7 @@ final class PlayerController: ObservableObject {
     weak var library: LibraryStore?
 
     @Published private(set) var segments: [SkipSegment] = []
+    private var skipLookupFor: Int?
     /// Sleep timer: pause at a time, or when the current episode ends.
     @Published var sleepAt: Date?
     @Published var sleepAfterEpisode = false
@@ -243,6 +244,7 @@ final class PlayerController: ObservableObject {
         qualities = []
         quality = nil
         segments = []
+        skipLookupFor = nil
         subtitleTracks = []
         subtitle = nil
         subtitleText = nil
@@ -555,6 +557,19 @@ final class PlayerController: ObservableObject {
         switch st {
         case .readyToPlay:
             if d.isFinite { duration = d }
+            // Opening / ending from AniLibria and AniSkip when this source's own marks miss one of them.
+            if d.isFinite, d > 60, skipLookupFor != episode.id, !(segments.contains { $0.isOpening } && segments.contains { $0.isEnding }) {
+                skipLookupFor = episode.id
+                let ep = episode, own = segments
+                Task { [weak self] in
+                    guard let self else { return }
+                    let found = await SkipTimes.find(title: self.title, episode: ep.number, duration: d, own: own)
+                    if self.episode.id == ep.id, found.count > own.count {
+                        self.segments = found
+                        DebugLog.log("player: skip marks " + found.map { "\($0.kind) \(Int($0.from))-\(Int($0.to))" }.joined(separator: ", "))
+                    }
+                }
+            }
             DebugLog.log(String(format: "player: ready after %.2fs", Date().timeIntervalSince(startedAt)))
         case .failed:
             DebugLog.log("player: item failed \(e ?? "?") on \(servers[safe: serverIndex] ?? "?")")

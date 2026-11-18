@@ -83,6 +83,20 @@ enum Libria {
         return found
     }
 
+    /// AniLibria's opening / ending marks and the episode length — usable for any dub of the same broadcast.
+    @MainActor static func marks(title: Title, number: String) async -> (segments: [SkipSegment], duration: Double)? {
+        guard let n = Double(number), let r = await release(for: title),
+              let eps = r["episodes"] as? [[String: Any]],
+              let ep = eps.first(where: { ($0["ordinal"] as? NSNumber)?.doubleValue == n }) else { return nil }
+        func seg(_ key: String) -> SkipSegment? {
+            guard let o = ep[key] as? [String: Any], let a = (o["start"] as? NSNumber)?.doubleValue,
+                  let b = (o["stop"] as? NSNumber)?.doubleValue, b > a else { return nil }
+            return SkipSegment(kind: key, from: a, to: b)
+        }
+        let segs = [seg("opening"), seg("ending")].compactMap { $0 }
+        return segs.isEmpty ? nil : (segs, (ep["duration"] as? NSNumber)?.doubleValue ?? 0)
+    }
+
     /// Their HLS links for this episode (best first), or nil when they don't have it.
     @MainActor static func episode(title: Title, number: String) async -> Episode? {
         guard let n = Double(number), let r = await release(for: title),

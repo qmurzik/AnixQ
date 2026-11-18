@@ -30,9 +30,8 @@ object AniSkip {
                     }
                 }
         }.getOrDefault(emptyList()).also { cache[key] = it }
-        // Only trust times recorded on a cut of (almost) the same length as the video we play.
-        val fit = all.filter { s -> s.source <= 0 || duration <= 0 || kotlin.math.abs(s.source - duration) < 25 }
-        fit.groupBy { it.isOpening }.values.mapNotNull { it.firstOrNull() }
+        all.groupBy { it.isOpening }.values.mapNotNull { list -> list.minByOrNull { if (it.source <= 0 || duration <= 0) 0.0 else kotlin.math.abs(it.source - duration) } }
+            .mapNotNull { SkipTimes.fit(it, duration) }
     }
 
     /** "Previously on…" at the start of an episode, when the community marked it. */
@@ -50,6 +49,6 @@ object AniSkip {
                     }
                 }
         }.getOrDefault(emptyList()).also { cache[key] = it }
-        all.firstOrNull { s -> s.source <= 0 || duration <= 0 || kotlin.math.abs(s.source - duration) < 25 }
+        all.minByOrNull { if (it.source <= 0 || duration <= 0) 0.0 else kotlin.math.abs(it.source - duration) }?.let { SkipTimes.fit(it, duration) }
     }
 }

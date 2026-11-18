@@ -140,7 +140,7 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
     val hasPrev get() = index > 0
     var extraSegments by mutableStateOf<List<Segment>>(emptyList())
     private var aniSkipAsked = -1
-    val segments: List<Segment> get() = player?.segments?.takeIf { it.isNotEmpty() } ?: extraSegments
+    val segments: List<Segment> get() = player?.segments.orEmpty() + extraSegments
     val opening: Segment? get() = segments.firstOrNull { it.isOpening }
     val ending: Segment? get() = segments.firstOrNull { it.isEnding }
     val inOpening get() = opening?.let { pos >= it.from - 0.5 && pos < it.to - 2 } == true
@@ -409,9 +409,11 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
         // An accidental tap into the ending must remain undoable before auto-skip or marking watched.
         if (seekUndo != null) return
         val ep0 = episode
-        if (ep0 != null && dur > 60 && aniSkipAsked != ep0.id && player?.segments.isNullOrEmpty()) {
+        // Opening / ending from every provider (AniLibria, AniSkip…) when the source's own marks miss one of them.
+        val own = player?.segments.orEmpty()
+        if (ep0 != null && dur > 60 && aniSkipAsked != ep0.id && (own.none { it.isOpening } || own.none { it.isEnding })) {
             aniSkipAsked = ep0.id
-            (title.malId ?: title.shikiId)?.let { mal -> scope.launch { val g = loadGeneration; val segments = AniSkip.segments(mal, ep0.number, dur); if (g == loadGeneration && episode?.id == ep0.id) extraSegments = segments } }
+            scope.launch { val g = loadGeneration; val segments = ru.qmods.anixq.tv.data.SkipTimes.find(title, ep0.number, dur, own); if (g == loadGeneration && episode?.id == ep0.id) extraSegments = segments }
         }
         if (toast != null && System.currentTimeMillis() - toastAt > 2500) toast = null
         if (ep0 != null && dur > 60 && recapAsked != ep0.id) {

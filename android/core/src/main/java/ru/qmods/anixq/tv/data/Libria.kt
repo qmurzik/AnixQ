@@ -136,5 +136,22 @@ object Libria {
         result
     }
 
+    /** AniLibria's opening / ending marks of an episode and its length — usable for any dub of the same broadcast. */
+    suspend fun marks(title: Title, episodeNumber: String): Pair<List<Segment>, Double>? = withContext(Dispatchers.IO) {
+        withTimeoutOrNull(6_000) {
+            val r = release(title) ?: return@withTimeoutOrNull null
+            val n = episodeNumber.toDoubleOrNull() ?: return@withTimeoutOrNull null
+            val eps = r.optJSONArray("episodes") ?: return@withTimeoutOrNull null
+            val ep = (0 until eps.length()).mapNotNull { eps.optJSONObject(it) }.firstOrNull { it.optDouble("ordinal", -1.0) == n } ?: return@withTimeoutOrNull null
+            val dur = ep.optDouble("duration", 0.0)
+            val segs = listOf("opening", "ending").mapNotNull { k ->
+                val o = ep.optJSONObject(k) ?: return@mapNotNull null
+                val a = o.optDouble("start", Double.NaN); val b = o.optDouble("stop", Double.NaN)
+                if (!a.isNaN() && !b.isNaN() && b > a) Segment(k, a, b, dur) else null
+            }
+            segs.takeIf { it.isNotEmpty() }?.let { it to dur }
+        }
+    }
+
     const val SOURCE = "anilibria"
 }

@@ -12,5 +12,5 @@ if [ -s upscale-checks/frames.tar ]; then tar -xf upscale-checks/frames.tar -C u
 python3 - <<'PY'
 from pathlib import Path
 text=Path('upscale-checks/instrumentation.txt').read_text()
-assert 'OK (5 tests)' in text and 'FAILURES' not in text and 'INSTRUMENTATION_FAILED' not in text, text[-4000:]
+assert 'OK (6 tests)' in text and 'FAILURES' not in text and 'INSTRUMENTATION_FAILED' not in text, text[-4000:]
 PY

@@ -193,6 +193,7 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
     @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
     fun setUpscaleMode(mode: Int) {
         upscale = mode; Store.upscale = mode
+        exo?.allowVideoEffects()
         Anime4K.supported = null
         compare = false; Upscaler.split = 0f; announced = ""; Upscaler.lastInfo = ""
         // A new effect chain needs the pipeline rebuilt: reload at the same moment.
@@ -219,6 +220,7 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
 
     @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
     fun setPicture(p: Picture) {
+        exo?.allowVideoEffects()
         ColorTuning.set(p)
         // Neutral ↔ tuned needs the GPU pipeline rebuilt: reload at the same moment; otherwise it's live.
         if (native && exo?.colorNeedsReload() == true) load(index, keepPos = pos)
@@ -449,7 +451,7 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
 
     private fun onNativeError(err: String) {
         val p = player ?: return
-        if (upscale > 0 && exo?.effectFailure == true) { upscaleFailed("ошибка обработки видео: $err"); return }
+        if (exo?.effectsActive == true && exo?.effectFailure == true) { upscaleFailed("ошибка обработки видео: $err"); return }
         if (p.isYummy) {
             val at = exo?.position?.takeIf { it > 0 } ?: pos
             pos = at

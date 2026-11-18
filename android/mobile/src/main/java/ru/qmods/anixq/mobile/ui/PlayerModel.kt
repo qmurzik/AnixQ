@@ -354,6 +354,11 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
 
     private fun onNativeError(err: String) {
         val p = player ?: return
+        if (exo?.effectsActive == true && exo?.effectFailure == true) {
+            say("Обработка изображения отключена после ошибки GPU")
+            load(index, keepPos = maxOf(pos, exo?.position ?: 0.0))
+            return
+        }
         if (p.isYummy) {
             val at = exo?.position?.takeIf { it > 0 } ?: pos
             pos = at
@@ -588,6 +593,7 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
 
     /** Colour: live while the GPU stage is in place; neutral ↔ tuned reloads at the same moment. */
     fun setPicture(p: ru.qmods.anixq.tv.ui.Picture, commit: Boolean) {
+        exo?.allowVideoEffects()
         ru.qmods.anixq.tv.ui.ColorTuning.set(p)
         if (commit && native && exo?.colorNeedsReload() == true) load(index, keepPos = pos)
     }

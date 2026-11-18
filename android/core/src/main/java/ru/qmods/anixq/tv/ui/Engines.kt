@@ -52,6 +52,10 @@ class ExoEngine(private val context: Context, private val onError: (String) -> U
         .build()
     var exo: ExoPlayer = newPlayer(); private set
     var effectFailure = false; private set
+    private var bypassEffects = false
+    val effectsActive get() = appliedMode != 0 || appliedColor
+    /** Explicit user retry; ordinary episode/quality loads must not re-enable a failed graph. */
+    fun allowVideoEffects() { bypassEffects = false }
 
     val view: PlayerView = PlayerView(context).apply {
         useController = false
@@ -131,7 +135,8 @@ class ExoEngine(private val context: Context, private val onError: (String) -> U
 
     /** Effects must be in place before the media is prepared (setting them on a running player stalls it). */
     private fun applyUpscale(mode: Int) {
-        val color = !ColorTuning.value.isNeutral
+        if (mode != 0) bypassEffects = false
+        val color = !bypassEffects && !ColorTuning.value.isNeutral
         if (mode == appliedMode && color == appliedColor) return
         // Empty effects still enable Media3's VideoGraph. A fresh player is needed
         // to return to direct codec -> Surface playback after a GL failure.
@@ -192,6 +197,7 @@ class ExoEngine(private val context: Context, private val onError: (String) -> U
                     generateSequence(error as Throwable?) { it.cause }.take(12).any {
                         it is androidx.media3.common.VideoFrameProcessingException || it is androidx.media3.common.util.GlUtil.GlException
                     }
+                if (effectFailure) bypassEffects = true
                 android.util.Log.w("AnixQ", "native video failure; mode=$appliedMode; effects=$effectFailure", error)
                 onError(error.errorCodeName)
             }

@@ -58,7 +58,6 @@ object AnimeSources {
         base + libria + extra.await()
     }
     suspend fun additional(title: Title, ep: Episode): List<Player> {
-        if (yummy.userToken.isNullOrBlank() || yummy.applicationToken.isNullOrBlank()) return emptyList()
         return withTimeoutOrNull(15_000) {
         isolated { match(title)?.let { yummy.players(it, ep.number).sortedBy { p -> extractors.indexOfFirst { e -> e.supports(p.resolverUrl.orEmpty()) }.let { n -> if (n < 0) Int.MAX_VALUE else n } } } }.orEmpty()
         }.orEmpty()
@@ -70,14 +69,23 @@ object AnimeSources {
         return players.firstOrNull { it.team.id == choice.team.id && it.source == choice.source && it.isNative }
             ?: players.firstOrNull { it.team.id == choice.team.id && it.source == choice.source }
     }
+    fun requiresYummyLogin(player: Player): Boolean = player.isYummy && player.canResolve &&
+        !AksorExtractor.supportsUrl(player.resolverUrl.orEmpty()) &&
+        (yummy.userToken.isNullOrBlank() || yummy.applicationToken.isNullOrBlank())
+
     suspend fun resolve(player: Player, title: Title, ep: Episode, cached: Player? = null): Player {
+        check(!requiresYummyLogin(player)) { "Войдите в YummyAnime в настройках для этого балансера или выберите Aksor / AnimeLib" }
         if (cached != null && cached.hrefs.isNotEmpty() && cached.source == player.source && cached.team.id == player.team.id && cached.resolverUrl == player.resolverUrl) return cached
         if (player.source == Libria.SOURCE && player.canResolve) return Libria.player(title, ep.number, player)
             ?: error("AniLibria: эта серия недоступна. Выберите другой источник")
         val url = player.resolverUrl ?: return player
         val extractor = extractors.firstOrNull { it.supports(url) }
             ?: error(if (url.contains("alloha", true)) "Alloha не предоставляет поддерживаемый прямой поток. Выберите другой балансер." else "Этот балансер пока не поддерживается")
-        val stream = withTimeoutOrNull(25_000) { extractor.resolve(url) } ?: error("${extractor.name}: превышено время ожидания; выберите другой источник")
+        val stream = withTimeoutOrNull(25_000) {
+            if (extractor is AksorExtractor) extractor.resolveEpisode(url, ep.number,
+                if (SourceIds.isYummy(title.slug)) SourceIds.yummyRemote(title.id) else null)
+            else extractor.resolve(url)
+        } ?: error("${extractor.name}: превышено время ожидания; выберите другой источник")
         return player.copy(player = "animelib", hrefs = stream.qualities, headers = stream.headers)
     }
     fun supported(player: Player): Boolean = if (player.source == Libria.SOURCE) true else player.resolverUrl?.let { url -> extractors.any { it.supports(url) } } ?: (player.isNative || player.isKodik)

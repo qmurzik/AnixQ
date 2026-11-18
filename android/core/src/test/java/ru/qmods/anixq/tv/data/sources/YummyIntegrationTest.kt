@@ -48,7 +48,7 @@ class YummyIntegrationTest {
         }
     }
     @Test fun aQualityChangeCanReuseTheCurrentResolvedStreamWithoutNetwork() = runBlocking {
-        val unresolved = Player(Team(-1,"Dub",false),"yummy",null,emptyMap(),emptyList(),null,null,source="yummy",resolverUrl="https://unsupported.example.test/frame")
+        val unresolved = Player(Team(-1,"Dub",false),"yummy",null,emptyMap(),emptyList(),null,null,source="external-test",resolverUrl="https://unsupported.example.test/frame")
         val resolved = unresolved.copy(player="animelib",hrefs=mapOf("720p" to "https://cdn.example.test/video.mp4"))
         val title = Title(1,"1--test"); val episode = Episode(2,"1",null,0)
         assertSame(resolved,AnimeSources.resolve(unresolved,title,episode,cached=resolved))
@@ -99,18 +99,32 @@ class YummyIntegrationTest {
             assertEquals(-45, api.catalog(CatalogQuery(), 1).first.single().id)
         }
     }
-    @Test fun videosRequireBothApplicationAndPersonalAuthorization() = runBlocking {
+    @Test fun publicVideosOnlyOfferAksorWhileAuthenticatedVideosRetainOtherBalancers() = runBlocking {
         MockWebServer().use { server ->
+            val mixed = """{"response":[
+                {"video_id":1,"number":"1","iframe_url":"https://player.aksor.tv/video/a","data":{"player":"Aksor","dubbing":"Dub"}},
+                {"video_id":2,"number":"1","iframe_url":"https://kodikplayer.com/seria/b","data":{"player":"Kodik","dubbing":"Dub"}}
+            ]}"""
             val api = YummyAnime(SourceHttp(), server.url("/").toString().trimEnd('/'))
-            api.applicationToken = "my-app"
-            assertTrue(runCatching { api.videos(45) }.exceptionOrNull()?.message.orEmpty().contains("войдите"))
-            assertEquals(0, server.requestCount)
-            api.userToken = "my-account"
-            server.enqueue(MockResponse().setBody(fixture("videos")))
-            assertEquals(2, api.videos(45).size)
+            api.applicationToken = null
+            server.enqueue(MockResponse().setBody(mixed))
+            assertEquals(listOf(1), api.videos(45).map { it.id })
+            val public = server.takeRequest()
+            assertNull(public.getHeader("Authorization"))
+            assertNull(public.getHeader("X-Application"))
+            api.applicationToken = "my-app"; api.userToken = "my-account"
+            server.enqueue(MockResponse().setBody(mixed))
+            assertEquals(listOf(1, 2), api.videos(45).map { it.id })
             val request = server.takeRequest()
             assertEquals("Bearer my-account", request.getHeader("Authorization"))
             assertEquals("my-app", request.getHeader("X-Application"))
+        }
+    }
+    @Test fun publicVideosDoNotAdvertiseAnonymousKodikPlaceholders() = runBlocking {
+        MockWebServer().use { server ->
+            server.enqueue(MockResponse().setBody("""{"response":[{"video_id":2,"number":"1","iframe_url":"https://kodikplayer.com/seria/b","data":{"player":"Kodik","dubbing":"Dub"}}]}"""))
+            val api = YummyAnime(SourceHttp(), server.url("/").toString().trimEnd('/')).apply { applicationToken = null }
+            assertTrue(runCatching { api.videos(45) }.exceptionOrNull()?.message.orEmpty().contains("войдите"))
         }
     }
     @Test fun restoredOldSessionRefreshesBeforeItsFirstCatalogRead() = runBlocking {
@@ -162,13 +176,14 @@ class YummyIntegrationTest {
             val client = OkHttpClient.Builder().addInterceptor { chain ->
                 chain.proceed(chain.request().newBuilder().url(server.url(chain.request().url.encodedPath)).build())
             }.build()
-            val url = "https://player.aksor.tv/video/test-hash"
+            val hash = JSONObject(fixture("aksor")).getString("id")
+            val url = "https://player.aksor.tv/video/$hash"
             val stream = AksorExtractor(SourceHttp(client)).resolve(url)
             assertEquals(setOf("1080p"), stream.qualities.keys) // live fixture: all other fields are null
             assertEquals(url, stream.headers["Referer"])
             assertNull(stream.headers["Origin"])
             assertTrue(stream.qualities.values.all { !it.contains(" ") && it.contains("%20") })
-            assertEquals("/api/video/test-hash", server.takeRequest().path)
+            assertEquals("/api/video/$hash", server.takeRequest().path)
             assertEquals(1440, qualityHeight("2K")); assertEquals(2160, qualityHeight("4K"))
             assertEquals(Int.MAX_VALUE, qualityHeight("auto"))
         }
@@ -206,6 +221,29 @@ class YummyIntegrationTest {
             assertEquals("session=kodik-test", post.getHeader("Cookie"))
             assertFalse(stream.headers.containsKey("Cookie"))
             assertFalse(stream.headers.containsKey("Authorization"))
+        }
+    }
+    @Test fun kodikDecodesRealWireEncodingOnAndroidAndJvm() = runBlocking {
+        MockWebServer().use { server ->
+            server.enqueue(MockResponse().setBody("""
+                <script src="/assets/js/app.player_single.js"></script>
+                <script>var urlParams = '{"d":"x","d_sign":"s","pd":"p","pd_sign":"s","ref":"","ref_sign":"s"}';
+                videoInfo.type = 'seria'; videoInfo.hash = 'hash'; videoInfo.id = '1';</script>
+            """.trimIndent()))
+            // Both the API endpoint and stream URL use the player's existing Base64 format.
+            val endpoint = java.util.Base64.getEncoder().encodeToString("/ftor".toByteArray())
+            server.enqueue(MockResponse().setBody("atob('$endpoint')"))
+            val direct = "https://cdn.example.test/720.mp4:hls:manifest.m3u8"
+            val encoded = java.util.Base64.getEncoder().withoutPadding().encodeToString(direct.toByteArray()).map { c -> when(c) {
+                in 'A'..'Z' -> ('A'.code + (c.code - 'A'.code + 8) % 26).toChar()
+                in 'a'..'z' -> ('a'.code + (c.code - 'a'.code + 8) % 26).toChar()
+                else -> c
+            } }.joinToString("")
+            server.enqueue(MockResponse().setBody("""{"links":{"720":[{"src":"$encoded"}]}}"""))
+            val client = OkHttpClient.Builder().addInterceptor { chain ->
+                chain.proceed(chain.request().newBuilder().url(server.url(chain.request().url.encodedPath)).build())
+            }.build()
+            assertEquals(direct, KodikExtractor(SourceHttp(client)).resolve("https://kodikplayer.com/seria/test").qualities["720p"])
         }
     }
     @Test fun cvhApiFlowIsIndependentAndDoesNotReuseKodikCookies() = runBlocking {

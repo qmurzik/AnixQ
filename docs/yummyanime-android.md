@@ -25,9 +25,15 @@ Keystore AES/GCM and stored in the application's no-backup directory per profile
 They do not enter Gist, device hand-off or watch-together messages.
 
 `X-Application` is application authorization; it does **not** replace a user's
-bearer token. YummyAnime/Aksor may return placeholders without user authorization.
-Consequently `/anime/{id}/videos` is blocked locally until both are configured.
-Public catalogue availability or HTTP 200/206 is not evidence of episode access.
+bearer token. Some balancers return placeholders without user authorization.
+As verified on 2026-11-18, the public video listing and Aksor video API also expose
+real episodes without either key. Signed-out access is therefore restricted to
+Aksor entries; CVH, Kodik and other Yummy balancers retain the account requirement.
+An account with its own application key retains the complete available list.
+Public Aksor failures recommend login or another balancer. No login check in the
+phone/TV player blocks a publicly listed stream before its extractor can resolve it.
+Public catalogue availability or HTTP 200/206 alone is not evidence of episode access.
+See [the dated Aksor and free-source investigation](free-anime-sources.md).
 
 Only the API client adds YummyAnime credentials, only to its configured API base.
 CDN/extractor requests have an independent client and explicit headers. The user
@@ -89,7 +95,7 @@ controls when a source changes. Quality labels include auto, standard resolution
 
 | Extractor | Implemented behavior | Live verification limit |
 | --- | --- | --- |
-| Aksor | Video API qualities; meta/script API fallback; Referer; DASH/HLS/MP4 URLs | Anonymous API, DASH manifest and first media segment responded; **not an authenticated episode playback test** |
+| Aksor | Video API qualities; episode/hash/title validation; isolated meta/script fallback; Referer; DASH/HLS/MP4 URLs | 2026-11-18: public episode manifest 26:05; video and audio init/media segments fetched; H.264 1080p/AAC verified with ffprobe; **not Android end-to-end playback** |
 | CVH | Playlist → exact episode/voice → video API → MP4 ladder; raw-IP failover host normalization | Playlist and video API responded; no authenticated end-to-end playback |
 | Kodik | Page cookies scoped to endpoint; script endpoint lookup; link decoding | Cookie and stream logic tested with fixtures; authenticated live playback unverified |
 | VK Video | Published MP4/HLS links in supported player pages, optional video_ext page | No live playback verification |
@@ -138,10 +144,11 @@ Android tests cover Gist history round-trip and the D-pad source dialog. The pho
 source-switch test checks the requested Media3 position using local fixture URIs;
 it is not a decoding or live playback test.
 
-`LiveSourcesTest` is opt-in and skipped by default. It requires caller-owned
-`YANI_APPLICATION_TOKEN`, `ANIXQ_YUMMY_USER_TOKEN`, and public iframe URLs in
-`ANIXQ_LIVE_AKSOR`, `ANIXQ_LIVE_CVH`, `ANIXQ_LIVE_KODIK`. Supply only credentials you
-are authorized to use. These checks do not replace watching an episode on a device.
+`LiveSourcesTest` is opt-in and skipped by default. Supply a permitted public iframe
+URL in `ANIXQ_LIVE_AKSOR`, `ANIXQ_LIVE_CVH`, or `ANIXQ_LIVE_KODIK`. These extractor
+checks are independent of Yummy account authorization and do not replace watching
+an episode on a device. Protected Yummy video lists still require the user's own
+session/application credentials in the app.
 
 The full upstream `:app:testDebugUnitTest` additionally includes Paparazzi
 `Screens` tests whose `/fake/titles.json` fixture is absent in this checkout. The

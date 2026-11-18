@@ -251,7 +251,7 @@ fun TitleScreen(nav: Nav, start: Title) {
                     }
                 }
             }
-            if (!ru.qmods.anixq.tv.data.sources.YummyAccount.signedIn) item { Text("Для дополнительных озвучек войдите в YummyAnime в настройках", color = Pal.muted, fontSize = 13.sp, modifier = Modifier.padding(18.dp).clickable { nav.push(SettingsRoute) }) }
+            if (!ru.qmods.anixq.tv.data.sources.YummyAccount.signedIn) item { Text("Aksor доступен без входа, если серия открыта. Для остальных озвучек — вход в YummyAnime в настройках", color = Pal.muted, fontSize = 13.sp, modifier = Modifier.padding(18.dp).clickable { nav.push(SettingsRoute) }) }
             title.episodeInfo?.let { info -> item { Text(info, color = Pal.muted, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 18.dp, vertical = 8.dp)) } }
             detail?.summary?.takeIf { it.isNotBlank() }?.let { summary ->
                 item(key = "about") {

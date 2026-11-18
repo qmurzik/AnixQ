@@ -16,7 +16,7 @@ class YummyAnime(private val http: SourceHttp = SourceHttp(), private val base: 
     var applicationReceipts: YummyApplicationReceipts? = null
     private val pendingApps = HashMap<Int, Int>()
     private val cache = LinkedHashMap<String, Triple<Long, JSONObject, Int>>()
-    /** Only caller-owned application credentials; video access also requires a user session. */
+    /** Only caller-owned application credentials; some providers require a user session. */
     var applicationToken: String? = ru.qmods.anixq.core.BuildConfig.YANI_APPLICATION_TOKEN.takeIf { it.isNotBlank() }
         set(value) { field = value; synchronized(cache) { cache.clear() } }
     @Volatile var userToken: String? = null
@@ -130,9 +130,15 @@ class YummyAnime(private val http: SourceHttp = SourceHttp(), private val base: 
         id to (it.str("title") ?: return@mapNotNull null)
     }.orEmpty()
     suspend fun videos(id: Int): List<YummyVideo> {
-        check(!userToken.isNullOrBlank()) { "Для видео YummyAnime войдите в свой аккаунт в настройках. Без входа источник может возвращать заглушки." }
-        check(!applicationToken.isNullOrBlank()) { "Укажите собственный X-Application в настройках YummyAnime" }
-        return parseVideos(get("/anime/$id/videos"))
+        val videos = parseVideos(get("/anime/$id/videos"))
+        if (!userToken.isNullOrBlank() && !applicationToken.isNullOrBlank()) return videos
+        // Public Aksor endpoints currently expose real episodes. Other balancers may serve
+        // anonymous placeholders: keep their existing account requirement, never borrow a key.
+        val public = videos.filter { ru.qmods.anixq.tv.data.sources.extractors.AksorExtractor.supportsUrl(it.url) }
+        check(public.isNotEmpty() || videos.isEmpty()) {
+            "Для этих озвучек YummyAnime войдите в аккаунт в настройках. Без входа балансеры могут возвращать заглушки."
+        }
+        return public
     }
     override suspend fun episodes(id: Int): List<Episode> = videos(id).groupBy { it.number.toBigDecimal().stripTrailingZeros().toPlainString() }.entries
         .sortedBy { it.key.toDoubleOrNull() ?: Double.MAX_VALUE }.mapIndexed { index, (number, videos) ->

@@ -170,7 +170,7 @@ fun TitleScreen(nav: Nav, start: Title) {
                     Text(it, fontSize = 15.sp, color = C.muted, maxLines = 1, modifier = Modifier.padding(top = 4.dp))
                 }
                 Spacer(Modifier.height(12.dp))
-                if (!ru.qmods.anixq.tv.data.sources.YummyAccount.signedIn) Text("Дополнительные озвучки YummyAnime: войдите в аккаунт в настройках", fontSize = 13.sp, color = C.muted)
+                if (!ru.qmods.anixq.tv.data.sources.YummyAccount.signedIn) Text("Aksor доступен без входа, если серия открыта. Для остальных озвучек — вход в YummyAnime в настройках", fontSize = 13.sp, color = C.muted)
                 MetaLine(title, title.episodeInfo ?: episodes?.takeIf { it.isNotEmpty() }?.let { "${it.size} эп." })
                 detail?.genres?.takeIf { it.isNotEmpty() }?.let {
                     Text(it.take(5).joinToString(" · "), fontSize = 14.sp, color = C.muted, modifier = Modifier.padding(top = 8.dp))

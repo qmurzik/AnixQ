@@ -2,7 +2,7 @@
 // Modified for AnixQ contracts, cancellable HTTP and host-scoped session cookies.
 package ru.qmods.anixq.tv.data.sources.extractors
 
-import android.util.Base64
+import okio.ByteString.Companion.decodeBase64
 import okhttp3.FormBody
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import org.json.JSONObject
@@ -29,7 +29,7 @@ class KodikExtractor(private val http: SourceHttp) : StreamExtractor {
             .filter { it.matches(page) }.joinToString("; ") { "${it.name}=${it.value}" }
         val js = http.request(scriptUrl.toString(), headers).text
         val path = Regex("""atob\(["']([A-Za-z0-9+/=]+)["']\)""").findAll(js).mapNotNull {
-            runCatching { String(Base64.decode(it.groupValues[1], Base64.DEFAULT)) }.getOrNull()
+            it.groupValues[1].decodeBase64()?.utf8()
         }.firstOrNull { it.startsWith("/") && !it.startsWith("//") && it.length <= 10 } ?: "/ftor"
         val endpoint = page.resolve(path) ?: error("Kodik: неверный API")
         val body = FormBody.Builder().apply {
@@ -60,6 +60,6 @@ class KodikExtractor(private val http: SourceHttp) : StreamExtractor {
             in 'a'..'z' -> ('a'.code + (c.code - 'a'.code + 18) % 26).toChar()
             else -> c
         } }.joinToString("")
-        String(Base64.decode(rotated + "=".repeat((4 - rotated.length % 4) % 4), Base64.DEFAULT))
+        (rotated + "=".repeat((4 - rotated.length % 4) % 4)).decodeBase64()?.utf8()
     }.getOrNull()
 }

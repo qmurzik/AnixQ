@@ -274,12 +274,6 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
                     if (generation == loadGeneration && episode?.id == ep.id) players = (players + extra).distinctBy { "${it.source}:${it.team.id}" }
                 }
                 if (list.isEmpty()) { message = "Для этой серии нет видео"; failed = true; return@launch }
-                val requested = list.firstOrNull { it.team.id == teamId }
-                val needsYummyLogin = requested?.let { it.isYummy && it.canResolve }
-                    ?: (previousChoice?.isYummy == true || (previousChoice == null && Store.prefersYummy(title)))
-                if (needsYummyLogin && !ru.qmods.anixq.tv.data.sources.YummyAccount.signedIn) {
-                    message = "Войдите в YummyAnime в настройках или выберите AnimeLib"; failed = true; return@launch
-                }
                 val forTeam = { id: Int? -> list.filter { it.team.id == id }.ifEmpty { list.filter { previousChoice != null && it.source == previousChoice.source && it.balancer == previousChoice.balancer && PlaybackLabels.dubKey(it.team) == PlaybackLabels.dubKey(previousChoice.team) } } }
                 val preferredChoice = Store.playbackChoice(title, list)
                 val favourite = list.firstOrNull { p -> Store.dubs.any { it.equals(p.team.name, true) } }?.team?.id

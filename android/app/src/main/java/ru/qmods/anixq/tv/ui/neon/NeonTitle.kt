@@ -153,7 +153,7 @@ fun NeonTitle(nav: Nav, start: Title) {
                 }
             }
             error?.let { m -> item("error") { NMessage("Линия закрыта", m, "Повторить") { attempt++ } } }
-            if (!YummyAccount.signedIn) item("yummy") { Text("Больше озвучек YummyAnime — после входа в настройках", color = N.muted, fontSize = 11.sp, modifier = Modifier.padding(start = 52.dp, bottom = 14.dp)) }
+            if (!YummyAccount.signedIn) item("yummy") { Text("Aksor доступен без входа, если серия открыта. Для остальных озвучек — вход в YummyAnime в настройках", color = N.muted, fontSize = 11.sp, modifier = Modifier.padding(start = 52.dp, bottom = 14.dp)) }
             episodes?.takeIf { it.isNotEmpty() }?.let { eps -> item("line") {
                 MetroLine(title, eps, plan?.episode?.id, scope, color, onPlay = { nav.play(title, it.id, teamId) }, onMenu = { menuEpisode = it })
             } }

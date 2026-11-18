@@ -145,7 +145,7 @@ fun PanoramaTitle(nav: Nav, start: Title) {
         }
         error?.let { message -> item("error") { PMessage("Источник сообщил об ошибке", message, "Повторить") { attempt++ } } }
         if (!YummyAccount.signedIn) item("yummy-hint") {
-            Text("Больше озвучек YummyAnime — после входа в настройках", color = P.muted, fontSize = 11.sp, modifier = Modifier.padding(start = 52.dp, bottom = 16.dp))
+            Text("Aksor доступен без входа, если серия открыта. Для остальных озвучек — вход в YummyAnime в настройках", color = P.muted, fontSize = 11.sp, modifier = Modifier.padding(start = 52.dp, bottom = 16.dp))
         }
         episodes?.takeIf { it.isNotEmpty() }?.let { eps -> item("episodes") {
             PanoramaEpisodes(title, eps, plan?.episode?.id, focusScope, onPlay = { nav.play(title, it.id, teamId) }, onMenu = { menuEpisode = it })

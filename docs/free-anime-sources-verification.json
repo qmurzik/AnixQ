@@ -1,0 +1,141 @@
+{
+  "checked_at": "2026-11-18",
+  "base_commit": "3ce5345325a1abde8b8400da994034609fe6d62d",
+  "access": {
+    "paid_subscription": false,
+    "borrowed_tokens": false,
+    "yummy_login_used": false
+  },
+  "aksor": {
+    "implemented": true,
+    "api": "https://player.aksor.tv/api/video/dae2edcc93409223f9e5f940895acf27",
+    "title_id": 45,
+    "episode": "1",
+    "dub": "StudioBand",
+    "format": "DASH",
+    "duration_seconds": 1565,
+    "quality": "1080p",
+    "video_codec": "h264",
+    "width": 1920,
+    "height": 1080,
+    "audio_codec": "aac",
+    "audio_sample_rate": 48000,
+    "audio_channels": 2,
+    "manifest_http": 200,
+    "media_range_http": 206,
+    "full_first_segments_inspected": true,
+    "android_full_episode_verified": false,
+    "range_probe_later_http": 503
+  },
+  "reserves": [
+    {
+      "site": "https://anime-go.org",
+      "catalog_http": 200,
+      "search_http": 200,
+      "public_player_api": "POST /api/player id=4505",
+      "player_api_http": 200,
+      "sample_dubs": 9,
+      "player": "Kodik",
+      "qualities": [
+        "360p",
+        "480p",
+        "720p"
+      ],
+      "native_format": "HLS",
+      "playlist_http": 200,
+      "playlist_seconds": 1446.411,
+      "first_segment_http": 200,
+      "video_codec": "h264",
+      "width": 1280,
+      "height": 720,
+      "audio_codec": "aac",
+      "implemented_catalog": false
+    },
+    {
+      "site": "https://animego.online",
+      "catalog_http": 200,
+      "public_player_api": "GET /engine/ajax/controller.php?mod=player&id=63&slot=1",
+      "player_api_http": 200,
+      "player": "Kodik serial iframe",
+      "other_observed_player": "Alloha",
+      "direct_playback_verified": false,
+      "implemented_catalog": false
+    },
+    {
+      "site": "https://animevost.org",
+      "api": "https://api.animevost.org/v1",
+      "catalog_http": 200,
+      "playlist_http": 200,
+      "sample_id": 4056,
+      "sample_episodes": 8,
+      "native_format": "MP4",
+      "media_range_http": 206,
+      "mp4_signature_verified": true,
+      "implemented_catalog": false
+    },
+    {
+      "site": "https://animego.org",
+      "http": 500,
+      "implemented_catalog": false
+    },
+    {
+      "site": "https://animego.me",
+      "http": 500,
+      "implemented_catalog": false
+    },
+    {
+      "site": "https://v1.animego.bz",
+      "http": 500,
+      "implemented_catalog": false
+    }
+  ],
+  "limits": [
+    "Point-in-time availability; Aksor CDN byte-range probe intermittently returned 503",
+    "No complete Android episode/device playback validation",
+    "CVH/Kodik Yummy access still requires own account and application key",
+    "AnimeGO and AnimeVost catalogues researched only, not added to navigation"
+  ],
+  "validation": {
+    "gradle": "8.14.3",
+    "jdk": 17,
+    "core": {
+      "tests": 52,
+      "passed": 51,
+      "skipped": 1,
+      "failures": 0
+    },
+    "tv_selected_regressions": {
+      "tests": 13,
+      "passed": 13,
+      "failures": 0
+    },
+    "mobile": {
+      "tests": 5,
+      "passed": 5,
+      "failures": 0
+    },
+    "debug_builds": [
+      "app:assembleDebug",
+      "mobile:assembleDebug"
+    ],
+    "live_extractors": {
+      "Aksor": {
+        "manifest_http": 200,
+        "quality": [
+          "1080p"
+        ]
+      },
+      "Kodik_from_AnimeGO": {
+        "playlist_http": 200,
+        "quality": [
+          "360p",
+          "480p",
+          "720p"
+        ]
+      },
+      "CVH": "skipped: no caller-supplied iframe"
+    },
+    "all_tv_tests_run": false,
+    "physical_device_playback_tested": false
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "id": "dae2edcc93409223f9e5f940895acf27",
+  "anime_id": 45,
+  "episode": "1",
+  "studio_name": "StudioBand",
+  "is_subtitle": false,
+  "language": "ru",
+  "opening_start": 0,
+  "opening_length": 0,
+  "ending_start": 0,
+  "ending_length": 0,
+  "date": 1728949799,
+  "qualities": {
+    "q1080": "https://cdn.example.test/static13/video/a45/Studio Band/01/1080.mpd",
+    "q360": null,
+    "q480": null,
+    "q720": null,
+    "q2k": null,
+    "q4k": null
+  },
+  "next_ep_id": "217019fad485b1737f69f6cd85d90b85"
+}

@@ -356,7 +356,7 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
         val p = player ?: return
         if (exo?.effectsActive == true && exo?.effectFailure == true) {
             say("Обработка изображения отключена после ошибки GPU")
-            load(index, keepPos = maxOf(pos, exo?.position ?: 0.0))
+            load(index, keepPos = maxOf(pos, exo?.position ?: 0.0), qualityKey = quality)
             return
         }
         if (p.isYummy) {

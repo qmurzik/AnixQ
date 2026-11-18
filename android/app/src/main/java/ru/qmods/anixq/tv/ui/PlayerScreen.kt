@@ -197,7 +197,7 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
         Anime4K.supported = null
         compare = false; Upscaler.split = 0f; announced = ""; Upscaler.lastInfo = ""
         // A new effect chain needs the pipeline rebuilt: reload at the same moment.
-        if (native && exo != null) load(index, keepPos = pos)
+        if (native && exo != null) load(index, keepPos = pos, qualityKey = quality)
         say(if (mode == 0) "Апскейлер выключен" else "Апскейлер: ${upscaleMode(mode).name}")
     }
     /** The upscaler broke playback on this box: turn it off and restart from the same moment. */
@@ -206,7 +206,7 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
         android.util.Log.w("AnixQ", "upscaler off: $why")
         upscale = 0; Store.upscale = 0; compare = false; Upscaler.split = 0f
         say("Апскейлер не заработал на этой приставке и выключен ($why)")
-        load(index, keepPos = maxOf(pos, exo?.position ?: 0.0))
+        load(index, keepPos = maxOf(pos, exo?.position ?: 0.0), qualityKey = quality)
     }
 
     private var announced = ""
@@ -223,7 +223,7 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
         exo?.allowVideoEffects()
         ColorTuning.set(p)
         // Neutral ↔ tuned needs the GPU pipeline rebuilt: reload at the same moment; otherwise it's live.
-        if (native && exo?.colorNeedsReload() == true) load(index, keepPos = pos)
+        if (native && exo?.colorNeedsReload() == true) load(index, keepPos = pos, qualityKey = quality)
         say(if (p.isNeutral) "Цвет как в оригинале" else "Цвет изменён")
     }
 

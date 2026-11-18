@@ -115,5 +115,39 @@
   ],
   "final_additional_runtime_source_hashes": {
     "android/core/src/main/java/ru/qmods/anixq/tv/ui/VideoEffectErrors.kt": "ab07eb542a9f6d5bebee5ce428df54fb12cac1f14a891cbea0a98d3ac2daf4f4"
+  },
+  "published_release": {
+    "version": "1.0.88",
+    "code": 88,
+    "run": 44383120922,
+    "source": "e1d82627bfa56b16f4893d6bdf0325b7bf699c84",
+    "packages": {
+      "tv": {
+        "package": "ru.qmods.anixq.tv",
+        "bytes": 3367032,
+        "sha256": "dbb1ea2d2885f817cedbaefb72c7362447769bc86cafce4dd040ac3273ffeada",
+        "certificate_sha256": "fea95b7474d396516665375c40637f1fe71c84b3af9d75aca2d4635fcc47c2a8",
+        "url": "https://github.com/qmurzik/AnixQ/releases/download/tv-v1.0.88/AnixQ-TV.apk",
+        "manifest": {
+          "code": 88,
+          "name": "1.0.88",
+          "notes": "Mi Box: совместимость видео с Android 14 и восстановление после ошибок видеодекодера",
+          "apk": "https://github.com/qmurzik/AnixQ/releases/download/tv-v1.0.88/AnixQ-TV.apk"
+        }
+      },
+      "android": {
+        "package": "ru.qmods.anixq.mobile",
+        "bytes": 4194880,
+        "sha256": "39182422a814a856e7c01f2458a1a77eff4ebe30f7eb370fa38bd9cba1a23e1e",
+        "certificate_sha256": "fea95b7474d396516665375c40637f1fe71c84b3af9d75aca2d4635fcc47c2a8",
+        "url": "https://github.com/qmurzik/AnixQ/releases/download/android-v1.0.88/AnixQ.apk",
+        "manifest": {
+          "code": 88,
+          "name": "1.0.88",
+          "notes": "Mi Box: совместимость видео с Android 14 и восстановление после ошибок видеодекодера",
+          "apk": "https://github.com/qmurzik/AnixQ/releases/download/android-v1.0.88/AnixQ.apk"
+        }
+      }
+    }
   }
 }

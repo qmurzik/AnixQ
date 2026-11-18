@@ -107,3 +107,16 @@ Local final regressions: core 55 tests (52 passed, three opt-in source-network
 checks skipped), selected TV source/D-pad/Panorama/video-error tests 16 passed, phone tests
 five passed. Total: **73 unit/UI checks passed, three skipped**, plus six actual
 GPU/native checks. Both debug APKs and the instrumentation APK assembled.
+
+## Published build
+
+**1.0.88**, source `e1d82627bfa56b16f4893d6bdf0325b7bf699c84`, release workflow
+44383120922 succeeded. TV and phone release APKs were downloaded and independently
+checked: package/version 88 / 1.0.88, original certificate
+`fea95b7474d396516665375c40637f1fe71c84b3af9d75aca2d4635fcc47c2a8`,
+versioned tags targeting the build's source, published asset SHA-256 digests, and
+both rolling updater manifests. The FSR shader and MIT licence are present; the
+test clip is excluded from release APKs. APK hashes are in the verification JSON.
+
+Install through the existing **Settings → Updates** flow, then choose
+**Player → More → Upscaler → FSR 1**. It updates the existing app in place.

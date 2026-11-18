@@ -517,16 +517,19 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
                 upscaleFailed("видео не запускалось 15 с")
             }
         }
-        if (upscaleMode(upscale).chain.any { it != "lanczos" && it != "rcas" && it != "easu" } && Anime4K.supported == false) {
+        if (upscaleMode(upscale).chain.any { it != "lanczos" && it != "rcas" && it != "easu" && it != "sgsr" } && Anime4K.supported == false) {
             say("Нейросеть не поддерживается этой приставкой — включён FSR 1")
             setUpscaleMode(16)
         }
         // The box can't keep up with the upscaler: switch it off rather than stutter.
         if (native && upscale > 0 && playing && (exo?.recentDrops ?: 0) > 45) {
-            val neural = upscaleMode(upscale).chain.any { it != "lanczos" && it != "rcas" && it != "easu" }
+            val neural = upscaleMode(upscale).chain.any { it != "lanczos" && it != "rcas" && it != "easu" && it != "sgsr" }
             if (neural) {
                 setUpscaleMode(16)
                 say("Нейросеть не успевает обрабатывать кадры — включён более лёгкий FSR 1")
+            } else if (upscale == 16 || upscale == 2) {
+                setUpscaleMode(17)
+                say("FSR не успевает — включён самый лёгкий SGSR")
             } else {
                 setUpscaleMode(0)
                 say("Апскейлер выключен: приставке не хватает мощности (пропуск кадров)")

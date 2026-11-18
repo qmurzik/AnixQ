@@ -25,3 +25,16 @@ object Fsr1 {
         return Size(outW, outH)
     }
 }
+
+/**
+ * Snapdragon GSR 1: one pass, 3 taps on flat areas and 12 only on edges — the lightest real ×2 upscaler,
+ * for boxes where FSR's two passes drop frames. Same output sizing as FSR.
+ */
+@UnstableApi
+object Sgsr {
+    class Scale(private val targetHeight: Int) : GlEffect {
+        override fun toGlShaderProgram(context: Context, useHdr: Boolean): BaseGlShaderProgram =
+            Upscaler.Program(context.assets.open("sgsr/sgsr1.glsl").bufferedReader().use { it.readText() },
+                useHdr, reportScale = true) { w, h -> Fsr1.outputSize(w, h, targetHeight) }
+    }
+}

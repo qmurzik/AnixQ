@@ -9,6 +9,7 @@ data class UpscaleMode(val id: Int, val name: String, val hint: String, val chai
 
 val UPSCALE_MODES = listOf(
     UpscaleMode(0, "Выключен", "как есть", emptyList()),
+    UpscaleMode(16, "FSR 1", "EASU до ×2 + RCAS; без нейросети", listOf("easu", "rcas")),
     UpscaleMode(3, "Anime4K S", "нейросеть ×2 — быстро и чисто, лучший выбор", listOf("Upscale_CNN_x2_S")),
     UpscaleMode(5, "Anime4K M", "нейросеть побольше — точнее", listOf("Upscale_CNN_x2_M"), heavy = true),
     UpscaleMode(6, "Anime4K L", "самая точная сеть, нужна мощная приставка", listOf("Upscale_CNN_x2_L"), heavy = true),
@@ -27,3 +28,15 @@ val UPSCALE_MODES = listOf(
 )
 
 fun upscaleMode(id: Int) = UPSCALE_MODES.firstOrNull { it.id == id } ?: UPSCALE_MODES[0]
+
+/** Same effect factory is used by playback and instrumented GPU checks. */
+@androidx.media3.common.util.UnstableApi
+fun upscaleEffects(id: Int, outputHeight: Int): List<androidx.media3.effect.GlEffect> {
+    val chain = upscaleMode(id).chain
+    return chain.mapIndexed { i, step -> when (step) {
+        "easu" -> Fsr1.Scale(outputHeight)
+        "lanczos" -> Upscaler.Scale(outputHeight)
+        "rcas" -> Upscaler.Sharpen()
+        else -> Anime4K.Effect("anime4k/Anime4K_$step.glsl", outputHeight, compare = i == chain.lastIndex)
+    } }
+}

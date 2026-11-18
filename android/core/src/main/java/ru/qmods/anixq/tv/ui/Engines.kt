@@ -46,11 +46,12 @@ class ExoEngine(private val context: Context, private val onError: (String) -> U
                 .build()
     }
 
-    val exo: ExoPlayer = ExoPlayer.Builder(context, renderers)
+    private fun newPlayer(): ExoPlayer = ExoPlayer.Builder(context, renderers)
         .setHandleAudioBecomingNoisy(true)
-        // Start after ~1 s of video instead of 2.5 s; keep up to a minute buffered for shaky Wi-Fi.
         .setLoadControl(androidx.media3.exoplayer.DefaultLoadControl.Builder().setBufferDurationsMs(15_000, 60_000, 1_000, 2_500).build())
         .build()
+    var exo: ExoPlayer = newPlayer(); private set
+    var effectFailure = false; private set
 
     val view: PlayerView = PlayerView(context).apply {
         useController = false
@@ -121,32 +122,44 @@ class ExoEngine(private val context: Context, private val onError: (String) -> U
     private fun applyUpscale(mode: Int) {
         val color = !ColorTuning.value.isNeutral
         if (mode == appliedMode && color == appliedColor) return
-        exo.stop()
+        // Empty effects still enable Media3's VideoGraph. A fresh player is needed
+        // to return to direct codec -> Surface playback after a GL failure.
+        if (exo.mediaItemCount > 0 || appliedMode != 0 || appliedColor) rebuildPlayer()
         appliedColor = color
-        setUpscale(mode)
+        Upscaler.lastInfo = ""
+        Upscaler.lastFailure = null
+        val effects: List<androidx.media3.common.Effect> = upscaleEffects(mode, screenHeight) +
+            if (color) listOf(ColorTuning) else emptyList()
+        // Do not call setVideoEffects(emptyList()): that would re-enable the GL path.
+        if (effects.isNotEmpty()) exo.setVideoEffects(effects)
         appliedMode = mode
+    }
+
+    private fun rebuildPlayer() {
+        val parameters = exo.playbackParameters
+        val tracks = exo.trackSelectionParameters
+        val volume = exo.volume
+        view.player = null
+        exo.release()
+        exo = newPlayer()
+        exo.playbackParameters = parameters
+        exo.trackSelectionParameters = tracks
+        exo.volume = volume
+        attachListeners()
+        view.player = exo
+        queuedUrl = null; queuedHeaders = null
+        effectFailure = false
+        recentDrops = 0; dropWindowStart = 0L
+        automaticQuality = null
     }
 
     /** True when a colour change needs the pipeline rebuilt (neutral ↔ tuned); otherwise it applies live. */
     fun colorNeedsReload(): Boolean = (!ColorTuning.value.isNeutral) != appliedColor
 
-    private fun setUpscale(mode: Int) {
-        val chain = upscaleMode(mode).chain
-        val effects: List<androidx.media3.common.Effect> = chain.mapIndexed { i, step ->
-            when (step) {
-                "rcas" -> Upscaler.Sharpen()
-                "lanczos" -> Upscaler.Scale(screenHeight)
-                else -> Anime4K.Effect("anime4k/Anime4K_$step.glsl", screenHeight, compare = i == chain.lastIndex)
-            }
-        } + (if (appliedColor) listOf(ColorTuning) else emptyList())
-        if (mode == 0) Upscaler.lastInfo = ""
-        if (effects.isEmpty() && mode == 0) { runCatching { exo.setVideoEffects(emptyList()) }; return }
-        runCatching { exo.setVideoEffects(effects) }.onFailure { android.util.Log.w("AnixQ", "upscaler: ${it.message}") }
-    }
-
     /** Dropped frames in the last ~10 s — the upscaler turns itself off if the box can't keep up. */
     @Volatile var recentDrops = 0; private set
     private var dropWindowStart = 0L
+    private var firstFrameAt = 0L
 
     fun setSubtitles(on: Boolean) {
         exo.trackSelectionParameters = exo.trackSelectionParameters.buildUpon()
@@ -155,12 +168,34 @@ class ExoEngine(private val context: Context, private val onError: (String) -> U
 
     init {
         runCatching { ColorTuning.load(); SoundMode.load() }
+        attachListeners()
+    }
+
+    private fun attachListeners() {
+        val observed = exo
         exo.addListener(object : Player.Listener {
-            override fun onPlayerError(error: PlaybackException) { onError(error.errorCodeName) }
-            override fun onRenderedFirstFrame() { firstFrame = true }
+            override fun onPlayerError(error: PlaybackException) {
+                if (observed !== exo) return
+                effectFailure = error.errorCode == PlaybackException.ERROR_CODE_VIDEO_FRAME_PROCESSOR_INIT_FAILED ||
+                    error.errorCode == PlaybackException.ERROR_CODE_VIDEO_FRAME_PROCESSING_FAILED ||
+                    generateSequence(error as Throwable?) { it.cause }.take(12).any {
+                        it is androidx.media3.common.VideoFrameProcessingException || it is androidx.media3.common.util.GlUtil.GlException
+                    }
+                android.util.Log.w("AnixQ", "native video failure; mode=$appliedMode; effects=$effectFailure", error)
+                onError(error.errorCodeName)
+            }
+            override fun onRenderedFirstFrame() {
+                if (observed !== exo) return
+                firstFrame = true
+                firstFrameAt = android.os.SystemClock.elapsedRealtime()
+                recentDrops = 0; dropWindowStart = System.currentTimeMillis()
+            }
         })
         exo.addAnalyticsListener(object : androidx.media3.exoplayer.analytics.AnalyticsListener {
             override fun onDroppedVideoFrames(eventTime: androidx.media3.exoplayer.analytics.AnalyticsListener.EventTime, droppedFrames: Int, elapsedMs: Long) {
+                // Decoder seeks and first-time shader compilation can drop startup frames.
+                // Judge steady playback after warm-up, not that initial burst.
+                if (observed !== exo || !firstFrame || android.os.SystemClock.elapsedRealtime() - firstFrameAt < 3_000) return
                 val now = System.currentTimeMillis()
                 if (now - dropWindowStart > 10_000) { dropWindowStart = now; recentDrops = 0 }
                 recentDrops += droppedFrames
@@ -200,6 +235,8 @@ class ExoEngine(private val context: Context, private val onError: (String) -> U
         setAutomaticQuality(ru.qmods.anixq.tv.data.Store.automaticQuality)
         applyUpscale(upscale)
         firstFrame = false
+        firstFrameAt = 0L
+        effectFailure = false
         loadedAt = System.currentTimeMillis()
         currentHeaders = headers.toMap()
         if (url == queuedUrl && headers == queuedHeaders && exo.mediaItemCount > 1) {

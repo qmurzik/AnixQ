@@ -12,7 +12,7 @@ import androidx.media3.effect.GlShaderProgram
 import kotlin.math.roundToInt
 
 /**
- * Real-time video upscaler on the TV's GPU, two passes per frame (the FSR 1.0 recipe):
+ * Real-time video upscaler on the TV's GPU, two passes per frame:
  *  1. Lanczos-2 upscale from the stream's size (480p / 720p) to the screen's, with anti-ringing
  *     (result clamped to the 2×2 source neighbourhood, so line art gets no halos).
  *  2. RCAS — Robust Contrast-Adaptive Sharpening from AMD FidelityFX: sharpens edges in proportion
@@ -23,22 +23,23 @@ import kotlin.math.roundToInt
 object Upscaler {
     @Volatile var split = 0f            // 0 = off; 0.5 = left half untouched
     @Volatile var sharpness = 0.5f      // RCAS strength in "stops" (0 = max, 2 = soft)
+    @Volatile var lastFailure: String? = null
     @Volatile var lastInfo = ""         // e.g. "720p → 1080p"
 
     /** Pass 1: Lanczos-2 upscale to [maxHeight] (keeps aspect). No-op if the video is already that big. */
     class Scale(private val maxHeight: Int) : GlEffect {
-        override fun toGlShaderProgram(context: Context, useHdr: Boolean): GlShaderProgram = Program(SCALE_FS) { w, h ->
-            if (h >= maxHeight) { lastInfo = "${h}p (уже в разрешении экрана)"; Size(w, h) }
-            else { val out = Size((w * maxHeight.toFloat() / h).roundToInt() and 1.inv(), maxHeight); lastInfo = "${h}p → ${maxHeight}p"; out }
+        override fun toGlShaderProgram(context: Context, useHdr: Boolean): GlShaderProgram = Program(SCALE_FS, useHdr, reportScale = true) { w, h ->
+            if (h >= maxHeight) { Size(w, h) }
+            else { val out = Size((w * maxHeight.toFloat() / h).roundToInt() and 1.inv(), maxHeight); out }
         }
     }
 
     /** Pass 2: RCAS sharpening at output resolution. */
     class Sharpen : GlEffect {
-        override fun toGlShaderProgram(context: Context, useHdr: Boolean): GlShaderProgram = Program(RCAS_FS) { w, h -> Size(w, h) }
+        override fun toGlShaderProgram(context: Context, useHdr: Boolean): GlShaderProgram = Program(RCAS_FS, useHdr) { w, h -> Size(w, h) }
     }
 
-    private class Program(fragment: String, private val sizeFor: (Int, Int) -> Size) : BaseGlShaderProgram(false, 1) {
+    internal class Program(fragment: String, useHdr: Boolean, private val reportScale: Boolean = false, private val sizeFor: (Int, Int) -> Size) : BaseGlShaderProgram(useHdr, 1) {
         private val program = GlProgram(VS, fragment)
         private var inW = 1; private var inH = 1; private var outW = 1; private var outH = 1
 
@@ -60,6 +61,9 @@ object Upscaler {
             program.setFloatsUniformIfPresent("uSplit", floatArrayOf(split))
             program.bindAttributesAndUniforms()
             GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4)
+            GlUtil.checkGlError()
+            if (reportScale) lastInfo = "${inH}p → ${outH}p"
+            else if (lastInfo.isEmpty()) lastInfo = "Резкость · ${inH}p"
         }
 
         override fun release() { super.release(); runCatching { program.delete() } }

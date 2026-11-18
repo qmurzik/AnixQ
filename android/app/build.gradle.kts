@@ -15,6 +15,7 @@ android {
         applicationId = "ru.qmods.anixq.tv"
         minSdk = 23
         targetSdk = 35
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         versionCode = buildNumber
         versionName = "1.0.$buildNumber"
     }
@@ -54,6 +55,9 @@ android {
 }
 
 dependencies {
+    androidTestImplementation("androidx.test:runner:1.6.2")
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
+    androidTestImplementation("androidx.test:core-ktx:1.6.1")
     implementation(project(":core"))
     val composeBom = platform("androidx.compose:compose-bom:2024.12.01")
     implementation(composeBom)

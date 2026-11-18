@@ -89,18 +89,18 @@ object Anime4K {
     /** One bundled shader file (Restore or Upscale) as a Media3 effect. */
     class Effect(private val asset: String, private val outputHeight: Int, private val compare: Boolean = false) : GlEffect {
         override fun toGlShaderProgram(context: Context, useHdr: Boolean): GlShaderProgram =
-            Program(parse(context.assets.open(asset).bufferedReader().readText()), outputHeight, asset, compare)
+            Program(context, parse(context.assets.open(asset).bufferedReader().use { it.readText() }), outputHeight, asset, compare, useHdr)
     }
 
-    private class Program(private val passes: List<Pass>, private val outputHeight: Int, private val name: String,
-                          private val compareCapable: Boolean) : BaseGlShaderProgram(false, 1) {
+    private class Program(private val context: Context, private val passes: List<Pass>, private val outputHeight: Int, private val name: String,
+                          private val compareCapable: Boolean, private val useHdr: Boolean) : BaseGlShaderProgram(useHdr, 1) {
         private val programs = ArrayList<GlProgram>()
         private val sizes = HashMap<String, Pair<Int, Int>>()
         private val textures = HashMap<String, Int>()      // saved layer -> texture id
         private val fbos = HashMap<String, Int>()
         private val passSize = ArrayList<Pair<Int, Int>>()
         private var enabled = true
-        private var copy: GlProgram? = null
+        private var fallback: BaseGlShaderProgram? = null
         private var outSize = Size(1, 1)
 
         override fun configure(inputWidth: Int, inputHeight: Int): Size {
@@ -109,7 +109,7 @@ object Anime4K {
             val outW = outputHeight * inputWidth / maxOf(1, inputHeight)
             sizes["OUTPUT"] = outW to outputHeight
             // Can this GPU render to half-float textures? (ES 3.2 core, or EXT_color_buffer_half_float / _float)
-            if (supported == null) {
+            run {
                 val ver = GLES20.glGetString(GLES20.GL_VERSION) ?: ""
                 val ext = GLES20.glGetString(GLES20.GL_EXTENSIONS) ?: ""
                 supported = ver.contains("OpenGL ES 3") && (ver.contains("ES 3.2") || ext.contains("GL_EXT_color_buffer_half_float") || ext.contains("GL_EXT_color_buffer_float"))
@@ -118,30 +118,49 @@ object Anime4K {
             sizes["HOOKED"] = inputWidth to inputHeight
             enabled = supported == true && passes.all { p -> p.whenExpr?.let { rpn(it, sizes) > 0.0 } ?: true }
             var finalSize = inputWidth to inputHeight
-            if (enabled) {
+            if (enabled) try {
                 passSize.clear()
+                var allocatedBytes = 0L
+                val maxTexture = IntArray(1).also { GLES20.glGetIntegerv(GLES20.GL_MAX_TEXTURE_SIZE, it, 0) }[0]
                 for ((i, p) in passes.withIndex()) {
                     val s = (p.width?.let { rpn(it, sizes).toInt() } ?: inputWidth) to (p.height?.let { rpn(it, sizes).toInt() } ?: inputHeight)
+                    check(s.first in 1..maxTexture && s.second in 1..maxTexture) { "GPU texture limit: ${s.first}×${s.second}" }
+                    if (i != passes.lastIndex) allocatedBytes += s.first.toLong() * s.second * 8
+                    check(allocatedBytes <= 96L * 1024 * 1024) { "Anime4K intermediate buffers exceed 96 MiB" }
                     passSize += s
                     if (i == passes.lastIndex) finalSize = s
                     else { sizes[p.save] = s; allocate("#$i", s) }   // own texture per pass: a pass may read the layer it overwrites
                 }
+                ensurePrograms()
+            } catch (e: Exception) {
+                supported = false; enabled = false
+                Upscaler.lastFailure = "Anime4K: ${e.message}"
+                Log.w("AnixQ", "anime4k $name: configuration failed", e)
             }
-            outSize = Size(finalSize.first, finalSize.second)
-            Upscaler.lastInfo = if (enabled) "${inputHeight}p → ${finalSize.second}p (нейросеть)" else Upscaler.lastInfo
+            if (!enabled) {
+                releaseTargets()
+                // A GLES 3 copy shader cannot recover on a GLES 2 device. Use the compatible
+                // EASU implementation instead; the TV UI reports the fallback explicitly.
+                repeat(8) { if (GLES20.glGetError() == GLES20.GL_NO_ERROR) return@repeat }
+                val safe = fallback ?: Fsr1.Scale(outputHeight).toGlShaderProgram(context, useHdr).also { fallback = it }
+                outSize = safe.configure(inputWidth, inputHeight)
+            } else outSize = Size(finalSize.first, finalSize.second)
             return outSize
         }
 
         private fun allocate(name: String, s: Pair<Int, Int>) {
             val t = IntArray(1); GLES20.glGenTextures(1, t, 0)
+            textures[name] = t[0]
             GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, t[0])
             GLES30.glTexImage2D(GLES30.GL_TEXTURE_2D, 0, GLES30.GL_RGBA16F, s.first, s.second, 0, GLES30.GL_RGBA, GLES30.GL_HALF_FLOAT, null)
             for ((k, v) in listOf(GLES20.GL_TEXTURE_MIN_FILTER to GLES20.GL_NEAREST, GLES20.GL_TEXTURE_MAG_FILTER to GLES20.GL_NEAREST,
                     GLES20.GL_TEXTURE_WRAP_S to GLES20.GL_CLAMP_TO_EDGE, GLES20.GL_TEXTURE_WRAP_T to GLES20.GL_CLAMP_TO_EDGE)) GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, k, v)
             val f = IntArray(1); GLES20.glGenFramebuffers(1, f, 0)
+            fbos[name] = f[0]
             GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, f[0])
             GLES20.glFramebufferTexture2D(GLES20.GL_FRAMEBUFFER, GLES20.GL_COLOR_ATTACHMENT0, GLES20.GL_TEXTURE_2D, t[0], 0)
-            textures[name] = t[0]; fbos[name] = f[0]
+            check(GLES20.glCheckFramebufferStatus(GLES20.GL_FRAMEBUFFER) == GLES20.GL_FRAMEBUFFER_COMPLETE) { "GPU cannot render RGBA16F" }
+            GlUtil.checkGlError()
         }
 
         private fun ensurePrograms() {
@@ -155,12 +174,13 @@ object Anime4K {
             } catch (e: Exception) {
                 Log.w("AnixQ", "anime4k $name: shader failed: ${e.message}")
                 supported = false; enabled = false
+                Upscaler.lastFailure = "Anime4K: ${e.message}"
+                programs.forEach { runCatching { it.delete() } }; programs.clear()
             }
         }
 
         override fun drawFrame(inputTexId: Int, presentationTimeUs: Long) {
-            ensurePrograms()
-            if (!enabled) { passThrough(inputTexId); return }
+            if (!enabled) { checkNotNull(fallback).drawFrame(inputTexId, presentationTimeUs); return }
             val out = IntArray(1); GLES20.glGetIntegerv(GLES20.GL_FRAMEBUFFER_BINDING, out, 0)
             // MAIN is sampled bilinearly by the last pass (the network adds detail on top of it).
             GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, inputTexId)
@@ -187,14 +207,8 @@ object Anime4K {
                 GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4)
                 if (!last) current[p.save] = textures.getValue("#$i")
             }
-        }
-
-        private fun passThrough(tex: Int) {
-            val c = copy ?: GlProgram(VS, "#version 300 es\nprecision mediump float;\nin vec2 vUv;\nout vec4 fragColor;\nuniform sampler2D uTex;\nvoid main(){ fragColor = texture(uTex, vUv); }\n").also {
-                it.setBufferAttribute("aFramePosition", GlUtil.getNormalizedCoordinateBounds(), GlUtil.HOMOGENEOUS_COORDINATE_VECTOR_SIZE); copy = it
-            }
-            c.use(); c.setSamplerTexIdUniform("uTex", tex, 0); c.bindAttributesAndUniforms()
-            GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4)
+            GlUtil.checkGlError()
+            Upscaler.lastInfo = "${sizes.getValue("MAIN").second}p → ${outSize.height}p (Anime4K)"
         }
 
         private fun releaseTargets() {
@@ -205,7 +219,7 @@ object Anime4K {
 
         override fun release() {
             super.release()
-            runCatching { releaseTargets(); programs.forEach { it.delete() }; copy?.delete() }
+            runCatching { releaseTargets(); programs.forEach { it.delete() }; fallback?.release() }
         }
     }
 }

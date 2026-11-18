@@ -448,7 +448,7 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
 
     private fun onNativeError(err: String) {
         val p = player ?: return
-        if (upscale > 0) { upscaleFailed("ошибка видео: $err"); return }
+        if (upscale > 0 && exo?.effectFailure == true) { upscaleFailed("ошибка обработки видео: $err"); return }
         if (p.isYummy) {
             val at = exo?.position?.takeIf { it > 0 } ?: pos
             pos = at
@@ -510,13 +510,13 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
             if (info.isNotEmpty() && info != announced && exo?.firstFrame == true) { announced = info; say("Апскейлер работает: $info") }
             // No picture 15 s after loading with the upscaler on: it's the upscaler — fall back.
             val e2 = exo
-            if (e2 != null && !e2.firstFrame && e2.loadedAt > 0 && System.currentTimeMillis() - e2.loadedAt > 15_000 && message == null) {
+            if (e2 != null && !e2.firstFrame && e2.loadedAt > 0 && System.currentTimeMillis() - e2.loadedAt > 15_000 && e2.exo.playbackState == androidx.media3.common.Player.STATE_READY && message == null) {
                 upscaleFailed("видео не запускалось 15 с")
             }
         }
-        if (upscale >= 3 && Anime4K.supported == false) {
-            say("Нейросеть не поддерживается этой приставкой — включён обычный апскейлер")
-            setUpscaleMode(2)
+        if (upscaleMode(upscale).chain.any { it != "lanczos" && it != "rcas" && it != "easu" } && Anime4K.supported == false) {
+            say("Нейросеть не поддерживается этой приставкой — включён FSR 1")
+            setUpscaleMode(16)
         }
         // The box can't keep up with the upscaler: switch it off rather than stutter.
         if (native && upscale > 0 && playing && (exo?.recentDrops ?: 0) > 45) {
@@ -925,7 +925,7 @@ fun PlayerScreen(nav: Nav, route: PlayerRoute) {
             if (m.native) Choice("Скорость", hint = speedLabel(m.speed)) else null,
             if (m.native && m.player?.subtitles?.isNotEmpty() == true) Choice("Субтитры", hint = if (m.subtitlesOn) "включены" else "выключены") else null,
             if (m.native) Choice("Апскейлер", hint = upscaleMode(m.upscale).name +
-                (Upscaler.lastInfo.takeIf { m.upscale == 2 && it.isNotEmpty() }?.let { " · $it" } ?: "")) else null,
+                (Upscaler.lastInfo.takeIf { m.upscale > 0 && it.isNotEmpty() }?.let { " · $it" } ?: "")) else null,
             if (m.native) Choice("Цвет картинки", hint = Picture.presets.firstOrNull { it.second == ColorTuning.value }?.first ?: "свой") else null,
             if (m.native) Choice("Звук", hint = SoundMode.current.title) else null,
             Choice("Режим марафона", hint = if (Store.marathon) "включён: без опенингов и эндингов, серии подряд" else "выключен"),

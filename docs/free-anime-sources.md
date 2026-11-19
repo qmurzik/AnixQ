@@ -50,11 +50,28 @@ episodes. No DRM or access restriction is bypassed. An account may still be need
 for a particular title. `aksor.tv` itself returned 521 through the research fetcher;
 the player/API/CDN subdomains used by the app responded successfully.
 
-## Free catalogue candidates: researched, not added to AnixQ in this change
+## AnimeGO as a playback reserve (2026-11-19)
+
+Android and Android TV offer **AnimeGO** in the source selector of a matched
+AnimeLib or YummyAnime title. The source uses `anime-go.org` without accounts or
+application keys. Search supplies candidate paths. AnimeGO's own external-ID
+redirect must confirm the title's MAL ID or Shikimori ID before the app loads its
+player listing. The app reads the redirect target without visiting the other site.
+Only one matching title and one regular season per listing are accepted.
+Season-zero episodes are kept out of regular seasons.
+
+The selected episode and progress keep their original catalogue IDs. AnimeGO
+supplies the voice and player for that episode. Kodik HLS is resolved and played
+in the existing ExoPlayer. If AnimeGO lists a compatible Aksor embed, the same
+Aksor resolver handles it. Public Aksor episodes remain available through
+YummyAnime. Other YummyAnime sources retain their existing access rules.
+AnimeGO has no independent catalogue screen in this integration.
+
+## Other candidates and initial observations
 
 | Address | Live observation | Native-player integration implications |
 | --- | --- | --- |
-| https://anime-go.org | Catalogue and `/search?q=...` respond 200. Public form POST `/api/player` with `id` returns sources → translations → episodes. Attack on Titan season 1 (`4505`) returned 9 Kodik translations. Title `157` returned 31. | Best candidate for a separate free backup. Episode links are specific Kodik embeds, not direct video. MAL and Shikimori redirects (`/go/mal/{id}`, `/go/shikimori/{id}`) permit confirmed matching instead of fuzzy names. Preserve each episode's season and number. No stable documented public API contract was found. |
+| https://anime-go.org | Catalogue and `/search?q=...` respond 200. Public form POST `/api/player` with `id` returns sources → translations → episodes. Attack on Titan season 1 (`4505`) returned 9 Kodik translations. Title `157` returned 31. | Integrated as a playback reserve using Kodik and verified MAL or Shikimori redirects. The HTML and player API are undocumented and can change. |
 | https://animego.online | Redirects to `/main-animego-12`; catalogue and title pages respond 200. Public GET `/engine/ajax/controller.php?mod=player&id=63&slot=1` returns a Kodik iframe. Title pages also offer Alloha. | Free viewing is exposed without login. A serial iframe still needs exact season/episode/dub resolution. The Alloha iframe is not an ExoPlayer media URL. Do not treat the catalogue HTML or iframe as successful native playback. |
 | https://animego.org | HTTP 500 in this environment. | The reported redirect to `.me` could not be reproduced here. Do not use as the sole network dependency. |
 | https://animego.me | HTTP 500 in this environment and research fetcher. | Unavailable for end-to-end verification. |

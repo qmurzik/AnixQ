@@ -17,8 +17,8 @@ class SourceHttp(val client: OkHttpClient = OkHttpClient.Builder()
         420 -> "Сервис запросил CAPTCHA. Войдите на сайте YummyAnime и используйте свой токен в настройках."
         else -> "Источник ответил HTTP $status"
     })
-    data class Reply(val text: String, val headers: Headers)
-    suspend fun request(url: String, headers: Map<String, String> = emptyMap(), body: RequestBody? = null): Reply =
+    data class Reply(val text: String, val headers: Headers, val status: Int)
+    suspend fun request(url: String, headers: Map<String, String> = emptyMap(), body: RequestBody? = null, acceptRedirect: Boolean = false): Reply =
         suspendCancellableCoroutine { continuation ->
             val request = Request.Builder().url(url).header("User-Agent", UA).apply {
                 headers.forEach { (key, value) -> header(key, value) }
@@ -31,9 +31,13 @@ class SourceHttp(val client: OkHttpClient = OkHttpClient.Builder()
                 override fun onResponse(call: Call, response: Response) {
                     response.use {
                         try {
+                            if (acceptRedirect && it.code in 300..399) {
+                                if (continuation.isActive) continuation.resume(Reply("", it.headers, it.code))
+                                return
+                            }
                             if (!it.isSuccessful) throw HttpError(it.code)
                             val text = it.body?.string() ?: throw IOException("Пустой ответ источника")
-                            if (continuation.isActive) continuation.resume(Reply(text, it.headers))
+                            if (continuation.isActive) continuation.resume(Reply(text, it.headers, it.code))
                         } catch (e: Exception) { if (continuation.isActive) continuation.resumeWithException(e) }
                     }
                 }

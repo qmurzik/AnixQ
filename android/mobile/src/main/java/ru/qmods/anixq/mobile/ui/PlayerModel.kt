@@ -45,8 +45,8 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
         .put("playing", playing).put("position", pos).put("rate", speed.toDouble())
         .apply {
             // AniLibria's HLS: the web page finds it by itself (and plays it with hls.js), so no "stream" here.
-            if (native && player?.isLibria != true && player?.isYummy != true) currentUrl?.takeIf { it.startsWith("http") }?.let { put("stream", it) }
-            val k = if (player?.isYummy == true) null else if (!native) currentUrl else players.firstOrNull { it.team.id == player?.team?.id && it.isKodik }?.kodikSrc?.let { Api.kodikUrl(it) }
+            if (native && player?.isLibria != true && player?.isExternalEmbed != true) currentUrl?.takeIf { it.startsWith("http") }?.let { put("stream", it) }
+            val k = if (player?.isExternalEmbed == true) null else if (!native) currentUrl else players.firstOrNull { it.team.id == player?.team?.id && it.isKodik }?.kodikSrc?.let { Api.kodikUrl(it) }
                 ?: players.firstOrNull { it.isKodik }?.kodikSrc?.let { Api.kodikUrl(it) }
             k?.let { put("kodik", it) }
         }
@@ -266,10 +266,15 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
             try {
                 // A downloaded episode plays from the phone: instant, no traffic, works offline.
                 val offline = ru.qmods.anixq.mobile.data.Downloads.offlinePlayer(ep.id)
-                val list = if (sameEpisode && players.isNotEmpty()) players else offline?.let { listOf(it) } ?: playersCache.remove(ep.id)?.takeIf { (teamId == null || teamId > 0) && previousChoice?.isYummy != true && previousChoice?.isLibria != true } ?: AnimeSources.players(title, ep, includeYummy = Store.prefersExternal(title) || title.id < 0 || teamId?.let { it < 0 } == true || previousChoice?.isYummy == true)
+                val offlinePlayers = offline?.let { listOf(it) }
                 if (offline != null && !sameEpisode) say("Скачанная серия — без интернета")
+                val includeExternal = Store.prefersExternal(title) || title.id < 0 ||
+                    teamId?.let { it < 0 } == true || previousChoice?.isExternalEmbed == true
+                val list = if (sameEpisode && players.isNotEmpty()) players else
+                    offlinePlayers ?: playersCache.remove(ep.id)?.takeUnless { includeExternal }
+                        ?: AnimeSources.players(title, ep, includeExternal = includeExternal)
                 players = list
-                if (title.id > 0 && list.none { it.isYummy }) launch {
+                if (!includeExternal && title.id > 0 && list.any(AnimeSources::supported) && list.none { it.isExternalEmbed }) launch {
                     val extra = AnimeSources.additional(title, ep)
                     if (generation == loadGeneration && episode?.id == ep.id) players = (players + extra).distinctBy { "${it.source}:${it.team.id}" }
                 }
@@ -285,7 +290,7 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
                 player = first
                 var chosen: Player = AnimeSources.resolve(first, title, ep, cached = previousChoice.takeIf { sameEpisode && qualityKey != null })
                 // AniLibria dub: their own servers when they have the episode (no ads, often faster than AnimeLib).
-                if (offline == null && !preferKodik && !avoidLibria && !chosen.isYummy && !Store.hasPlaybackChoice(title) && Store.libriaDirect && ru.qmods.anixq.tv.data.Libria.isLibria(chosen.team.name)) {
+                if (offline == null && !preferKodik && !avoidLibria && !chosen.isExternalEmbed && !Store.hasPlaybackChoice(title) && Store.libriaDirect && ru.qmods.anixq.tv.data.Libria.isLibria(chosen.team.name)) {
                     ru.qmods.anixq.tv.data.Libria.race(title, ep.number, chosen, probeAt = keepPos ?: Store.resumeEpisode(title, ep) ?: 0.0)?.let { chosen = it; if (!sameEpisode) say("AniLibria: видео с их сервера") }
                 }
                 currentCoroutineContext().ensureActive()
@@ -359,7 +364,7 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
             load(index, keepPos = maxOf(pos, exo?.position ?: 0.0), qualityKey = quality)
             return
         }
-        if (p.isYummy) {
+        if (p.isExternalEmbed) {
             val at = exo?.position?.takeIf { it > 0 } ?: pos
             pos = at
             val key = "${episode?.id}:${p.team.id}"
@@ -436,14 +441,14 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
         // "Пропускать эндинг": straight to the next episode once the ending starts (the timer still wins).
         if (Store.autoSkipEnding && !Store.marathon && hasNext && ed != null && !endingSkipped && !breakPrompt && pos >= ed.from + 1 && pos < ed.to) {
             endingSkipped = true
-            if (!viewedSent) episode?.let { ep -> viewedSent = true; Store.markWatched(title, ep); scope.launch { runCatching { if (player?.isYummy != true) Api.markViewed(ep.id, player?.playerId) } } }
+            if (!viewedSent) episode?.let { ep -> viewedSent = true; Store.markWatched(title, ep); scope.launch { runCatching { if (player?.isExternalEmbed != true) Api.markViewed(ep.id, player?.playerId) } } }
             say("Эндинг пропущен")
             autoAdvance()
             return
         }
         if (Store.marathon && hasNext && ed != null && !endingSkipped && !breakPrompt && pos >= ed.from + 1 && pos < ed.to) {
             endingSkipped = true
-            if (!viewedSent) episode?.let { ep -> viewedSent = true; Store.markWatched(title, ep); scope.launch { runCatching { if (player?.isYummy != true) Api.markViewed(ep.id, player?.playerId) } } }
+            if (!viewedSent) episode?.let { ep -> viewedSent = true; Store.markWatched(title, ep); scope.launch { runCatching { if (player?.isExternalEmbed != true) Api.markViewed(ep.id, player?.playerId) } } }
             autoAdvance()
             return
         }
@@ -451,17 +456,17 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
             viewedSent = true
             episode?.let { ep ->
                 Store.markWatched(title, ep)
-                scope.launch { runCatching { if (player?.isYummy != true) Api.markViewed(ep.id, player?.playerId) } }
+                scope.launch { runCatching { if (player?.isExternalEmbed != true) Api.markViewed(ep.id, player?.playerId) } }
                 Shiki.markEpisode(title.shikiId, ep.number)
             }
         }
         // Next episode: where it is (right after this one starts), then its video queued 3 minutes before the end.
-        if (hasNext && player?.isYummy != true && !nextLooked && native && pos > 15) {
+        if (hasNext && player?.isExternalEmbed != true && !nextLooked && native && pos > 15) {
             nextLooked = true
             val next = episodes[index + 1]
             scope.launch { runCatching { Api.players(next.id) }.getOrNull()?.takeIf { it.isNotEmpty() }?.let { playersCache[next.id] = it } }
         }
-        if (hasNext && player?.isYummy != true && !prefetched && native && dur > 0 && dur - pos < 180) {
+        if (hasNext && player?.isExternalEmbed != true && !prefetched && native && dur > 0 && dur - pos < 180) {
             prefetched = true
             val next = episodes[index + 1]
             val generation = loadGeneration
@@ -510,7 +515,7 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
             load(index, keepPos = pos, qualityKey = keys[i + 1])
             return
         }
-        if (p.isLibria || p.isYummy) { onNativeError("stall"); return }
+        if (p.isLibria || p.isExternalEmbed) { onNativeError("stall"); return }
         if (servers.size < 2) return
         serverIdx = (serverIdx + 1) % servers.size
         say("Видео подвисло — пробуем другой сервер в том же качестве")
@@ -531,7 +536,7 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
         if (force || (playing && now - lastRemote > 30_000)) {
             lastRemote = now
             val at = pos
-            scope.launch { runCatching { if (!p.isYummy) Api.saveTimecode(ep.id, p.playerId, at) } }
+            scope.launch { runCatching { if (!p.isExternalEmbed) Api.saveTimecode(ep.id, p.playerId, at) } }
         }
     }
 

@@ -118,11 +118,19 @@ data class Player(
 ) {
     val isYummy get() = source == "yummy"
     val canResolve get() = resolverUrl != null
-    val sourceLabel get() = when(source) { "yummy" -> "YummyAnime"; "anilibria" -> "AniLibria"; else -> "AnimeLib" }
+    val isExternalEmbed get() = isYummy || source == "animego"
+    val sourceLabel get() = playbackSourceLabel(source)
     val choiceLabel get() = listOfNotNull(sourceLabel, balancer, team.name).joinToString(" · ")
     val isLibria get() = source == Libria.SOURCE
     val isNative get() = player.equals("animelib", true) && hrefs.isNotEmpty()
     val isKodik get() = player.equals("kodik", true) && kodikSrc != null
+}
+
+fun playbackSourceLabel(source: String) = when (source) {
+    "yummy" -> "YummyAnime"
+    "animego" -> "AnimeGO"
+    "anilibria" -> "AniLibria"
+    else -> "AnimeLib"
 }
 
 /** A dub / subtitle team offered for a title, with the players it has. */

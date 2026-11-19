@@ -691,7 +691,7 @@ private fun PanelContent(p: Panel, m: PlayerModel, onClose: () -> Unit, onPickSu
     val version by Store.version.collectAsState()
     when (p) {
         Panel.SOURCE -> Column { m.sourceOptions.forEach { source ->
-            OptionRow(when(source) { "yummy" -> "YummyAnime"; "anilibria" -> "AniLibria"; else -> "AnimeLib" }, null, m.player?.source == source) { onClose(); m.selectSource(source) }
+            OptionRow(ru.qmods.anixq.tv.data.playbackSourceLabel(source), null, m.player?.source == source) { onClose(); m.selectSource(source) }
         } }
         Panel.BALANCER -> Column { m.balancerOptions.forEach { name ->
             OptionRow(PlaybackLabels.balancer(name), null, m.player?.balancer == name) { onClose(); m.selectBalancer(name) }

@@ -1,0 +1,20 @@
+{
+  "sources": [
+    {"key":"kodik","kind":"iframe","translations":[
+      {"id":"serial-19637","name":"StudioBand","type":"voice","episodes":[
+        {"season":1,"num":1,"link":"https://kodikplayer.com/seria/100/hash/720p"},
+        {"season":1,"num":2,"link":"https://kodikplayer.com/seria/101/hash/720p"}
+      ]},
+      {"id":"serial-46813","name":"Субтитры","type":"sub","episodes":[
+        {"season":1,"num":1,"link":"https://kodikplayer.com/seria/102/hash/720p"}
+      ]},
+      {"id":"serial-28685","name":"Special","type":"voice","episodes":[
+        {"season":0,"num":1,"link":"https://kodikplayer.com/seria/103/hash/720p"}
+      ]},
+      {"id":"serial-fake","name":"Wrong host","type":"voice","episodes":[
+        {"season":1,"num":1,"link":"https://kodikplayer.com.example.test/seria/104/hash/720p"}
+      ]}
+    ]},
+    {"key":"alloha","kind":"iframe","translations":[]}
+  ]
+}

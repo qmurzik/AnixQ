@@ -12,10 +12,12 @@ import ru.qmods.anixq.tv.data.sources.*
 class KodikExtractor(private val http: SourceHttp) : StreamExtractor {
     override val name = "Kodik"
     override fun supports(url: String) = url.toHttpUrlOrNullSafe() && url.toHttpUrl().host.contains("kodik")
-    override suspend fun resolve(url: String): ResolvedStream {
+    override suspend fun resolve(url: String) = resolve(url, "https://yani.tv/")
+
+    suspend fun resolve(url: String, parentReferer: String): ResolvedStream {
         val page = url.toHttpUrl()
         val headers = mapOf("Referer" to url, "User-Agent" to SourceHttp.UA)
-        val reply = http.request(url, mapOf("Referer" to "https://yani.tv/"))
+        val reply = http.request(url, mapOf("Referer" to parentReferer))
         val html = reply.text.replace("\n", "")
         fun field(pattern: String): String = Regex(pattern).find(html)?.groupValues?.get(1) ?: error("Kodik: изменился формат страницы")
         val params = JSONObject(field("""\burlParams\s*=\s*'([^']+)'"""))

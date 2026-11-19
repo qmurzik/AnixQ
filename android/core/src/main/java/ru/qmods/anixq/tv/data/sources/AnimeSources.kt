@@ -6,7 +6,6 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
-import kotlinx.coroutines.withTimeout
 import ru.qmods.anixq.tv.data.*
 import ru.qmods.anixq.tv.data.sources.extractors.*
 
@@ -14,6 +13,7 @@ import ru.qmods.anixq.tv.data.sources.extractors.*
 object AnimeSources {
     val yummy = YummyAnime()
     private val http = SourceHttp()
+    private val animeGo = AnimeGo()
     val extractors: List<StreamExtractor> = listOf(AksorExtractor(http), CvhExtractor(http), KodikExtractor(http),
         VkExtractor(http), RutubeExtractor(http), SibnetExtractor(http), ZedfilmExtractor(http), DirectExtractor())
     private val matchMutex = Mutex()
@@ -48,20 +48,30 @@ object AnimeSources {
         "фильм", "movie", "полнометражный фильм" -> "movie"
         else -> s.lowercase()
     }
-    suspend fun players(title: Title, ep: Episode, includeYummy: Boolean = true): List<Player> = coroutineScope {
+    suspend fun players(title: Title, ep: Episode, includeExternal: Boolean = true): List<Player> = coroutineScope {
         val lib = async { if (SourceIds.isYummy(title.slug)) emptyList() else isolated { Api.players(ep.id) }.orEmpty() }
-        val extra = async { if (includeYummy || title.id < 0) additional(title, ep) else emptyList() }
+        val extra = if (includeExternal || title.id < 0) async { additional(title, ep) } else null
         val base = lib.await()
         val libria = base.filter { Libria.isLibria(it.team.name) }.distinctBy { it.team.id }.map {
             it.copy(team = it.team.copy(id = Int.MIN_VALUE + it.team.id), player = "external", hrefs = emptyMap(), source = Libria.SOURCE, headers = emptyMap(), resolverUrl = "anilibria:", balancer = null)
         }
-        base + libria + extra.await()
+        val reserve = extra?.await() ?: if (base.none(::supported)) additional(title, ep) else emptyList()
+        base + libria + reserve
     }
-    suspend fun additional(title: Title, ep: Episode): List<Player> {
-        return withTimeoutOrNull(15_000) {
-        isolated { match(title)?.let { yummy.players(it, ep.number).sortedBy { p -> extractors.indexOfFirst { e -> e.supports(p.resolverUrl.orEmpty()) }.let { n -> if (n < 0) Int.MAX_VALUE else n } } } }.orEmpty()
-        }.orEmpty()
+    suspend fun additional(title: Title, ep: Episode): List<Player> = coroutineScope {
+        val yummyPlayers = async {
+            withTimeoutOrNull(15_000) {
+                isolated { match(title)?.let { yummy.players(it, ep.number) } }.orEmpty()
+            }.orEmpty()
+        }
+        val reserve = async {
+            withTimeoutOrNull(9_000) { isolated { animeGo.players(title, ep) }.orEmpty() }.orEmpty()
+        }
+        yummyPlayers.await().sortedBy { player ->
+            extractors.indexOfFirst { it.supports(player.resolverUrl.orEmpty()) }.takeIf { it >= 0 } ?: Int.MAX_VALUE
+        } + reserve.await()
     }
+
     fun chooseSource(players: List<Player>, current: Player?, source: String): Player? {
         val options = PlaybackChoices.options(players.filter(::supported))
         val selected = options.firstOrNull { it.team.id == current?.team?.id && it.source == current?.source }
@@ -83,7 +93,8 @@ object AnimeSources {
             ?: error(if (url.contains("alloha", true)) "Alloha не предоставляет поддерживаемый прямой поток. Выберите другой балансер." else "Этот балансер пока не поддерживается")
         val stream = withTimeoutOrNull(25_000) {
             if (extractor is AksorExtractor) extractor.resolveEpisode(url, ep.number,
-                if (SourceIds.isYummy(title.slug)) SourceIds.yummyRemote(title.id) else null)
+                if (player.isYummy && SourceIds.isYummy(title.slug)) SourceIds.yummyRemote(title.id) else null)
+            else if (extractor is KodikExtractor && player.source == AnimeGo.SOURCE) extractor.resolve(url, "${AnimeGo.SITE}/")
             else extractor.resolve(url)
         } ?: error("${extractor.name}: превышено время ожидания; выберите другой источник")
         return player.copy(player = "animelib", hrefs = stream.qualities, headers = stream.headers)

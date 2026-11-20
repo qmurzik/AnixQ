@@ -24,7 +24,10 @@ data class PlayerRoute(
     val resume: Boolean = false,
     val next: Boolean = false,
 ) : Route
-data class CatalogRoute(val title: String, val query: CatalogQuery) : Route
+data class CatalogRoute(val title: String, val query: CatalogQuery) : Route {
+    internal val loader = CatalogLoader()
+    internal val stateKey = "catalog-${java.util.UUID.randomUUID()}"
+}
 data class FolderRoute(val status: Bookmark) : Route
 data object HistoryRoute : Route
 data object DownloadsRoute : Route
@@ -52,7 +55,18 @@ data object SeasonRoute : Route
 data class PersonRoute(val id: Int, val isCharacter: Boolean, val name: String) : Route
 data class CommentsRoute(val postId: Int, val type: String, val title: String) : Route
 
+internal data class SearchResult(
+    val query: CatalogQuery,
+    val titles: List<Title>,
+    val corrected: String?,
+)
+
 class Nav {
+    internal val catalogLoader = CatalogLoader()
+    internal var catalogQuery by mutableStateOf(CatalogQuery())
+    internal var searchText by mutableStateOf("")
+    internal var searchSource by mutableStateOf("animelib")
+    internal var searchResult by mutableStateOf<SearchResult?>(null)
     var tab by mutableStateOf(Tab.HOME)
     val stack = mutableStateListOf<Route>()
     val top: Route? get() = stack.lastOrNull()

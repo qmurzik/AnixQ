@@ -252,6 +252,13 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun Root(nav: Nav) {
     val holder = rememberSaveableStateHolder()
+    val savedCatalogKeys = remember { mutableSetOf<String>() }
+    val catalogKeys = nav.stack.filterIsInstance<CatalogRoute>().map { it.stateKey }.toSet()
+    androidx.compose.runtime.SideEffect {
+        (savedCatalogKeys - catalogKeys).forEach(holder::removeState)
+        savedCatalogKeys.clear()
+        savedCatalogKeys.addAll(catalogKeys)
+    }
     BackHandler(enabled = nav.top != null || nav.tab != Tab.HOME) { if (nav.top != null) nav.pop() else nav.tab = Tab.HOME }
     // Screens cross-fade; a tapped poster grows into the title page (shared bounds).
     androidx.compose.animation.SharedTransitionLayout(Modifier.fillMaxSize().background(Pal.bg)) {
@@ -265,7 +272,7 @@ fun Root(nav: Nav) {
         when (top) {
             is PlayerRoute -> PlayerScreen(nav, top)
             is TitleRoute -> holder.SaveableStateProvider("title-${top.title.id}-${nav.stack.size}") { TitleScreen(nav, top.title) }
-            is CatalogRoute -> holder.SaveableStateProvider("cat-${top.title}-${nav.stack.size}") { CatalogListScreen(nav, top) }
+            is CatalogRoute -> holder.SaveableStateProvider(top.stateKey) { CatalogListScreen(nav, top) }
             is FolderRoute -> FolderScreen(nav, top.status)
             ru.qmods.anixq.mobile.ui.DownloadsRoute -> ru.qmods.anixq.mobile.ui.DownloadsScreen(nav)
             ru.qmods.anixq.mobile.ui.CollectionsRoute -> ru.qmods.anixq.mobile.ui.CollectionsScreen(nav)

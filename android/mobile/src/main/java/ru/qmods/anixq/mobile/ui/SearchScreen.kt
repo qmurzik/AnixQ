@@ -38,7 +38,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -55,6 +54,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import ru.qmods.anixq.tv.data.Api
 import ru.qmods.anixq.tv.data.CatalogQuery
 import ru.qmods.anixq.tv.data.CatalogSort
@@ -65,37 +65,41 @@ object Genres { var list: List<Pair<Int, String>> = emptyList() }
 
 @Composable
 fun SearchScreen(nav: Nav) {
-    var text by rememberSaveable { mutableStateOf("") }
-    var catalogSource by rememberSaveable { mutableStateOf("animelib") }
-    var searchError by remember { mutableStateOf<String?>(null) }
-    var results by remember { mutableStateOf<List<Title>>(emptyList()) }
-    var corrected by remember { mutableStateOf<String?>(null) }
-    var searching by remember { mutableStateOf(false) }
+    val text = nav.searchText
+    val catalogSource = nav.searchSource
     var recent by remember { mutableStateOf(Store.recentSearches) }
     var genres by remember { mutableStateOf(Genres.list) }
     val focus = LocalFocusManager.current
     val q = text.trim()
+    val query = CatalogQuery(text = q, source = catalogSource)
+    var searchError by remember(query) { mutableStateOf<String?>(null) }
+    val cached = nav.searchResult?.takeIf { it.query == query }
+    val results = cached?.titles.orEmpty()
+    val corrected = cached?.corrected
+    val searching = q.length >= 2 && cached == null && searchError == null
     LaunchedEffect(catalogSource) { genres = runCatching { Api.genres(catalogSource) }.getOrDefault(emptyList()) }
-    LaunchedEffect(q, catalogSource) {
-        if (q.length < 2) { results = emptyList(); searching = false; return@LaunchedEffect }
-        searching = true
-        searchError = null
+    LaunchedEffect(query) {
+        if (q.length < 2 || cached != null) return@LaunchedEffect
         delay(350)
-        // Forgiving search: layout, transliteration, a typo at the end, Shikimori.
-        val (found, used) = if (catalogSource == "yummy") {
-            try { Api.catalog(CatalogQuery(text = q, source = "yummy"), 1).first to null } catch(e: kotlinx.coroutines.CancellationException) { throw e } catch(e: Exception) { searchError = e.message; emptyList<Title>() to null }
-        } else ru.qmods.anixq.tv.data.SmartSearch.search(q)
-        results = found
-        corrected = used
-        searching = false
+        try {
+            val (found, used) = if (catalogSource == "yummy") {
+                Api.catalog(query, 1).first to null
+            } else ru.qmods.anixq.tv.data.SmartSearch.search(q)
+            kotlinx.coroutines.currentCoroutineContext().ensureActive()
+            nav.searchResult = SearchResult(query, found, used)
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            searchError = e.message ?: "Ошибка поиска"
+        }
     }
     fun saveRecent(s: String) { if (s.isNotBlank()) { recent = (listOf(s) + recent.filter { !it.equals(s, true) }).take(8); Store.recentSearches = recent } }
 
     Column(Modifier.fillMaxSize().statusBarsPadding()) {
         LargeTitle("Поиск")
         Row(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Capsule("AnimeLib", selected = catalogSource == "animelib") { catalogSource = "animelib" }
-            Capsule("YummyAnime", selected = catalogSource == "yummy") { catalogSource = "yummy" }
+            Capsule("AnimeLib", selected = catalogSource == "animelib") { nav.searchSource = "animelib" }
+            Capsule("YummyAnime", selected = catalogSource == "yummy") { nav.searchSource = "yummy" }
         }
         searchError?.let { Text(it, color = Pal.muted, modifier = Modifier.padding(16.dp)) }
         Row(Modifier.padding(horizontal = 16.dp, vertical = 6.dp).fillMaxWidth().height(40.dp).clip(RoundedCornerShape(11.dp)).background(Pal.cardHi)
@@ -103,14 +107,17 @@ fun SearchScreen(nav: Nav) {
             Icon(Icons.Default.Search, null, Modifier.size(20.dp), tint = Pal.muted)
             Box(Modifier.weight(1f).padding(horizontal = 6.dp)) {
                 if (text.isEmpty()) Text("Название, оригинал или английское", color = Pal.muted, fontSize = 16.sp, maxLines = 1)
-                BasicTextField(text, { text = it }, singleLine = true, textStyle = TextStyle(color = Pal.text, fontSize = 16.sp),
+                BasicTextField(text, { nav.searchText = it }, singleLine = true, textStyle = TextStyle(color = Pal.text, fontSize = 16.sp),
                     cursorBrush = SolidColor(Pal.pink), modifier = Modifier.fillMaxWidth(),
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                     keyboardActions = KeyboardActions(onSearch = { saveRecent(q); focus.clearFocus() }))
             }
-            if (text.isNotEmpty()) Icon(Icons.Default.Cancel, "Очистить", Modifier.size(18.dp).clickable { text = "" }, tint = Pal.muted)
+            if (text.isNotEmpty()) Icon(Icons.Default.Cancel, "Очистить", Modifier.size(18.dp).clickable { nav.searchText = "" }, tint = Pal.muted)
         }
-        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
+        val listState = androidx.compose.runtime.key(query) {
+            androidx.compose.foundation.lazy.rememberLazyListState()
+        }
+        LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = PaddingValues(bottom = 24.dp)) {
             if (q.isEmpty()) {
                 item(key = "tools") {
                     Row(Modifier.padding(start = 16.dp, end = 16.dp, top = 14.dp).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -131,7 +138,7 @@ fun SearchScreen(nav: Nav) {
                     }
                 }
                 items(recent) { r ->
-                    Row(Modifier.fillMaxWidth().clickable { text = r }.padding(horizontal = 16.dp, vertical = 11.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Row(Modifier.fillMaxWidth().clickable { nav.searchText = r }.padding(horizontal = 16.dp, vertical = 11.dp), verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.History, null, Modifier.size(20.dp), tint = Pal.pink)
                         Text(r, fontSize = 16.sp, modifier = Modifier.padding(start = 12.dp))
                     }
@@ -147,7 +154,7 @@ fun SearchScreen(nav: Nav) {
                 }
             } else {
                 if (searching && results.isEmpty()) item { Loading() }
-                else if (!searching && results.isEmpty() && q.length >= 2) item { EmptyState(Icons.Default.SearchOff, "Ничего не найдено") }
+                else if (cached != null && results.isEmpty()) item { EmptyState(Icons.Default.SearchOff, "Ничего не найдено") }
                 corrected?.let { c -> item { Text("Показаны результаты по «$c»", color = Pal.muted, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) } }
                 items(results, key = { it.id }) { t ->
                     TitleRow(t) { saveRecent(q); nav.open(t) }

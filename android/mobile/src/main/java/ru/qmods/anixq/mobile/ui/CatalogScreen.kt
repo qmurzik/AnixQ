@@ -41,19 +41,25 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.ensureActive
 import ru.qmods.anixq.tv.data.Api
 import ru.qmods.anixq.tv.data.CatalogQuery
 import ru.qmods.anixq.tv.data.CatalogSort
 import ru.qmods.anixq.tv.data.Title
 
-/** Paged catalog results for one query (kept while the screen lives). */
-class CatalogLoader {
+/** Paged catalog results for one navigation entry. */
+class CatalogLoader(private val fetchPage: suspend (CatalogQuery, Int) -> Pair<List<Title>, Boolean> = Api::catalog) {
     var items by mutableStateOf<List<Title>>(emptyList())
     var loading by mutableStateOf(false)
     var error by mutableStateOf<String?>(null)
     var more by mutableStateOf(true)
     private var page = 1
     var query: CatalogQuery? = null; private set
+
+    suspend fun ensureLoaded(q: CatalogQuery) {
+        if (query != q) reset(q)
+        else if (page == 1 && error == null) loadMore()
+    }
 
     suspend fun reset(q: CatalogQuery) {
         query = q; items = emptyList(); page = 1; more = true; error = null; loading = false
@@ -65,7 +71,8 @@ class CatalogLoader {
         if (loading || !more) return
         loading = true
         try {
-            val (list, m) = Api.catalog(q, page)
+            val (list, m) = fetchPage(q, page)
+            kotlinx.coroutines.currentCoroutineContext().ensureActive()
             if (q != query) return
             val seen = items.map { it.id }.toHashSet()
             items = items + list.filter { seen.add(it.id) }
@@ -106,43 +113,45 @@ private val types = listOf(16 to "TV", 17 to "Фильм", 20 to "OVA", 21 to "O
 
 @Composable
 fun CatalogScreen(nav: Nav) {
-    var query by remember { mutableStateOf(CatalogQuery()) }
-    val loader = remember { CatalogLoader() }
+    val query = nav.catalogQuery
+    val loader = nav.catalogLoader
     var sortMenu by remember { mutableStateOf(false) }
     var filters by remember { mutableStateOf(false) }
-    LaunchedEffect(query) { if (loader.query != query) loader.reset(query) }
-    if (filters) FilterSheet(query, { query = it }) { filters = false }
+    LaunchedEffect(query) { loader.ensureLoaded(query) }
+    if (filters) FilterSheet(query, { nav.catalogQuery = it }) { filters = false }
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     Column(Modifier.fillMaxSize().statusBarsPadding()) {
         LargeTitle("Каталог")
         LazyRow(contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             item { Capsule(if (query.source == "yummy") "YummyAnime" else "AnimeLib", selected = true) {
-                query = CatalogQuery(source = if (query.source == "yummy") "animelib" else "yummy")
+                nav.catalogQuery = CatalogQuery(source = if (query.source == "yummy") "animelib" else "yummy")
             } }
             item {
                 Box {
                     Capsule(query.sort.title, Icons.AutoMirrored.Filled.Sort, selected = true, trailing = Icons.Default.KeyboardArrowDown) { sortMenu = true }
                     DropdownMenu(sortMenu, { sortMenu = false }, containerColor = Pal.cardHi) {
                         CatalogSort.entries.filter { query.source != "yummy" || it != CatalogSort.UPDATED }.forEach { s -> DropdownMenuItem({ Text(s.title, color = if (s == query.sort) Pal.pink else Pal.text) },
-                            onClick = { sortMenu = false; query = query.copy(sort = s) }) }
+                            onClick = { sortMenu = false; nav.catalogQuery = query.copy(sort = s) }) }
                     }
                 }
             }
-            statuses.forEach { (id, name) -> item { Capsule(name, selected = query.status == id) { query = query.copy(status = if (query.status == id) null else id) } } }
-            types.forEach { (id, name) -> item { Capsule(name, selected = query.type == id) { query = query.copy(type = if (query.type == id) null else id) } } }
+            statuses.forEach { (id, name) -> item { Capsule(name, selected = query.status == id) { nav.catalogQuery = query.copy(status = if (query.status == id) null else id) } } }
+            types.forEach { (id, name) -> item { Capsule(name, selected = query.type == id) { nav.catalogQuery = query.copy(type = if (query.type == id) null else id) } } }
             item { Capsule(if (query.extraFilters > 0) "Фильтры · ${query.extraFilters}" else "Фильтры", Icons.Default.Tune, selected = query.extraFilters > 0) { filters = true } }
-            if (query.status != null || query.type != null || query.extraFilters > 0) item { Capsule("Сбросить", Icons.Default.Close) { query = CatalogQuery(sort = query.sort, source = query.source) } }
+            if (query.status != null || query.type != null || query.extraFilters > 0) item { Capsule("Сбросить", Icons.Default.Close) { nav.catalogQuery = CatalogQuery(sort = query.sort, source = query.source) } }
         }
-        PosterGrid(loader, { nav.open(it) }, { scope.launch { loader.reset(query) } })
+        androidx.compose.runtime.key(query) {
+            PosterGrid(loader, { nav.open(it) }, { scope.launch { loader.reset(query) } })
+        }
     }
 }
 
 /** "Все" from a home shelf, a genre, a discover chip. */
 @Composable
 fun CatalogListScreen(nav: Nav, route: CatalogRoute) {
-    val loader = remember(route) { CatalogLoader() }
+    val loader = route.loader
     val scope = androidx.compose.runtime.rememberCoroutineScope()
-    LaunchedEffect(route) { if (loader.query != route.query) loader.reset(route.query) }
+    LaunchedEffect(route) { loader.ensureLoaded(route.query) }
     Column(Modifier.fillMaxSize().statusBarsPadding()) {
         TopBar(route.title, { nav.pop() })
         PosterGrid(loader, { nav.open(it) }, { scope.launch { loader.reset(route.query) } })

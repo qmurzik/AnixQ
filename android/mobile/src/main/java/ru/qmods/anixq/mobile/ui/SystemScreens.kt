@@ -69,6 +69,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.Request
+import ru.qmods.anixq.mobile.data.PlaybackHistory
 import ru.qmods.anixq.mobile.BuildConfig
 import ru.qmods.anixq.tv.data.Api
 import ru.qmods.anixq.tv.data.Crashes
@@ -293,7 +294,7 @@ object Shortcuts {
         fun s(id: String, label: String, uri: String, icon: Int) = ShortcutInfo.Builder(c, id).setShortLabel(label)
             .setIcon(AIcon.createWithResource(c, icon))
             .setIntent(Intent(Intent.ACTION_VIEW, Uri.parse(uri), c, ru.qmods.anixq.mobile.MainActivity::class.java)).build()
-        val last = Store.continueList.firstOrNull()
+        val last = PlaybackHistory.continueEntries().firstOrNull()
         val list = listOfNotNull(
             last?.let { s("continue", "Продолжить: ${it.title.title}".take(25), "anixq://continue", android.R.drawable.ic_media_play) },
             s("search", "Поиск", "anixq://search", android.R.drawable.ic_menu_search),

@@ -160,7 +160,7 @@ fun ForYouScreen(nav: Nav) {
     val abandoned = remember {
         val now = System.currentTimeMillis() / 1000.0
         val stopped = setOf(Bookmark.DROPPED, Bookmark.ON_HOLD, Bookmark.COMPLETED).flatMap { Store.titles(it) }.map { it.id }.toSet()
-        Store.history.filter { now - it.at > 30 * 86400 && it.progress < 0.92 && it.title.id !in stopped }.sortedByDescending { it.at }.take(12)
+        ru.qmods.anixq.mobile.data.PlaybackHistory.entries().filter { now - it.at > 30 * 86400 && it.progress < 0.92 && it.title.id !in stopped }.sortedByDescending { it.at }.take(12)
     }
     LaunchedEffect(Unit) {
         launch {

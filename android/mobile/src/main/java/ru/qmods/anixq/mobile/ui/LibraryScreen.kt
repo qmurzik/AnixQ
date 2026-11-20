@@ -55,6 +55,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import ru.qmods.anixq.mobile.data.PlaybackHistory
 import ru.qmods.anixq.tv.data.Bookmark
 import ru.qmods.anixq.tv.data.Remote
 import ru.qmods.anixq.tv.data.Store
@@ -66,7 +67,8 @@ fun LibraryScreen(nav: Nav) {
     val version by Store.version.collectAsState()
     val online by Remote.online.collectAsState()
     val syncStatus by Sync.status.collectAsState()
-    val history = remember(version) { Store.history.sortedByDescending { it.at }.take(30) }
+    val historyRevision by PlaybackHistory.revision.collectAsState()
+    val history = remember(version, historyRevision) { PlaybackHistory.entries().take(30) }
     var shikiTotals by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(ru.qmods.anixq.tv.data.Shiki.totals) }
             androidx.compose.runtime.LaunchedEffect(Unit) { if (Store.shikiJson != null) ru.qmods.anixq.tv.data.Shiki.loadTotals()?.let { shikiTotals = it } }
             // Shikimori knows everything ever watched (not only in AnixQ): take the bigger numbers.
@@ -171,7 +173,8 @@ fun FolderScreen(nav: Nav, status: Bookmark) {
 @Composable
 fun HistoryScreen(nav: Nav) {
     val version by Store.version.collectAsState()
-    val list = remember(version) { Store.history.sortedByDescending { it.at } }
+    val historyRevision by PlaybackHistory.revision.collectAsState()
+    val list = remember(version, historyRevision) { PlaybackHistory.entries() }
     Column(Modifier.fillMaxSize().statusBarsPadding()) {
         TopBar("История", { nav.pop() })
         LazyVerticalGrid(GridCells.Adaptive(105.dp), Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp),

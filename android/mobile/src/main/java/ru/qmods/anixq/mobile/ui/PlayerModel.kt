@@ -14,6 +14,7 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import ru.qmods.anixq.mobile.data.PlaybackHistory
 import ru.qmods.anixq.tv.data.AniSkip
 import ru.qmods.anixq.tv.data.sources.AnimeSources
 import ru.qmods.anixq.tv.data.sources.qualityHeight
@@ -221,6 +222,7 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
     fun say(s: String) { toast = s; toastAt = System.currentTimeMillis() }
 
     fun start() {
+        scope.launch { PlaybackHistory.classify(title) }
         scope.launch {
             try {
                 Sync.pullFresh()
@@ -229,7 +231,7 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
                     ?: ru.qmods.anixq.mobile.data.Downloads.episodes(title.id) ?: throw Exception("Нет связи с AnimeLib")
                 if (eps.isEmpty()) { message = "Серий нет"; failed = true; return@launch }
                 episodes = eps
-                val latest = if (route.resume) Store.lastEntry(title.id) else null
+                val latest = if (route.resume) PlaybackHistory.lastEntry(title) else null
                 val epId = latest?.episodeId ?: route.episodeId
                 val next = if (latest != null) latest.progress > 0.92 else route.next
                 var i = epId?.let { id -> eps.indexOfFirst { it.id == id } }?.takeIf { it >= 0 }
@@ -291,17 +293,17 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
                 var chosen: Player = AnimeSources.resolve(first, title, ep, cached = previousChoice.takeIf { sameEpisode && qualityKey != null })
                 // AniLibria dub: their own servers when they have the episode (no ads, often faster than AnimeLib).
                 if (offline == null && !preferKodik && !avoidLibria && !chosen.isExternalEmbed && !Store.hasPlaybackChoice(title) && Store.libriaDirect && ru.qmods.anixq.tv.data.Libria.isLibria(chosen.team.name)) {
-                    ru.qmods.anixq.tv.data.Libria.race(title, ep.number, chosen, probeAt = keepPos ?: Store.resumeEpisode(title, ep) ?: 0.0)?.let { chosen = it; if (!sameEpisode) say("AniLibria: видео с их сервера") }
+                    ru.qmods.anixq.tv.data.Libria.race(title, ep.number, chosen, probeAt = keepPos ?: savedPosition(ep) ?: 0.0)?.let { chosen = it; if (!sameEpisode) say("AniLibria: видео с их сервера") }
                 }
                 currentCoroutineContext().ensureActive()
                 if (generation != loadGeneration) return@launch
                 player = chosen
                 Store.setPlaybackChoice(title, chosen)
-                val local = Store.resumeEpisode(title, ep)
-                val remote = chosen.serverTimecode?.takeIf { it > 5 && (route.episodeId != ep.id || local == null) }
+                val local = savedPosition(ep)
+                val remote = chosen.serverTimecode?.takeIf { PlaybackHistory.canRecord(title) && it > 5 && (route.episodeId != ep.id || local == null) }
                 var startAt = keepPos ?: (if (!startedOnce) route.startAt else null) ?: local ?: remote ?: 0.0
                 var recapNote: String? = null
-                if (keepPos == null && route.startAt == null) ru.qmods.anixq.tv.data.Recap.adjust(title.id, ep.id, startAt).let { (a, n) -> startAt = a; recapNote = n }
+                if (keepPos == null && route.startAt == null && PlaybackHistory.canRecord(title)) ru.qmods.anixq.tv.data.Recap.adjust(title.id, ep.id, startAt).let { (a, n) -> startAt = a; recapNote = n }
                 startedOnce = true
                 if (chosen.isNative) startNative(chosen, startAt, qualityKey) else startKodik(chosen, startAt)
                 ru.qmods.anixq.tv.data.Room.sendState()
@@ -441,25 +443,18 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
         // "Пропускать эндинг": straight to the next episode once the ending starts (the timer still wins).
         if (Store.autoSkipEnding && !Store.marathon && hasNext && ed != null && !endingSkipped && !breakPrompt && pos >= ed.from + 1 && pos < ed.to) {
             endingSkipped = true
-            if (!viewedSent) episode?.let { ep -> viewedSent = true; Store.markWatched(title, ep); scope.launch { runCatching { if (player?.isExternalEmbed != true) Api.markViewed(ep.id, player?.playerId) } } }
+            recordViewed()
             say("Эндинг пропущен")
             autoAdvance()
             return
         }
         if (Store.marathon && hasNext && ed != null && !endingSkipped && !breakPrompt && pos >= ed.from + 1 && pos < ed.to) {
             endingSkipped = true
-            if (!viewedSent) episode?.let { ep -> viewedSent = true; Store.markWatched(title, ep); scope.launch { runCatching { if (player?.isExternalEmbed != true) Api.markViewed(ep.id, player?.playerId) } } }
+            recordViewed()
             autoAdvance()
             return
         }
-        if (!viewedSent && dur > 60 && pos / dur >= 0.9) {
-            viewedSent = true
-            episode?.let { ep ->
-                Store.markWatched(title, ep)
-                scope.launch { runCatching { if (player?.isExternalEmbed != true) Api.markViewed(ep.id, player?.playerId) } }
-                Shiki.markEpisode(title.shikiId, ep.number)
-            }
-        }
+        if (dur > 60 && pos / dur >= 0.9) recordViewed(markShiki = true)
         // Next episode: where it is (right after this one starts), then its video queued 3 minutes before the end.
         if (hasNext && player?.isExternalEmbed != true && !nextLooked && native && pos > 15) {
             nextLooked = true
@@ -522,8 +517,23 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
         exo?.load(Api.videoUrl(servers[serverIdx], href), pos, p.subtitles)
     }
 
+    private fun savedPosition(ep: Episode) =
+        if (PlaybackHistory.canRecord(title)) Store.resumeEpisode(title, ep) else null
+
+    private fun recordViewed(markShiki: Boolean = false) {
+        if (viewedSent || !PlaybackHistory.canRecord(title)) return
+        val ep = episode ?: return
+        val activePlayer = player
+        viewedSent = true
+        Store.markWatched(title, ep)
+        if (activePlayer?.isExternalEmbed != true) {
+            scope.launch { runCatching { Api.markViewed(ep.id, activePlayer?.playerId) } }
+        }
+        if (markShiki) Shiki.markEpisode(title.shikiId, ep.number)
+    }
+
     fun saveProgress(force: Boolean = false) {
-        if (loading || seekUndo != null) return
+        if (loading || seekUndo != null || !PlaybackHistory.canRecord(title)) return
         val ep = episode ?: return
         val p = player ?: return
         if (dur <= 0 || pos < 3) return

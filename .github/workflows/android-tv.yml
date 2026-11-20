@@ -32,6 +32,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
+      - id: targets
+        name: Choose release targets
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: |
+          TV=true
+          if [ "$GITHUB_EVENT_NAME" = push ] && git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+            CHANGED=$(git diff --name-only "$BEFORE" "$GITHUB_SHA")
+            if printf '%s\n' "$CHANGED" | grep -q '^android/mobile/' &&
+               ! printf '%s\n' "$CHANGED" | grep -qE '^android/(app/|core/|ci/|[^/]+$)'; then
+              TV=false
+            fi
+          fi
+          echo "tv=$TV" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-java@v4
         with: { distribution: temurin, java-version: "17" }
       - uses: gradle/actions/setup-gradle@v4
@@ -59,13 +73,16 @@ jobs:
             echo "ANDROID_KEYSTORE_PASSWORD=anixq-tv" >> "$GITHUB_ENV"
           fi
       - name: Remote-control focus tests
+        if: steps.targets.outputs.tv == 'true'
         continue-on-error: true
         working-directory: android
         run: gradle --no-daemon :app:testDebugUnitTest --tests 'ru.qmods.anixq.tv.focus.FocusTest'
       - name: Source selection, remote and sync regression tests
+        if: steps.targets.outputs.tv == 'true'
         working-directory: android
         run: gradle --no-daemon :app:testDebugUnitTest --tests 'ru.qmods.anixq.tv.focus.YummySourceTest' --tests 'ru.qmods.anixq.tv.focus.PlaybackSelectorTest' --tests 'ru.qmods.anixq.tv.focus.PublicSourcePlaybackTest' --tests 'ru.qmods.anixq.tv.focus.VideoEffectFailureTest'
       - name: Alternate TV interface and D-pad regression tests
+        if: steps.targets.outputs.tv == 'true'
         working-directory: android
         run: gradle --no-daemon :app:testDebugUnitTest --tests 'ru.qmods.anixq.tv.panorama.PanoramaTest'
       - name: Playback recovery regression tests
@@ -77,16 +94,23 @@ jobs:
       - name: Build (TV + phone)
         working-directory: android
         env: { BUILD_NUMBER: "${{ github.run_number }}" }
-        run: gradle --no-daemon :app:assembleRelease :mobile:assembleRelease
+        run: |
+          TASKS=(:mobile:assembleRelease)
+          if [ "${{ steps.targets.outputs.tv }}" = true ]; then TASKS+=(:app:assembleRelease); fi
+          gradle --no-daemon "${TASKS[@]}"
       - run: |
-          cp android/app/build/outputs/apk/release/app-release.apk AnixQ-TV.apk
+          if [ "${{ steps.targets.outputs.tv }}" = true ]; then
+            cp android/app/build/outputs/apk/release/app-release.apk AnixQ-TV.apk
+          fi
           cp android/mobile/build/outputs/apk/release/mobile-release.apk AnixQ.apk
       - name: Verify update signing compatibility
         if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
         env: { GH_TOKEN: "${{ github.token }}" }
         run: |
           SIGNER=$(ls -1 "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -n 1)
-          for CHANNEL in tv android; do
+          CHANNELS=(android)
+          if [ "${{ steps.targets.outputs.tv }}" = true ]; then CHANNELS+=(tv); fi
+          for CHANNEL in "${CHANNELS[@]}"; do
             if [ "$CHANNEL" = tv ]; then APK=AnixQ-TV.apk; else APK=AnixQ.apk; fi
             PREVIOUS="$RUNNER_TEMP/previous-$CHANNEL.apk"
             gh release download "$CHANNEL" --repo "$GITHUB_REPOSITORY" --pattern "$APK" --output "$PREVIOUS"
@@ -98,11 +122,12 @@ jobs:
             fi
           done
       - uses: actions/upload-artifact@v4
+        if: steps.targets.outputs.tv == 'true'
         with: { name: apk, path: AnixQ-TV.apk }
       - uses: actions/upload-artifact@v4
         with: { name: android-apk, path: AnixQ.apk }
-      - name: Publish release
-        if: github.event_name == 'push'
+      - name: Publish TV release
+        if: github.event_name == 'push' && steps.targets.outputs.tv == 'true'
         env: { GH_TOKEN: "${{ github.token }}" }
         run: |
           V=${{ steps.v.outputs.version }}
@@ -115,8 +140,13 @@ jobs:
             'apk': 'https://github.com/${{ github.repository }}/releases/download/tv-v'+sys.argv[2]+'/AnixQ-TV.apk'}, open('tv-version.json','w'), ensure_ascii=False)" \
             "${{ github.run_number }}" "$V" "$NOTES"
           gh release upload tv AnixQ-TV.apk tv-version.json --clobber
-          # Phone app: same version number, its own rolling release + update manifest.
-          gh release create "android-v$V" AnixQ.apk --title "AnixQ для Android $V" --notes "Android-телефон: установите AnixQ.apk." --latest=false
+      - name: Publish Android release
+        if: github.event_name == 'push'
+        env: { GH_TOKEN: "${{ github.token }}" }
+        run: |
+          V=${{ steps.v.outputs.version }}
+          NOTES=$(git log -1 --format=%s -- android)
+          gh release create "android-v$V" AnixQ.apk --title "AnixQ для Android $V" --notes "$NOTES" --latest=false
           gh release view android >/dev/null 2>&1 || gh release create android --title "AnixQ для Android (последняя)" --notes "Постоянная ссылка на последнюю сборку для Android-телефонов." --latest=false
           python3 -c "import json,sys; json.dump({'code': int(sys.argv[1]), 'name': sys.argv[2], 'notes': sys.argv[3][:300],
             'apk': 'https://github.com/${{ github.repository }}/releases/download/android-v'+sys.argv[2]+'/AnixQ.apk'}, open('android-version.json','w'), ensure_ascii=False)" \

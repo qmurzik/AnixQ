@@ -21,6 +21,8 @@ class PublicSourcePlaybackTest {
         AnimeSources.yummy.userToken = null
         AnimeSources.yummy.applicationToken = null
         val title = Title(110, "110--public-source")
+        ru.qmods.anixq.mobile.data.PlaybackHistory.init(context)
+        ru.qmods.anixq.mobile.data.PlaybackHistory.remember(title, listOf("Драма"))
         val ep = Episode(210, "3", null, 0)
         val lib = Player(Team(1, "Dub", false), "animelib", null,
             mapOf("720p" to "file:///lib.mp4"), emptyList(), 10, null)

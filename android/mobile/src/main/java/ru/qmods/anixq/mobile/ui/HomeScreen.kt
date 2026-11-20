@@ -67,6 +67,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import ru.qmods.anixq.mobile.data.PlaybackHistory
 import ru.qmods.anixq.tv.data.Api
 import ru.qmods.anixq.tv.data.Bookmark
 import ru.qmods.anixq.tv.data.CatalogQuery
@@ -122,7 +123,8 @@ fun HomeScreen(nav: Nav) {
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     LaunchedEffect(Unit) { HomeData.restore(); HomeData.load() }
     val rows = HomeData.rows
-    val cont = remember(version) { Store.continueList.take(15) }
+    val historyRevision by PlaybackHistory.revision.collectAsState()
+    val cont = remember(version, historyRevision) { PlaybackHistory.continueEntries().take(15) }
     val watching = remember(version) { Store.titles(Bookmark.WATCHING) }
     fun catalog(name: String, key: String) = HomeData.specs.first { it.first == key }.second.let { q -> { nav.push(CatalogRoute(name, q)) } }
 

@@ -83,6 +83,7 @@ import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.DownloadDone
 import androidx.compose.material.icons.filled.Delete
+import ru.qmods.anixq.mobile.data.PlaybackHistory
 import ru.qmods.anixq.tv.data.Api
 import ru.qmods.anixq.tv.data.CatalogQuery
 import ru.qmods.anixq.tv.data.CatalogSort
@@ -106,7 +107,7 @@ object TitleCache {
 /** Which episode the big button starts (same rule as the TV and iPhone). */
 fun nextIndex(title: Title, eps: List<Episode>): Int {
     if (eps.isEmpty()) return 0
-    val last = Store.lastEntry(title.id)
+    val last = PlaybackHistory.lastEntry(title)
     val i = last?.let { e -> eps.indexOfFirst { it.id == e.episodeId }.takeIf { it >= 0 } ?: eps.indexOfFirst { it.number == e.ep }.takeIf { it >= 0 } }
     if (last != null && i != null) {
         val done = last.progress > 0.92 || Store.progress(eps[i].id) > 0.92
@@ -125,7 +126,7 @@ fun TitleScreen(nav: Nav, start: Title) {
     var detail by remember { mutableStateOf(TitleCache.detail[start.slug]) }
     var episodes by remember { mutableStateOf(TitleCache.episodes[start.slug]) }
     var teams by remember { mutableStateOf(TitleCache.teams[start.slug] ?: emptyList()) }
-    var teamId by remember { mutableStateOf(Store.lastEntry(start.id)?.teamId) }
+    var teamId by remember { mutableStateOf(PlaybackHistory.lastEntry(start)?.teamId) }
     var error by remember { mutableStateOf<String?>(null) }
     var related by remember { mutableStateOf(TitleCache.related[start.slug] ?: emptyList()) }
     var similar by remember { mutableStateOf(TitleCache.similar[start.slug] ?: emptyList()) }
@@ -158,7 +159,7 @@ fun TitleScreen(nav: Nav, start: Title) {
         error = null
         launch { runCatching { Api.related(start.slug) }.getOrNull()?.filter { it.first.id != start.id }?.let { related = it; TitleCache.related[start.slug] = it } }
         launch { runCatching { Api.similar(start.slug) }.getOrNull()?.let { similar = it; TitleCache.similar[start.slug] = it } }
-        launch { runCatching { Api.detail(start.slug) }.getOrNull()?.let { detail = it; TitleCache.detail[start.slug] = it } }
+        launch { runCatching { Api.detail(start.slug) }.getOrNull()?.let { PlaybackHistory.remember(it.title, it.genres); detail = it; TitleCache.detail[start.slug] = it } }
         try {
             val eps = runCatching { Api.episodes(start.slug) }.getOrElse { e ->
                 ru.qmods.anixq.mobile.data.Downloads.episodes(start.id) ?: throw e
@@ -240,7 +241,7 @@ fun TitleScreen(nav: Nav, start: Title) {
                 }
             }
             val away = ru.qmods.anixq.tv.data.Recap.daysAway(title.id)
-            val lastE = Store.lastEntry(title.id)
+            val lastE = PlaybackHistory.lastEntry(title)
             if (away != null && lastE != null) item(key = "recap") {
                 Row(Modifier.padding(horizontal = 16.dp).padding(top = 18.dp).fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Pal.card).padding(14.dp)) {
                     Icon(Icons.Default.History, null, tint = Pal.pink)

@@ -17,6 +17,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import ru.qmods.anixq.mobile.data.PlaybackHistory
 import ru.qmods.anixq.tv.data.Store
 
 /** Home-screen widget: the episode you stopped at (on any device) — one tap continues it. */
@@ -27,6 +28,7 @@ class ContinueWidget : AppWidgetProvider() {
             try {
                 Store.devicePrefix = "and"; Store.deviceName = "Android"
                 Store.init(context.applicationContext)
+                PlaybackHistory.init(context.applicationContext)
                 render(context, manager, ids)
             } finally { pending.finish() }
         }
@@ -44,7 +46,7 @@ class ContinueWidget : AppWidgetProvider() {
         }
 
         private suspend fun render(context: Context, manager: AppWidgetManager, ids: IntArray) {
-            val e = Store.continueList.firstOrNull()
+            val e = kotlinx.coroutines.withContext(Dispatchers.Main.immediate) { PlaybackHistory.continueEntries().firstOrNull() }
             val v = RemoteViews(context.packageName, R.layout.widget_continue)
             val tap = PendingIntent.getActivity(context, 7,
                 Intent(Intent.ACTION_VIEW, Uri.parse(if (e != null) "anixq://continue" else "anixq://home"), context, MainActivity::class.java),
@@ -55,6 +57,7 @@ class ContinueWidget : AppWidgetProvider() {
                 v.setTextViewText(R.id.title, "Что посмотрим?")
                 v.setTextViewText(R.id.sub, "Начните серию — она появится здесь")
                 v.setProgressBar(R.id.progress, 1000, 0, false)
+                v.setImageViewBitmap(R.id.cover, null)
             } else {
                 val done = e.progress > 0.92
                 v.setTextViewText(R.id.label, if (done) "Следующая серия" else "Продолжить просмотр")
@@ -62,7 +65,7 @@ class ContinueWidget : AppWidgetProvider() {
                 val left = ((e.dur - e.pos) / 60).toInt().coerceAtLeast(1)
                 v.setTextViewText(R.id.sub, if (done) "После серии ${e.ep}" else "Серия ${e.ep} · осталось $left мин")
                 v.setProgressBar(R.id.progress, 1000, if (done) 1000 else (e.progress * 1000).toInt(), false)
-                cover(context, e.title.thumb)?.let { v.setImageViewBitmap(R.id.cover, it) }
+                v.setImageViewBitmap(R.id.cover, cover(context, e.title.thumb))
             }
             manager.updateAppWidget(ids, v)
         }

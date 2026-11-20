@@ -17,6 +17,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
+import ru.qmods.anixq.mobile.data.PlaybackHistory
 import ru.qmods.anixq.tv.data.Nearby
 import ru.qmods.anixq.tv.data.Remote
 import ru.qmods.anixq.tv.data.Store
@@ -50,7 +51,8 @@ object NearTv {
         if (!Store.nearbyTv) return
         val now = System.currentTimeMillis()
         if (now - Store.nearbyNotifiedAt < 45 * 60_000) return
-        val e = Nearby.candidate() ?: return
+        PlaybackHistory.init(context)
+        val e = Nearby.candidate()?.takeIf { PlaybackHistory.canRecord(it.title) } ?: return
         // Already on the TV — nothing to offer.
         Remote.tvState.value?.let { s -> if (s.optInt("episodeId") == e.episodeId && s.optString("state") != "idle") return }
         if (Build.VERSION.SDK_INT >= 33 && context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
@@ -83,7 +85,8 @@ object NearTv {
     /** Send the paused episode to the TV, from exactly where it stopped. */
     suspend fun playOnTv(context: Context) {
         NotificationManagerCompat.from(context).cancel(NOTE_ID)
-        val e = Store.continueList.firstOrNull() ?: return
+        PlaybackHistory.init(context)
+        val e = PlaybackHistory.continueEntries().firstOrNull() ?: return
         Remote.isTv = false
         Remote.start(context.applicationContext)
         Remote.playOnTv(e.title, e.episodeId, e.teamId, e.pos)

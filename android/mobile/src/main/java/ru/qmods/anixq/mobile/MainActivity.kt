@@ -46,6 +46,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.lifecycleScope
 import coil.Coil
 import kotlinx.coroutines.launch
+import ru.qmods.anixq.mobile.data.PlaybackHistory
 import ru.qmods.anixq.mobile.ui.AnixTheme
 import ru.qmods.anixq.mobile.ui.CatalogListScreen
 import ru.qmods.anixq.mobile.ui.CatalogRoute
@@ -98,6 +99,14 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge(SystemBarStyle.dark(android.graphics.Color.TRANSPARENT), SystemBarStyle.dark(android.graphics.Color.TRANSPARENT))
         Store.init(applicationContext)
         Api.diskDir = cacheDir
+        PlaybackHistory.init(applicationContext)
+        ContinueWidget.refresh(applicationContext)
+        lifecycleScope.launch {
+            Store.version.collect {
+                PlaybackHistory.classifyHistory()
+                ContinueWidget.refresh(applicationContext)
+            }
+        }
         ru.qmods.anixq.tv.data.Crashes.install(applicationContext, "AnixQ Android", BuildConfig.VERSION_NAME)
         ru.qmods.anixq.mobile.data.Downloads.init(applicationContext)
         NewEpisodes.schedule(applicationContext)
@@ -156,13 +165,13 @@ class MainActivity : ComponentActivity() {
         when (u.host) {
             "pair" -> { nav.stack.removeAll { it is PlayerRoute }; nav.push(SettingsRoute); PairFlow.run(u.toString(), lifecycleScope) }
             "title" -> u.pathSegments.firstOrNull()?.let { slug -> nav.open(Title(id = if (slug.startsWith("yummy:")) -(slug.substringAfter(":").toIntOrNull() ?: 0) else slug.substringBefore("--").toIntOrNull() ?: 0, slug = slug)) }
-            "continue" -> Store.continueList.firstOrNull()?.let { e -> nav.play(PlayerRoute(e.title, resume = true)) }
+            "continue" -> PlaybackHistory.continueEntries().firstOrNull()?.let { e -> nav.play(PlayerRoute(e.title, resume = true)) }
             "home" -> { nav.stack.clear(); nav.tab = Tab.HOME }
             "search" -> { nav.stack.clear(); nav.tab = Tab.SEARCH }
             "remote" -> nav.push(ru.qmods.anixq.mobile.ui.RemoteRoute)
             "schedule" -> nav.push(ru.qmods.anixq.mobile.ui.ScheduleRoute)
             // "Досмотреть на ТВ?" notification: start the episode on the TV and show the remote.
-            "tv-continue" -> Store.continueList.firstOrNull()?.let { e ->
+            "tv-continue" -> PlaybackHistory.continueEntries().firstOrNull()?.let { e ->
                 androidx.core.app.NotificationManagerCompat.from(this).cancel(NearTv.NOTE_ID)
                 Remote.playOnTv(e.title, e.episodeId, e.teamId, e.pos)
                 nav.push(ru.qmods.anixq.mobile.ui.RemoteRoute)

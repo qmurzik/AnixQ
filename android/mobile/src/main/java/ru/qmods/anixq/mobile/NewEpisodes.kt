@@ -18,6 +18,7 @@ import androidx.work.NetworkType
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
+import ru.qmods.anixq.mobile.data.PlaybackHistory
 import ru.qmods.anixq.tv.data.Api
 import ru.qmods.anixq.tv.data.Bookmark
 import ru.qmods.anixq.tv.data.Store
@@ -33,6 +34,7 @@ class NewEpisodesWorker(context: Context, params: WorkerParameters) : CoroutineW
         val ctx = applicationContext
         Store.devicePrefix = "and"; Store.deviceName = "Android"
         Store.init(ctx)
+        PlaybackHistory.init(ctx)
         ContinueWidget.refresh(ctx)
         NewEpisodes.check(ctx)
         return Result.success()
@@ -52,7 +54,7 @@ object NewEpisodes {
     /** Titles worth checking: "Смотрю" plus anything watched in the last month. */
     private fun candidates(): List<Title> {
         val now = System.currentTimeMillis() / 1000.0
-        val recent = Store.history.filter { now - it.at < 30 * 86_400 }.map { it.title }
+        val recent = PlaybackHistory.entries().filter { now - it.at < 30 * 86_400 }.map { it.title }
         return (Store.titles(Bookmark.WATCHING) + recent).distinctBy { it.id }.take(40)
     }
 

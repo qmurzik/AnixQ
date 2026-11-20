@@ -20,6 +20,8 @@ class PlayerSourceSwitchTest {
         val context = ApplicationProvider.getApplicationContext<android.content.Context>()
         Store.init(context, "source-switch-test")
         val title = Title(100, "100--test")
+        ru.qmods.anixq.mobile.data.PlaybackHistory.init(context)
+        ru.qmods.anixq.mobile.data.PlaybackHistory.remember(title, listOf("Драма"))
         val ep = Episode(200, "3", "Episode", 0)
         val lib = Player(Team(1, "Original", false), "animelib", null,
             mapOf("720p" to "file:///does-not-exist-lib.mp4"), emptyList(), 10, null)
@@ -53,6 +55,8 @@ class PlayerSourceSwitchTest {
         Store.init(context, "source-fallback-test")
         ru.qmods.anixq.tv.data.sources.AnimeSources.yummy.userToken = null
         val title = Title(101, "101--fallback")
+        ru.qmods.anixq.mobile.data.PlaybackHistory.init(context)
+        ru.qmods.anixq.mobile.data.PlaybackHistory.remember(title, listOf("Драма"))
         val ep = Episode(201,"3",null,0)
         val lib = Player(Team(1,"AniLibria.TV",false),"animelib",null,mapOf("720p" to "file:///local-lib.mp4"),emptyList(),10,null)
         val yummy = Player(Team(-301,"Озвучка AniLibria",false),"animelib",null,mapOf("720p" to "file:///local-yummy.mp4"),emptyList(),null,null,source="yummy",headers=emptyMap(),balancer="Плеер CVH")

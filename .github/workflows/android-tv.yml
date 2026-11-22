@@ -44,9 +44,9 @@ jobs:
                ! printf '%s\n' "$CHANGED" | grep -qE '^android/(app/|core/|ci/|[^/]+$)'; then
               TV=false
             fi
-            # A phone release can include shared code used exclusively by the phone.
+            # An explicit phone-only release can include fixes in the shared module.
             if [ "$(git log -1 --format='%(trailers:key=Android-Only,valueonly)')" = true ] &&
-               printf '%s\n' "$CHANGED" | grep -q '^android/mobile/' &&
+               printf '%s\n' "$CHANGED" | grep -qE '^android/(mobile|core)/' &&
                ! printf '%s\n' "$CHANGED" | grep -qE '^android/(app/|ci/|[^/]+$)'; then
               TV=false
             fi

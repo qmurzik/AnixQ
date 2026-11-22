@@ -109,6 +109,7 @@ class MainActivity : ComponentActivity() {
         }
         ru.qmods.anixq.tv.data.Crashes.install(applicationContext, "AnixQ Android", BuildConfig.VERSION_NAME)
         ru.qmods.anixq.mobile.data.Downloads.init(applicationContext)
+        ru.qmods.anixq.mobile.data.Downloads.restoreQueue()
         NewEpisodes.schedule(applicationContext)
         ru.qmods.anixq.mobile.data.Collections.init(applicationContext)
         ru.qmods.anixq.mobile.data.Notes.init(applicationContext)

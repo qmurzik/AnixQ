@@ -229,6 +229,8 @@ fun SettingsScreen(nav: Nav) {
             ToggleRow("Звук в фоне (экран выключен)", Icons.Default.Headphones, Pal.purple, Store.backgroundAudio) { Store.backgroundAudio = it }
             ToggleRow("Без спойлеров", Icons.Default.VisibilityOff, Pal.indigo, Store.noSpoilers) { Store.noSpoilers = it }
             ToggleRow("AniLibria — с их сервера", Icons.Default.Language, Pal.teal, Store.libriaDirect) { Store.libriaDirect = it }
+            ToggleRow("Загрузки без мобильного трафика", Icons.Default.Download, Pal.indigo,
+                ru.qmods.anixq.mobile.data.Downloads.unmeteredOnly) { ru.qmods.anixq.mobile.data.Downloads.unmeteredOnly = it }
             GroupRow("Качество загрузок", icon = Icons.Default.Download, iconColor = Pal.indigo, trailing = {
                 var dq by remember { mutableStateOf(ru.qmods.anixq.mobile.data.Downloads.quality) }
                 Row(Modifier.clip(RoundedCornerShape(9.dp)).background(Pal.cardHi).padding(2.dp)) {

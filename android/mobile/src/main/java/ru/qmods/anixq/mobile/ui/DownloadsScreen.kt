@@ -45,6 +45,7 @@ fun DownloadsScreen(nav: Nav) {
     val totalMb = items.values.sumOf { it.bytes } / 1_000_000
     Column(Modifier.fillMaxSize().statusBarsPadding()) {
         TopBar("Загрузки", { nav.pop() })
+        HomeNetworkSettings()
         if (items.isEmpty()) {
             EmptyState(Icons.Default.Download, "Пока ничего не скачано", "На странице тайтла нажмите ↓ рядом с «Серии» или удерживайте серию — она будет доступна без интернета")
             return@Column

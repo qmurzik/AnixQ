@@ -8,6 +8,10 @@ import okhttp3.mockwebserver.MockWebServer
 import okhttp3.mockwebserver.RecordedRequest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertThrows
+import java.io.IOException
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
@@ -42,6 +46,49 @@ class OfflineStreamsTest {
           </Period>
         </MPD>
     """.trimIndent())
+
+    @Test fun interruptedHlsDownloadReusesCompletedSegmentsAfterCacheReopen() {
+        val firstRequests = AtomicInteger()
+        val secondReady = AtomicBoolean(false)
+        val cache = files.newFolder()
+        val context = RuntimeEnvironment.getApplication()
+        MockWebServer().use { server ->
+            server.dispatcher = object : Dispatcher() {
+                override fun dispatch(request: RecordedRequest): MockResponse = when (request.path) {
+                    "/episode.m3u8" -> MockResponse().setBody("""
+                        #EXTM3U
+                        #EXT-X-TARGETDURATION:4
+                        #EXTINF:4,
+                        first.ts
+                        #EXTINF:4,
+                        second.ts
+                        #EXT-X-ENDLIST
+                    """.trimIndent())
+                    "/first.ts" -> MockResponse().setBody("first segment").also { firstRequests.incrementAndGet() }
+                    "/second.ts" -> if (secondReady.get()) MockResponse().setBody("second segment")
+                        else MockResponse().setResponseCode(503)
+                    else -> MockResponse().setResponseCode(404)
+                }
+            }
+            val url = server.url("/episode.m3u8").toString()
+            val first = OfflineStreams(context)
+            try {
+                assertThrows(IOException::class.java) { first.downloader(cache, url, emptyMap()).download(null) }
+                assertEquals(1, firstRequests.get())
+            } finally {
+                first.close(cache)
+            }
+
+            secondReady.set(true)
+            val reopened = OfflineStreams(context)
+            try {
+                reopened.downloader(cache, url, emptyMap()).download(null)
+                assertEquals(1, firstRequests.get())
+            } finally {
+                reopened.delete(cache)
+            }
+        }
+    }
 
     private fun downloadAndRead(playlist: String, manifest: String) {
         val segment = "fixture segment"

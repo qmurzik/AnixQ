@@ -142,6 +142,7 @@ fun HomeScreen(nav: Nav) {
                 Text("AnixQ", fontSize = 34.sp, fontWeight = FontWeight.Black)
             }
         }
+        cont.firstOrNull()?.let { entry -> item(key = "home-download") { HomeDownloadCard(entry) } }
         item(key = "discover") { DiscoverStrip(nav) }
         item(key = "tv") { Box(Modifier.padding(top = 18.dp).animateContentSize()) { NowOnTvCard(nav) } }
         if (cont.isNotEmpty()) item(key = "continue") {

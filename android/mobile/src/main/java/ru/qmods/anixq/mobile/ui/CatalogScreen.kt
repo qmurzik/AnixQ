@@ -15,7 +15,7 @@ import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyGridScope
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Sort
@@ -54,6 +54,7 @@ class CatalogLoader(private val fetchPage: suspend (CatalogQuery, Int) -> Pair<L
     var error by mutableStateOf<String?>(null)
     var more by mutableStateOf(true)
     private var page = 1
+    var scroll by mutableStateOf(LazyGridState()); private set
     var query: CatalogQuery? = null; private set
 
     suspend fun ensureLoaded(q: CatalogQuery) {
@@ -62,6 +63,7 @@ class CatalogLoader(private val fetchPage: suspend (CatalogQuery, Int) -> Pair<L
     }
 
     suspend fun reset(q: CatalogQuery) {
+        if (query != q) scroll = LazyGridState()
         query = q; items = emptyList(); page = 1; more = true; error = null; loading = false
         loadMore()
     }
@@ -86,12 +88,12 @@ class CatalogLoader(private val fetchPage: suspend (CatalogQuery, Int) -> Pair<L
 /** Grid of posters with endless scrolling; header items go first. */
 @Composable
 fun PosterGrid(loader: CatalogLoader, onOpen: (Title) -> Unit, onRetry: () -> Unit, header: LazyGridScope.() -> Unit = {}) {
-    val state = rememberLazyGridState()
-    val nearEnd by remember { androidx.compose.runtime.derivedStateOf {
+    val state = loader.scroll
+    val nearEnd by remember(state) { androidx.compose.runtime.derivedStateOf {
         val last = state.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
         last >= state.layoutInfo.totalItemsCount - 6
     } }
-    LaunchedEffect(nearEnd, loader.items.size) { if (nearEnd && loader.items.isNotEmpty()) loader.loadMore() }
+    LaunchedEffect(state, nearEnd, loader.items.size) { if (nearEnd && loader.items.isNotEmpty()) loader.loadMore() }
     LazyVerticalGrid(GridCells.Adaptive(105.dp), Modifier.fillMaxSize(), state,
         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {

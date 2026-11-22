@@ -46,7 +46,7 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
         .put("playing", playing).put("position", pos).put("rate", speed.toDouble())
         .apply {
             // AniLibria's HLS: the web page finds it by itself (and plays it with hls.js), so no "stream" here.
-            if (native && player?.isLibria != true && player?.isExternalEmbed != true) currentUrl?.takeIf { it.startsWith("http") }?.let { put("stream", it) }
+            if (quality != "Скачано" && native && player?.isLibria != true && player?.isExternalEmbed != true) currentUrl?.takeIf { it.startsWith("http") }?.let { put("stream", it) }
             val k = if (player?.isExternalEmbed == true) null else if (!native) currentUrl else players.firstOrNull { it.team.id == player?.team?.id && it.isKodik }?.kodikSrc?.let { Api.kodikUrl(it) }
                 ?: players.firstOrNull { it.isKodik }?.kodikSrc?.let { Api.kodikUrl(it) }
             k?.let { put("kodik", it) }
@@ -225,10 +225,13 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
         scope.launch { PlaybackHistory.classify(title) }
         scope.launch {
             try {
-                Sync.pullFresh()
-                // Offline: the episode list saved with the downloads.
-                val eps = runCatching { Api.episodes(title.slug) }.getOrNull()
-                    ?: ru.qmods.anixq.mobile.data.Downloads.episodes(title.id) ?: throw Exception("Нет связи с AnimeLib")
+                val downloads = ru.qmods.anixq.mobile.data.Downloads
+                val savedEpisodes = downloads.episodes(title.id)
+                val fromDownload = !route.resume && route.episodeId?.let { downloads.offlinePlayer(it) } != null
+                if (!fromDownload) Sync.pullFresh()
+                val eps = savedEpisodes.takeIf { fromDownload }
+                    ?: runCatching { Api.episodes(title.slug) }.getOrNull()
+                    ?: savedEpisodes ?: throw Exception("Нет связи с AnimeLib")
                 if (eps.isEmpty()) { message = "Серий нет"; failed = true; return@launch }
                 episodes = eps
                 val latest = if (route.resume) PlaybackHistory.lastEntry(title) else null
@@ -276,7 +279,7 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
                     offlinePlayers ?: playersCache.remove(ep.id)?.takeUnless { includeExternal }
                         ?: AnimeSources.players(title, ep, includeExternal = includeExternal)
                 players = list
-                if (!includeExternal && title.id > 0 && list.any(AnimeSources::supported) && list.none { it.isExternalEmbed }) launch {
+                if (offline == null && !includeExternal && title.id > 0 && list.any(AnimeSources::supported) && list.none { it.isExternalEmbed }) launch {
                     val extra = AnimeSources.additional(title, ep)
                     if (generation == loadGeneration && episode?.id == ep.id) players = (players + extra).distinctBy { "${it.source}:${it.team.id}" }
                 }
@@ -290,7 +293,7 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
                     ?: list.firstOrNull { it.isNative || (it.canResolve && AnimeSources.supported(it)) } ?: list.firstOrNull { it.isKodik || it.isNative }
                 if (first == null) { message = "Для этой серии нет видео"; failed = true; return@launch }
                 player = first
-                var chosen: Player = AnimeSources.resolve(first, title, ep, cached = previousChoice.takeIf { sameEpisode && qualityKey != null })
+                var chosen: Player = first.takeIf { it === offline } ?: AnimeSources.resolve(first, title, ep, cached = previousChoice.takeIf { sameEpisode && qualityKey != null })
                 // AniLibria dub: their own servers when they have the episode (no ads, often faster than AnimeLib).
                 if (offline == null && !preferKodik && !avoidLibria && !chosen.isExternalEmbed && !Store.hasPlaybackChoice(title) && Store.libriaDirect && ru.qmods.anixq.tv.data.Libria.isLibria(chosen.team.name)) {
                     ru.qmods.anixq.tv.data.Libria.race(title, ep.number, chosen, probeAt = keepPos ?: savedPosition(ep) ?: 0.0)?.let { chosen = it; if (!sameEpisode) say("AniLibria: видео с их сервера") }
@@ -298,7 +301,7 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
                 currentCoroutineContext().ensureActive()
                 if (generation != loadGeneration) return@launch
                 player = chosen
-                Store.setPlaybackChoice(title, chosen)
+                if (chosen !== offline && "Скачано" !in chosen.hrefs) Store.setPlaybackChoice(title, chosen)
                 val local = savedPosition(ep)
                 val remote = chosen.serverTimecode?.takeIf { PlaybackHistory.canRecord(title) && it > 5 && (route.episodeId != ep.id || local == null) }
                 var startAt = keepPos ?: (if (!startedOnce) route.startAt else null) ?: local ?: remote ?: 0.0
@@ -339,6 +342,10 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
             exo = it
         }
         currentUrl = if (local) href else Api.videoUrl(servers[0], href)
+        val episodeId = episode?.id
+        e.offlineDataSource = if (q == "Скачано" && episodeId != null) { url ->
+            ru.qmods.anixq.mobile.data.Downloads.offlineDataSource(episodeId, url)
+        } else null
         e.load(currentUrl!!, startAt, p.subtitles, 0, p.headers)
         e.setAutomaticQuality(q.equals("auto", true) || Store.automaticQuality)
         e.setSubtitles(subtitlesOn)
@@ -364,6 +371,11 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
         if (exo?.effectsActive == true && exo?.effectFailure == true) {
             say("Обработка изображения отключена после ошибки GPU")
             load(index, keepPos = maxOf(pos, exo?.position ?: 0.0), qualityKey = quality)
+            return
+        }
+        if (quality == "Скачано") {
+            message = "Не удалось открыть скачанную серию. Попробуйте скачать её заново"
+            failed = true
             return
         }
         if (p.isExternalEmbed) {
@@ -456,12 +468,12 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
         }
         if (dur > 60 && pos / dur >= 0.9) recordViewed(markShiki = true)
         // Next episode: where it is (right after this one starts), then its video queued 3 minutes before the end.
-        if (hasNext && player?.isExternalEmbed != true && !nextLooked && native && pos > 15) {
+        if (hasNext && quality != "Скачано" && player?.isExternalEmbed != true && !nextLooked && native && pos > 15) {
             nextLooked = true
             val next = episodes[index + 1]
             scope.launch { runCatching { Api.players(next.id) }.getOrNull()?.takeIf { it.isNotEmpty() }?.let { playersCache[next.id] = it } }
         }
-        if (hasNext && player?.isExternalEmbed != true && !prefetched && native && dur > 0 && dur - pos < 180) {
+        if (hasNext && quality != "Скачано" && player?.isExternalEmbed != true && !prefetched && native && dur > 0 && dur - pos < 180) {
             prefetched = true
             val next = episodes[index + 1]
             val generation = loadGeneration
@@ -495,7 +507,7 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
 
     // Only sustained buffering counts; quality changes are opt-in and share a conservative cooldown.
     private fun watchStalls() {
-        if (!native || loading || message != null) return
+        if (!native || loading || message != null || quality == "Скачано") return
         exo?.setAutomaticQuality(quality.equals("auto", true) || Store.automaticQuality)
         val action = recovery.update(android.os.SystemClock.elapsedRealtime(),
             buffering && exo?.exo?.playWhenReady == true && pos > 2, Store.automaticQuality)

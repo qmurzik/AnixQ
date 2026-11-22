@@ -39,6 +39,7 @@ import ru.qmods.anixq.mobile.data.Downloads
 /** Saved episodes, grouped by title: play offline, watch progress, delete. */
 @Composable
 fun DownloadsScreen(nav: Nav) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     val items by Downloads.items.collectAsState()
     val groups = items.values.groupBy { it.title.id }.values.sortedBy { it.first().title.title }
     val totalMb = items.values.sumOf { it.bytes } / 1_000_000
@@ -63,7 +64,12 @@ fun DownloadsScreen(nav: Nav) {
                 }
                 items(g.sortedBy { it.episode.index }, key = { it.key }) { d ->
                     Row(Modifier.padding(horizontal = 16.dp, vertical = 3.dp).fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Pal.card)
-                        .pressable(enabled = d.state == Downloads.State.DONE) { nav.play(PlayerRoute(d.title, d.episode.id, d.team.id)) }
+                        .pressable(enabled = d.state == Downloads.State.DONE || d.state == Downloads.State.FAILED) {
+                            if (d.state == Downloads.State.DONE) nav.play(PlayerRoute(d.title, d.episode.id, d.team.id))
+                            else Downloads.enqueue(d.title, Downloads.episodes(d.title.id) ?: listOf(d.episode), listOf(d.episode), d.team.id) {
+                                android.widget.Toast.makeText(context, it, android.widget.Toast.LENGTH_SHORT).show()
+                            }
+                        }
                         .padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                         Box(Modifier.size(30.dp), contentAlignment = Alignment.Center) {
                             when (d.state) {
@@ -76,7 +82,7 @@ fun DownloadsScreen(nav: Nav) {
                             Text("Серия ${d.episode.number}", fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
                             Text(listOf(d.team.name, d.quality, when (d.state) {
                                 Downloads.State.DONE -> "${d.bytes / 1_000_000} МБ"
-                                Downloads.State.FAILED -> "ошибка — удалите и скачайте заново"
+                                Downloads.State.FAILED -> "ошибка, нажмите для повтора"
                                 Downloads.State.RUNNING -> "${(d.progress * 100).toInt()}%"
                                 Downloads.State.QUEUED -> "в очереди"
                             }).joinToString(" · "), fontSize = 12.sp, color = Pal.muted, maxLines = 1)

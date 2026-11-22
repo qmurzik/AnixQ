@@ -44,6 +44,12 @@ jobs:
                ! printf '%s\n' "$CHANGED" | grep -qE '^android/(app/|core/|ci/|[^/]+$)'; then
               TV=false
             fi
+            # A phone release can include shared code used exclusively by the phone.
+            if [ "$(git log -1 --format='%(trailers:key=Android-Only,valueonly)')" = true ] &&
+               printf '%s\n' "$CHANGED" | grep -q '^android/mobile/' &&
+               ! printf '%s\n' "$CHANGED" | grep -qE '^android/(app/|ci/|[^/]+$)'; then
+              TV=false
+            fi
           fi
           echo "tv=$TV" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-java@v4

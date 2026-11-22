@@ -114,9 +114,7 @@ fun SearchScreen(nav: Nav) {
             }
             if (text.isNotEmpty()) Icon(Icons.Default.Cancel, "Очистить", Modifier.size(18.dp).clickable { nav.searchText = "" }, tint = Pal.muted)
         }
-        val listState = androidx.compose.runtime.key(query) {
-            androidx.compose.foundation.lazy.rememberLazyListState()
-        }
+        val listState = remember(nav, query) { nav.searchScrollFor(query) }
         LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = PaddingValues(bottom = 24.dp)) {
             if (q.isEmpty()) {
                 item(key = "tools") {

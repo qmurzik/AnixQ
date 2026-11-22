@@ -67,6 +67,16 @@ class Nav {
     internal var searchText by mutableStateOf("")
     internal var searchSource by mutableStateOf("animelib")
     internal var searchResult by mutableStateOf<SearchResult?>(null)
+    private var searchScrollQuery: CatalogQuery? = null
+    private var searchScroll = androidx.compose.foundation.lazy.LazyListState()
+
+    internal fun searchScrollFor(query: CatalogQuery): androidx.compose.foundation.lazy.LazyListState {
+        if (searchScrollQuery != query) {
+            searchScrollQuery = query
+            searchScroll = androidx.compose.foundation.lazy.LazyListState()
+        }
+        return searchScroll
+    }
     var tab by mutableStateOf(Tab.HOME)
     val stack = mutableStateListOf<Route>()
     val top: Route? get() = stack.lastOrNull()

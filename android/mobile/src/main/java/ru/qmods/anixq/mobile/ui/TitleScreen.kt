@@ -318,7 +318,7 @@ fun TitleScreen(nav: Nav, start: Title) {
                                 itemsIndexed(eps, key = { _, e -> e.id }) { i, ep ->
                                     Box {
                                         EpisodeCard(ep, detail?.background ?: title.poster, Store.progress(ep.id).toFloat(), Store.isWatched(title.id, ep.number),
-                                            downloads[ep.id]?.let { if (it.state == ru.qmods.anixq.mobile.data.Downloads.State.DONE) 1f else it.progress.coerceAtLeast(0.01f) },
+                                            downloads[ep.id]?.takeUnless { it.state == ru.qmods.anixq.mobile.data.Downloads.State.FAILED }?.let { if (it.state == ru.qmods.anixq.mobile.data.Downloads.State.DONE) 1f else it.progress.coerceAtLeast(0.01f) },
                                             Modifier.combinedClickable(onClick = { play(i) }, onLongClick = { epMenu = ep }))
                                         DropdownMenu(epMenu == ep, { epMenu = null }, containerColor = Pal.cardHi) {
                                             if (hasTv) DropdownMenuItem({ Text("Смотреть на ТВ") }, leadingIcon = { Icon(Icons.Default.Tv, null) }, onClick = {
@@ -328,9 +328,11 @@ fun TitleScreen(nav: Nav, start: Title) {
                                                 leadingIcon = { Icon(Icons.Default.CheckCircle, null) }, onClick = { epMenu = null; Store.markWatched(title, ep) })
                                             DropdownMenuItem({ Text("Смотреть с начала") }, leadingIcon = { Icon(Icons.Default.PlayArrow, null) },
                                                 onClick = { epMenu = null; nav.play(PlayerRoute(title, ep.id, teamId, startAt = 0.0)) })
-                                            if (downloads[ep.id] == null) DropdownMenuItem({ Text("Скачать серию") }, leadingIcon = { Icon(Icons.Default.Download, null) },
+                                            val status = downloads[ep.id]?.state
+                                            val downloadFailed = status == ru.qmods.anixq.mobile.data.Downloads.State.FAILED
+                                            if (status == null || downloadFailed) DropdownMenuItem({ Text(if (downloadFailed) "Повторить скачивание" else "Скачать серию") }, leadingIcon = { Icon(Icons.Default.Download, null) },
                                                 onClick = { epMenu = null; download(listOf(ep)) })
-                                            else DropdownMenuItem({ Text("Удалить загрузку") }, leadingIcon = { Icon(Icons.Default.Delete, null) },
+                                            if (status != null) DropdownMenuItem({ Text("Удалить загрузку") }, leadingIcon = { Icon(Icons.Default.Delete, null) },
                                                 onClick = { epMenu = null; ru.qmods.anixq.mobile.data.Downloads.remove(ep.id) })
                                             DropdownMenuItem({ Text("Заметка к серии") }, leadingIcon = { Icon(Icons.Default.Edit, null) },
                                                 onClick = { epMenu = null; noteEp = ep })

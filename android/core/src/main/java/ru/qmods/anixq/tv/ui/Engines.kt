@@ -232,7 +232,13 @@ class ExoEngine(private val context: Context, private val onError: (String) -> U
     private var queuedHeaders: Map<String, String>? = null
     private var currentHeaders: Map<String, String> = mapOf("Referer" to "${Api.SITE}/", "Origin" to Api.SITE)
     private val legacyHeaders get() = mapOf("Referer" to "${Api.SITE}/", "Origin" to Api.SITE)
+    /** Optional read-only media source for local downloads. */
+    var offlineDataSource: ((String) -> androidx.media3.datasource.DataSource.Factory?)? = null
+
     private fun mediaSource(url: String, subtitles: List<ru.qmods.anixq.tv.data.Subtitle>, headers: Map<String, String>): androidx.media3.exoplayer.source.MediaSource {
+        offlineDataSource?.invoke(url)?.let { factory ->
+            return DefaultMediaSourceFactory(factory).createMediaSource(item(url, subtitles))
+        }
         val upstream = OkHttpDataSource.Factory(Api.http).setDefaultRequestProperties(headers.toMap())
         return DefaultMediaSourceFactory(androidx.media3.datasource.DefaultDataSource.Factory(context, upstream)).createMediaSource(item(url, subtitles))
     }
@@ -255,7 +261,7 @@ class ExoEngine(private val context: Context, private val onError: (String) -> U
         effectFailure = false
         loadedAt = System.currentTimeMillis()
         currentHeaders = headers.toMap()
-        if (url == queuedUrl && headers == queuedHeaders && exo.mediaItemCount > 1) {
+        if (offlineDataSource == null && url == queuedUrl && headers == queuedHeaders && exo.mediaItemCount > 1) {
             // Already buffering in the queue: jump straight to it.
             exo.seekTo(1, (startAt * 1000).toLong())
             exo.removeMediaItem(0)

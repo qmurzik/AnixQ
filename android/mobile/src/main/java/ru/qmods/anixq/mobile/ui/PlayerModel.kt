@@ -13,6 +13,8 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.launch
 import ru.qmods.anixq.mobile.data.PlaybackHistory
 import ru.qmods.anixq.tv.data.AniSkip
@@ -228,12 +230,13 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
                 val downloads = ru.qmods.anixq.mobile.data.Downloads
                 val savedEpisodes = downloads.episodes(title.id)
                 val fromDownload = !route.resume && route.episodeId?.let { downloads.offlinePlayer(it) } != null
-                if (!fromDownload) Sync.pullFresh()
+                val sync = if (!fromDownload) async { Sync.pullFresh() } else null
                 val eps = savedEpisodes.takeIf { fromDownload }
                     ?: runCatching { Api.episodes(title.slug) }.getOrNull()
                     ?: savedEpisodes ?: throw Exception("Нет связи с AnimeLib")
                 if (eps.isEmpty()) { message = "Серий нет"; failed = true; return@launch }
                 episodes = eps
+                if (route.resume && sync != null) withTimeoutOrNull(3_000) { sync.await() }
                 val latest = if (route.resume) PlaybackHistory.lastEntry(title) else null
                 val epId = latest?.episodeId ?: route.episodeId
                 val next = if (latest != null) latest.progress > 0.92 else route.next
@@ -241,7 +244,8 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
                     ?: latest?.let { l -> eps.indexOfFirst { it.number == l.ep } }?.takeIf { it >= 0 } ?: 0
                 if (next && i + 1 < eps.size) i += 1
                 load(i, teamId = latest?.teamId ?: route.teamId)
-            } catch (e: Exception) { message = e.message ?: "Ошибка"; failed = true }
+            } catch (e: CancellationException) { throw e }
+            catch (e: Exception) { message = e.message ?: "Ошибка"; failed = true }
         }
     }
 
@@ -273,8 +277,8 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
                 val offline = ru.qmods.anixq.mobile.data.Downloads.offlinePlayer(ep.id)
                 val offlinePlayers = offline?.let { listOf(it) }
                 if (offline != null && !sameEpisode) say("Скачанная серия — без интернета")
-                val includeExternal = Store.prefersExternal(title) || title.id < 0 ||
-                    teamId?.let { it < 0 } == true || previousChoice?.isExternalEmbed == true
+                val includeExternal = title.id < 0 || (teamId?.let { it < 0 }
+                    ?: (previousChoice?.isExternalEmbed == true || Store.prefersExternal(title)))
                 val list = if (sameEpisode && players.isNotEmpty()) players else
                     offlinePlayers ?: playersCache.remove(ep.id)?.takeUnless { includeExternal }
                         ?: AnimeSources.players(title, ep, includeExternal = includeExternal)
@@ -480,7 +484,7 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
             val sourceEngine = exo
             scope.launch {
                 runCatching {
-                    val ps = playersCache[next.id] ?: AnimeSources.players(title, next).also { playersCache[next.id] = it }
+                    val ps = playersCache[next.id] ?: AnimeSources.players(title, next, includeExternal = false).also { playersCache[next.id] = it }
                     var p = ps.firstOrNull { it.team.id == player?.team?.id && it.isNative }
                     // AniLibria now: queue their file of the next episode (the one the player will pick).
                     if (player?.isLibria == true) {

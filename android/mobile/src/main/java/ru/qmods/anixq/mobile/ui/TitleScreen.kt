@@ -166,15 +166,25 @@ fun TitleScreen(nav: Nav, start: Title) {
             }
             episodes = eps; TitleCache.episodes[start.slug] = eps
             if (eps.isEmpty()) return@LaunchedEffect
-            // Teams can differ between early and recent episodes: look at both ends.
             val target = eps[nextIndex(start, eps)]
-            val players = ru.qmods.anixq.tv.data.sources.AnimeSources.players(start, target).filter(ru.qmods.anixq.tv.data.sources.AnimeSources::supported)
-            val opts = PlaybackChoices.options(players)
-            teams = opts; TitleCache.teams[start.slug] = opts
-            launch { players.firstOrNull { it.isNative && (teamId == null || it.team.id == teamId) }?.hrefs?.values?.firstOrNull()?.let { if (!it.startsWith("http")) runCatching { Api.rankServers(it) } } }
-            teamId = Store.playbackOption(start, opts)?.team?.id ?: teamId?.takeIf { id -> opts.any { it.team.id == id } }
-                ?: opts.firstOrNull { o -> Store.dubs.any { PlaybackChoices.sameDub(it, o.team.name) } }?.team?.id ?: opts.firstOrNull()?.team?.id
-
+            val sources = ru.qmods.anixq.tv.data.sources.AnimeSources
+            val base = sources.players(start, target, includeExternal = false)
+            fun showTeams(players: List<ru.qmods.anixq.tv.data.Player>) {
+                val options = PlaybackChoices.options(players.filter(sources::supported))
+                teams = options
+                TitleCache.teams[start.slug] = options
+                teamId = Store.playbackOption(start, options)?.team?.id
+                    ?: teamId?.takeIf { id -> options.any { it.team.id == id } }
+                    ?: options.firstOrNull { option -> Store.dubs.any { PlaybackChoices.sameDub(it, option.team.name) } }?.team?.id
+                    ?: options.firstOrNull()?.team?.id
+            }
+            showTeams(base)
+            if (start.id > 0 && base.any(sources::supported) && base.none { it.isExternalEmbed }) {
+                val extra = sources.additional(start, target)
+                if (extra.isNotEmpty()) showTeams(base + extra)
+            }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) { error = e.message ?: "Ошибка загрузки" }
     }
 

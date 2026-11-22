@@ -103,10 +103,17 @@ object HomeData {
         if (!force && System.currentTimeMillis() - loadedAt < 15 * 60_000 && rows.isNotEmpty()) return
         error = null
         val fresh = coroutineScope {
-            specs.map { (k, q) -> async { k to runCatching { Api.catalog(q, 1).first }.getOrDefault(emptyList()) } }.map { it.await() }
+            specs.map { (key, query) ->
+                async {
+                    val titles = try { Api.catalog(query, 1).first }
+                    catch (e: kotlinx.coroutines.CancellationException) { throw e }
+                    catch (_: Exception) { emptyList() }
+                    if (titles.isNotEmpty()) rows = rows + (key to titles)
+                    key to titles
+                }
+            }.map { it.await() }
         }.filter { it.second.isNotEmpty() }.toMap()
         if (fresh.isEmpty()) { if (rows.isEmpty()) error = "Не удалось загрузить AnimeLib. Проверьте подключение."; return }
-        rows = rows + fresh
         loadedAt = System.currentTimeMillis()
         // Hero: popular ongoings with their wide background art.
         val picks = (fresh["ongoing"] ?: fresh["popular"] ?: emptyList()).take(7)

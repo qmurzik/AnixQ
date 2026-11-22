@@ -4,8 +4,8 @@ import kotlinx.coroutines.launch
 
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
@@ -18,14 +18,18 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
+internal fun canUsePublicEdge(path: String, method: String, authenticated: Boolean): Boolean =
+    method == "GET" && !authenticated && !path.startsWith("/auth") && !path.startsWith("/bookmarks")
+
 class ApiException(message: String) : Exception(message)
 
 /** AnimeLib (lib.social) API, the same calls the iOS app makes. */
 object Api {
+    private const val EDGE = "https://anixq-edge.qmurzik7.workers.dev"
     /** All official API addresses; one that fails moves to the back (see [demote]). */
     private val hostOrder = java.util.concurrent.CopyOnWriteArrayList(listOf(
         // AnixQ's own cache on Cloudflare first (edge/worker.js); demoted automatically if unreachable.
-        "https://anixq-edge.qmurzik7.workers.dev", "https://api.cdnlibs.org", "https://api.lib.social", "https://api.imglib.info", "https://hapi.hentaicdn.org"))
+        EDGE, "https://api.cdnlibs.org", "https://api.lib.social", "https://api.imglib.info", "https://hapi.hentaicdn.org"))
     private fun demote(h: String) { if (hostOrder.remove(h)) hostOrder.add(h) }
     const val SITE = "https://anilib.me"
     private const val UA = "Mozilla/5.0 (Linux; Android 12; AndroidTV) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36"
@@ -35,6 +39,8 @@ object Api {
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(25, TimeUnit.SECONDS)
         .build()
+
+    private val apiHttp = http.newBuilder().callTimeout(8, TimeUnit.SECONDS).build()
 
     private val cache = HashMap<String, Pair<Long, Any>>()
     /** Set by the app: where answers are saved to open instantly next time. */
@@ -63,10 +69,14 @@ object Api {
         path: String, query: List<Pair<String, String>> = emptyList(), method: String = "GET",
         body: JSONObject? = null, auth: Boolean = true, retried: Boolean = false, fresh: Boolean = false,
     ): Any = withContext(Dispatchers.IO) {
-        val key = path + query.joinToString("&") { "${it.first}=${it.second}" } + (if (Store.libToken != null) "#u" else "")
-        if (method == "GET" && !fresh) synchronized(cache) { cache[key]?.let { if (System.currentTimeMillis() - it.first < 5 * 60_000) return@withContext it.second } }
+        val token = Store.libToken.takeIf { auth }
+        val accountId = Store.libUserId
+        val cacheable = method == "GET" && !path.startsWith("/auth") && (token == null || accountId != null)
+        val key = path + query.joinToString("&") { "${it.first}=${it.second}" } +
+            if (token != null) "#account=$accountId" else ""
+        if (cacheable && !fresh) synchronized(cache) { cache[key]?.let { if (System.currentTimeMillis() - it.first < 5 * 60_000) return@withContext it.second } }
         // Seen before: answer from the saved copy at once, refresh it in the background.
-        val keep = if (method == "GET") keepFor(path) else null
+        val keep = if (cacheable) keepFor(path) else null
         if (keep != null && !fresh) diskFile(key)?.takeIf { it.exists() && System.currentTimeMillis() - it.lastModified() < keep }?.let { f ->
             runCatching { parse(f.readText()) }.getOrNull()?.let { stale ->
                 synchronized(cache) { cache[key] = System.currentTimeMillis() to stale }
@@ -75,7 +85,7 @@ object Api {
             }
         }
         var last: Exception = ApiException("Нет связи с AnimeLib")
-        for (host in hostOrder.toList()) {
+        for (host in hostOrder.filter { it != EDGE || canUsePublicEdge(path, method, token != null) }) {
             try {
                 val url = (host + "/api" + path).toHttpUrl().newBuilder().apply {
                     query.forEach { addQueryParameter(it.first, it.second) }
@@ -83,27 +93,31 @@ object Api {
                 val rb = Request.Builder().url(url)
                     .header("Site-Id", "5").header("Referer", "$SITE/").header("Origin", SITE)
                     .header("Accept", "application/json").header("User-Agent", UA)
-                val token = Store.libToken
-                if (auth && token != null) rb.header("Authorization", "Bearer $token")
+                if (token != null) rb.header("Authorization", "Bearer $token")
                 when (method) {
                     "GET" -> rb.get()
                     else -> rb.method(method, (body?.toString() ?: "{}").toRequestBody("application/json".toMediaType()))
                 }
-                http.newCall(rb.build()).execute().use { resp ->
-                    val text = resp.body?.string().orEmpty()
-                    if (resp.code == 401 && auth && token != null && !retried) {
-                        if (refresh()) return@withContext request(path, query, method, body, auth, true)
-                        throw ApiException("Войдите в AnimeLib заново")
-                    }
-                    // Server error or a protection page (HTML, e.g. DDoS-Guard geo-block): try the next address.
-                    val html = resp.header("Content-Type")?.contains("html") == true
-                    if (resp.code >= 500 || html) { demote(host); last = ApiException("AnimeLib ответил ${resp.code}"); return@use null }
-                    if (resp.code !in 200..299) throw ApiException("AnimeLib ответил ${resp.code}")
-                    val parsed: Any = parse(text)
-                    if (method == "GET") synchronized(cache) { cache[key] = System.currentTimeMillis() to parsed }
-                    if (keep != null) runCatching { diskFile(key)?.writeText(text) }
-                    return@withContext parsed
+                val (status, html, text) = apiHttp.newCall(rb.build()).awaitResult { response ->
+                    Triple(response.code, response.header("Content-Type")?.contains("html", ignoreCase = true) == true,
+                        response.body?.string().orEmpty())
                 }
+                if (status == 401 && token != null && !retried) {
+                    if (refresh()) return@withContext request(path, query, method, body, auth, true)
+                    throw ApiException("Войдите в AnimeLib заново")
+                }
+                if (status >= 500 || html) {
+                    demote(host)
+                    last = ApiException("AnimeLib ответил $status")
+                    continue
+                }
+                if (status !in 200..299) throw ApiException("AnimeLib ответил $status")
+                val parsed = parse(text)
+                if (cacheable) synchronized(cache) { cache[key] = System.currentTimeMillis() to parsed }
+                if (keep != null) runCatching { diskFile(key)?.writeText(text) }
+                return@withContext parsed
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: ApiException) {
                 throw e
             } catch (e: Exception) {
@@ -122,7 +136,7 @@ object Api {
             val access = json.str("access_token") ?: return false
             Store.setLib(access, json.str("refresh_token") ?: r, Store.libUser, Store.libUserId)
             true
-        } catch (e: Exception) { false }
+        } catch (e: CancellationException) { throw e } catch (e: Exception) { false }
     }
 
     /** OAuth code from the AnimeLib sign-in page -> tokens (PKCE, the same client the site uses). */
@@ -297,14 +311,14 @@ object Api {
 
     // Video mirrors
 
-    private var servers: List<String>? = null
-    private var ranked: Pair<Long, List<String>>? = null
+    @Volatile private var servers: List<String>? = null
+    @Volatile private var ranked: Pair<Long, List<String>>? = null
 
     suspend fun videoServers(): List<String> {
         servers?.let { return it }
         val list = try {
             (data(request("/constants", listOf("fields[]" to "videoServers"))) as? JSONObject)?.arr("videoServers")?.mapNotNull { it.str("url") }
-        } catch (e: Exception) { null }
+        } catch (e: CancellationException) { throw e } catch (e: Exception) { null }
         return (list?.takeIf { it.isNotEmpty() } ?: fallbackServers).also { servers = it }
     }
 
@@ -315,21 +329,31 @@ object Api {
     /** Mirrors with the first one that answered a small range request first. */
     suspend fun rankServers(href: String): List<String> = coroutineScope {
         if (href.startsWith("http://") || href.startsWith("https://") || href.startsWith("file:")) return@coroutineScope listOf("")
-        val all = videoServers()
         ranked?.let { if (System.currentTimeMillis() - it.first < 20 * 60_000) return@coroutineScope it.second }
-        val results = all.map { s ->
-            async(Dispatchers.IO) {
-                val t0 = System.currentTimeMillis()
-                val ok = withTimeoutOrNull(6000) {
-                    try {
-                        http.newCall(Request.Builder().url(videoUrl(s, href)).header("Range", "bytes=0-65535")
-                            .header("Referer", "$SITE/").build()).execute().use { it.code == 200 || it.code == 206 }
-                    } catch (e: Exception) { false }
-                } ?: false
-                Triple(s, ok, System.currentTimeMillis() - t0)
+        val all = withTimeoutOrNull(1_500) { videoServers() } ?: fallbackServers
+        val answers = Channel<String?>(all.size)
+        val probes = all.map { server ->
+            launch {
+                val ok = try {
+                    http.newCall(Request.Builder().url(videoUrl(server, href)).header("Range", "bytes=0-0")
+                        .header("Referer", "$SITE/").build()).awaitResult { it.code == 200 || it.code == 206 }
+                } catch (e: java.io.IOException) { false }
+                answers.send(server.takeIf { ok })
             }
-        }.awaitAll()
-        val order = results.sortedWith(compareBy({ !it.second }, { it.third })).map { it.first }
+        }
+        val first = try {
+            withTimeoutOrNull(1_500) {
+                repeat(all.size) {
+                    val answer = answers.receive()
+                    if (answer != null) return@withTimeoutOrNull answer
+                }
+                null
+            }
+        } finally {
+            probes.forEach { it.cancel() }
+        }
+        if (first == null) return@coroutineScope all
+        val order = listOf(first) + all.filterNot { it == first }
         ranked = System.currentTimeMillis() to order
         order
     }

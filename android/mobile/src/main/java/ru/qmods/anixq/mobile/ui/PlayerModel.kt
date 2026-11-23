@@ -237,12 +237,19 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
                     ?: savedEpisodes ?: throw Exception("Нет связи с AnimeLib")
                 if (eps.isEmpty()) { message = "Серий нет"; failed = true; return@launch }
                 episodes = eps
+                Store.rememberEpisodeIds(title, eps)
                 if (route.resume && sync != null) withTimeoutOrNull(3_000) { sync.await() }
                 val latest = if (route.resume) PlaybackHistory.lastEntry(title) else null
                 val epId = latest?.episodeId ?: route.episodeId
                 val next = if (latest != null) latest.progress > 0.92 else route.next
-                var i = epId?.let { id -> eps.indexOfFirst { it.id == id } }?.takeIf { it >= 0 }
-                    ?: latest?.let { l -> eps.indexOfFirst { it.number == l.ep } }?.takeIf { it >= 0 } ?: 0
+                val matchedEpisode = epId?.let { id -> eps.indexOfFirst { it.id == id } }?.takeIf { it >= 0 }
+                    ?: latest?.let { l -> eps.indexOfFirst { ru.qmods.anixq.tv.data.sources.YummyAnime.sameNumber(it.number, l.ep) } }?.takeIf { it >= 0 }
+                if (latest != null && matchedEpisode == null) {
+                    message = "Серия ${latest.ep} недоступна в этом каталоге. Позиция сохранена."
+                    failed = true
+                    return@launch
+                }
+                var i = matchedEpisode ?: 0
                 if (next && i + 1 < eps.size) i += 1
                 load(i, teamId = latest?.teamId ?: route.teamId)
             } catch (e: CancellationException) { throw e }

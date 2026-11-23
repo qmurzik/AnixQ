@@ -45,9 +45,41 @@ object AnimeSources {
         if (base.typeLabel != null && candidate.typeLabel != null && normalizeType(base.typeLabel) != normalizeType(candidate.typeLabel)) return false
         return true
     }
+    /** A service's explicit external ID links catalog cards, with known edition conflicts excluded. */
+    fun sameCatalogTitle(a: Title, b: Title): Boolean {
+        if (a.id == b.id && a.slug == b.slug) return true
+        if (SourceIds.catalogSource(a.slug) == SourceIds.catalogSource(b.slug)) return false
+        fun identity(title: Title): Int? {
+            if (title.malId != null && title.shikiId != null && title.malId != title.shikiId) return null
+            return SourceIds.shikiId(title)
+        }
+        val id = identity(a) ?: return false
+        if (id != identity(b) || a.year != null && b.year != null && a.year != b.year) return false
+        val firstType = a.typeLabel?.let(::normalizeType)
+        val secondType = b.typeLabel?.let(::normalizeType)
+        return firstType == null || secondType == null || firstType == secondType
+    }
+
+    fun catalogAliases(title: Title, candidates: Iterable<Title>): List<Title> =
+        candidates.filter { sameCatalogTitle(title, it) }.distinctBy { it.slug }
+            .groupBy { SourceIds.catalogSource(it.slug) }.values.mapNotNull { it.singleOrNull() }
+
+    suspend fun catalogAlternative(title: Title, source: String): Title? = withTimeoutOrNull(6_000) {
+        isolated {
+            val candidate = when (source) {
+                "shiki" -> SourceIds.shikiId(title)?.let { shiki.detail(it).title }
+                "yummy" -> match(title)?.let { yummy.detail(it).title }
+                "animelib" -> catalogAliases(title, Api.catalog(CatalogQuery(text = title.title), 1).first).singleOrNull()
+                else -> null
+            }
+            candidate?.takeIf { SourceIds.catalogSource(it.slug) == source && sameCatalogTitle(title, it) }
+        }
+    }
+
     private fun normalizeType(s: String) = when(s.lowercase()) {
         "тв", "tv", "tv series", "сериал", "тв сериал", "tv сериал" -> "tv"
         "фильм", "movie", "полнометражный фильм" -> "movie"
+        "спешл", "special", "tv_special", "спецвыпуск" -> "special"
         else -> s.lowercase()
     }
     suspend fun detail(title: Title): Detail {
@@ -88,7 +120,14 @@ object AnimeSources {
             if (own.isNotEmpty()) return@coroutineScope own
             if (ep.id <= 0) return@coroutineScope additional(title, ep, includeShiki = false)
         }
-        val lib = async { if (SourceIds.isYummy(title.slug)) emptyList() else isolated { Api.players(ep.id) }.orEmpty() }
+        val lib = async {
+            when {
+                SourceIds.isYummy(title.slug) -> emptyList()
+                !includeExternal && SourceIds.shikiId(title) != null ->
+                    withTimeoutOrNull(5_000) { isolated { Api.players(ep.id) } }.orEmpty()
+                else -> isolated { Api.players(ep.id) }.orEmpty()
+            }
+        }
         val extra = if (includeExternal || title.id < 0) async { additional(title, ep) } else null
         val base = lib.await()
         val libria = base.filter { Libria.isLibria(it.team.name) }.distinctBy { it.team.id }.map {

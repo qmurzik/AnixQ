@@ -11,7 +11,12 @@ import ru.qmods.anixq.tv.data.Title
 enum class Tab(val label: String) { HOME("Главная"), CATALOG("Каталог"), LIBRARY("Медиатека"), SEARCH("Поиск") }
 
 sealed interface Route
-data class TitleRoute(val title: Title) : Route
+data class TitleRoute(val title: Title) : Route {
+    var catalogTitle by mutableStateOf(title)
+        private set
+
+    fun openCatalogTitle(alternative: Title) { catalogTitle = alternative }
+}
 /**
  * Episode to play. [episodeId] null = continue where the library says (or the first episode);
  * [startAt] an exact moment (handoff from the TV).
@@ -61,11 +66,21 @@ internal data class SearchResult(
     val corrected: String?,
 )
 
-class Nav {
+class Nav(initialCatalog: String = "animelib") {
+    var defaultCatalog by mutableStateOf(initialCatalog)
+        private set
+
+    fun updateDefaultCatalog(source: String) {
+        if (defaultCatalog == source) return
+        defaultCatalog = source
+        catalogQuery = CatalogQuery(source = source)
+        searchSource = source
+        searchResult = null
+    }
     internal val catalogLoader = CatalogLoader()
-    internal var catalogQuery by mutableStateOf(CatalogQuery())
+    internal var catalogQuery by mutableStateOf(CatalogQuery(source = initialCatalog))
     internal var searchText by mutableStateOf("")
-    internal var searchSource by mutableStateOf("animelib")
+    internal var searchSource by mutableStateOf(initialCatalog)
     internal var searchResult by mutableStateOf<SearchResult?>(null)
     private var searchScrollQuery: CatalogQuery? = null
     private var searchScroll = androidx.compose.foundation.lazy.LazyListState()

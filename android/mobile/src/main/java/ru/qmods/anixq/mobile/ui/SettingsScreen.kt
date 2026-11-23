@@ -36,6 +36,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.CloudSync
@@ -125,6 +126,21 @@ object PairFlow {
 
 @Composable
 fun SettingsScreen(nav: Nav) {
+    var pickCatalog by remember { mutableStateOf(false) }
+    if (pickCatalog) androidx.compose.material3.AlertDialog(
+        onDismissRequest = { pickCatalog = false },
+        title = { Text("Каталог по умолчанию") },
+        text = { Column {
+            MobileCatalogSources.forEach { (source, label) ->
+                androidx.compose.material3.TextButton(onClick = {
+                    Store.defaultCatalog = source
+                    nav.updateDefaultCatalog(source)
+                    pickCatalog = false
+                }) { Text(if (nav.defaultCatalog == source) "✓ $label" else label) }
+            }
+        } },
+        confirmButton = { androidx.compose.material3.TextButton({ pickCatalog = false }) { Text("Закрыть") } },
+    )
     val authScope = rememberCoroutineScope()
     var authEmail by remember { mutableStateOf("") }
     var authPassword by remember { mutableStateOf("") }
@@ -215,6 +231,12 @@ fun SettingsScreen(nav: Nav) {
             } else GroupRow("Войти в Shikimori", icon = Icons.Default.AccountCircle, iconColor = Pal.blue, chevron = true, divider = false) { nav.push(ShikiLoginRoute) }
         }
 
+        Group("Каталог") {
+            GroupRow("Каталог по умолчанию", icon = Icons.Default.GridView, iconColor = Pal.blue,
+                value = MobileCatalogSources.firstOrNull { it.first == nav.defaultCatalog }?.second, chevron = true) {
+                pickCatalog = true
+            }
+        }
         Group("Плеер") {
             ToggleRow("Пропускать опенинги", Icons.Default.FastForward, Pal.purple, Store.autoSkipOpening) { Store.autoSkipOpening = it }
             ToggleRow("Следующая серия сама", Icons.Default.SkipNext, Pal.green, Store.autoNext) { Store.autoNext = it }

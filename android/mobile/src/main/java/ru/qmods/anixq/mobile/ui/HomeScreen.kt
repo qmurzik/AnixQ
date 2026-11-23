@@ -92,35 +92,47 @@ object HomeData {
         "newest" to CatalogQuery(CatalogSort.NEWEST),
     )
 
-    fun restore() {
-        if (rows.isNotEmpty()) return
-        val cached = Store.loadHomeCache()
+    private var source: String? = null
+
+    fun restore(catalog: String) {
+        if (source == catalog) return
+        source = catalog
+        loadedAt = 0
+        error = null
+        val cached = Store.loadHomeCache(catalog)
+        hero = emptyList()
         rows = cached.filter { it.first != "hero" }.toMap()
         cached.firstOrNull { it.first == "hero" }?.second?.let { hs -> hero = hs.mapNotNull { t -> t.cover?.let { t to it } } }
     }
 
-    suspend fun load(force: Boolean = false) {
+    suspend fun load(catalog: String, force: Boolean = false) {
+        restore(catalog)
         if (!force && System.currentTimeMillis() - loadedAt < 15 * 60_000 && rows.isNotEmpty()) return
         error = null
         val fresh = coroutineScope {
             specs.map { (key, query) ->
                 async {
-                    val titles = try { Api.catalog(query, 1).first }
+                    val titles = try { Api.catalog(query.copy(source = catalog), 1).first }
                     catch (e: kotlinx.coroutines.CancellationException) { throw e }
                     catch (_: Exception) { emptyList() }
-                    if (titles.isNotEmpty()) rows = rows + (key to titles)
+                    if (source == catalog && titles.isNotEmpty()) rows = rows + (key to titles)
                     key to titles
                 }
             }.map { it.await() }
         }.filter { it.second.isNotEmpty() }.toMap()
-        if (fresh.isEmpty()) { if (rows.isEmpty()) error = "Не удалось загрузить AnimeLib. Проверьте подключение."; return }
+        if (source != catalog) return
+        if (fresh.isEmpty()) {
+            if (rows.isEmpty()) error = "Не удалось загрузить выбранный каталог"
+            return
+        }
         loadedAt = System.currentTimeMillis()
         // Hero: popular ongoings with their wide background art.
         val picks = (fresh["ongoing"] ?: fresh["popular"] ?: emptyList()).take(7)
-        val withArt = coroutineScope { picks.map { t -> async { runCatching { Api.detail(t.slug) }.getOrNull()?.background?.let { t to it } } }.mapNotNull { it.await() } }
+        val withArt = coroutineScope { picks.map { t -> async { runCatching { Api.detail(t.slug) }.getOrNull()?.background?.let { t to it } ?: t.poster?.let { t to it } } }.mapNotNull { it.await() } }
+        if (source != catalog) return
         if (withArt.isNotEmpty()) hero = withArt
         // The hero's art goes into the title's "cover" field of the cache (restored as the background).
-        Store.saveHomeCache(rows.toList() + ("hero" to hero.map { (t, bg) -> t.copy(cover = bg) }))
+        Store.saveHomeCache(rows.toList() + ("hero" to hero.map { (t, bg) -> t.copy(cover = bg) }), catalog)
     }
 }
 
@@ -128,12 +140,13 @@ object HomeData {
 fun HomeScreen(nav: Nav) {
     val version by Store.version.collectAsState()
     val scope = androidx.compose.runtime.rememberCoroutineScope()
-    LaunchedEffect(Unit) { HomeData.restore(); HomeData.load() }
+    val catalogSource = nav.defaultCatalog
+    LaunchedEffect(catalogSource) { HomeData.load(catalogSource) }
     val rows = HomeData.rows
     val historyRevision by PlaybackHistory.revision.collectAsState()
     val cont = remember(version, historyRevision) { PlaybackHistory.continueEntries().take(15) }
     val watching = remember(version) { Store.titles(Bookmark.WATCHING) }
-    fun catalog(name: String, key: String) = HomeData.specs.first { it.first == key }.second.let { q -> { nav.push(CatalogRoute(name, q)) } }
+    fun catalog(name: String, key: String) = HomeData.specs.first { it.first == key }.second.let { q -> { nav.push(CatalogRoute(name, q.copy(source = catalogSource))) } }
 
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 28.dp)) {
         item(key = "hero") {
@@ -160,7 +173,7 @@ fun HomeScreen(nav: Nav) {
         }
         if (Store.remoteChannel.isNotEmpty()) item(key = "remote") { RemoteBanner(nav) }
         if (rows.isEmpty()) {
-            item { HomeData.error?.let { ErrorState(it) { scope.launch { HomeData.load(force = true) } } } ?: Column { ShelfSkeleton(); ShelfSkeleton() } }
+            item { HomeData.error?.let { ErrorState(it) { scope.launch { HomeData.load(catalogSource, force = true) } } } ?: Column { ShelfSkeleton(); ShelfSkeleton() } }
         }
         item(key = "watching") { Shelf("Смотрю", watching) { nav.open(it) } }
         item(key = "updated") { Shelf("Новые серии", rows["updated"].orEmpty(), catalog("Новые серии", "updated")) { nav.open(it) } }
@@ -234,7 +247,7 @@ private fun DiscoverStrip(nav: Nav) {
     )
     LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         items(items, key = { it.title }) { d ->
-            Row(Modifier.clip(CircleShape).background(Pal.card).border(0.5.dp, Pal.stroke, CircleShape).pressable { nav.push(CatalogRoute(d.title, d.query)) }
+            Row(Modifier.clip(CircleShape).background(Pal.card).border(0.5.dp, Pal.stroke, CircleShape).pressable { nav.push(CatalogRoute(d.title, d.query.copy(source = nav.defaultCatalog))) }
                 .padding(start = 6.dp, end = 14.dp, top = 6.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.size(28.dp).clip(RoundedCornerShape(9.dp)).background(Brush.linearGradient(d.colors)), contentAlignment = Alignment.Center) {
                     Icon(d.icon, null, Modifier.size(16.dp), tint = Color.White)

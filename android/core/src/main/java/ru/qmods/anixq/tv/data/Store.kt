@@ -12,6 +12,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
+import ru.qmods.anixq.tv.data.sources.AnimeSources
+import ru.qmods.anixq.tv.data.sources.SourceIds
+import ru.qmods.anixq.tv.data.sources.YummyAnime
 
 data class Pos(val pos: Double, val dur: Double, val at: Double) {
     val progress: Double get() = if (dur > 0) (pos / dur).coerceIn(0.0, 1.0) else 0.0
@@ -38,6 +41,9 @@ object Store {
     val version: StateFlow<Int> = _version
 
     val positions = HashMap<Int, Pos>()
+    private data class EpisodeReference(val title: Title, val number: String)
+    private val episodeReferences = HashMap<Int, EpisodeReference>()
+    private val referenceIdsByTitle = HashMap<String, MutableSet<Int>>()
     val history = ArrayList<WatchEntry>()
     val watched = HashMap<Int, MutableSet<String>>()
     val bookmarks = HashMap<String, BookmarkEntry>()
@@ -46,6 +52,10 @@ object Store {
     val hiddenHistory = HashMap<Int, Double>()
     var dubs: List<String> = emptyList(); private set
     private var dubsAt = 0.0
+
+    var defaultCatalog: String
+        get() = prefs.getString("catalog.default", "animelib").orEmpty().takeIf { it in setOf("animelib", "yummy", "shiki") } ?: "animelib"
+        set(value) { prefs.edit().putString("catalog.default", value).apply(); bump() }
 
     // Settings
     var autoSkipOpening: Boolean
@@ -106,18 +116,20 @@ object Store {
     }
 
     /** Home rows from the last run: shown instantly at start, refreshed in the background. */
-    fun loadHomeCache(): List<Pair<String, List<Title>>> = runCatching {
-        val a = JSONArray(prefs.getString("home.cache", "[]"))
+    fun loadHomeCache(source: String = "animelib"): List<Pair<String, List<Title>>> = runCatching {
+        val a = JSONArray(prefs.getString(homeCacheKey(source), "[]"))
         (0 until a.length()).map { i ->
             val r = a.getJSONObject(i); val t = r.getJSONArray("t")
             r.getString("n") to (0 until t.length()).mapNotNull { Title.fromSync(t.getJSONObject(it)) }
         }.filter { it.second.isNotEmpty() }
     }.getOrDefault(emptyList())
 
-    fun saveHomeCache(rows: List<Pair<String, List<Title>>>) {
+    private fun homeCacheKey(source: String) = if (source == "animelib") "home.cache" else "home.cache.$source"
+
+    fun saveHomeCache(rows: List<Pair<String, List<Title>>>, source: String = "animelib") {
         val a = JSONArray()
         rows.forEach { (n, ts) -> a.put(JSONObject().put("n", n).put("t", JSONArray().apply { ts.forEach { put(it.toSync()) } })) }
-        scope.launch { prefs.edit().putString("home.cache", a.toString()).apply() }
+        scope.launch { prefs.edit().putString(homeCacheKey(source), a.toString()).apply() }
     }
 
     /** Last searches, newest first (kept between launches). */
@@ -278,7 +290,7 @@ object Store {
         val n = name ?: run { Profiles.init(context); Profiles.prefsName(Profiles.current.value!!) }
         if (n == loadedName) return
         loadedName = n
-        positions.clear(); history.clear(); watched.clear(); bookmarks.clear(); removedBookmarks.clear(); hiddenHistory.clear()
+        positions.clear(); episodeReferences.clear(); referenceIdsByTitle.clear(); history.clear(); watched.clear(); bookmarks.clear(); removedBookmarks.clear(); hiddenHistory.clear()
         dubs = emptyList(); dubsAt = 0.0
         prefs = context.getSharedPreferences(n, Context.MODE_PRIVATE)
         ru.qmods.anixq.tv.data.sources.YummyAccount.init(context, n)
@@ -296,12 +308,52 @@ object Store {
     // MARK: Queries
 
     fun resume(episodeId: Int): Double? = positions[episodeId]?.takeIf { it.pos > 5 && it.progress < 0.95 }?.pos
-    fun resumeEpisode(title: Title, ep: Episode): Double? = resume(ep.id) ?: lastEntry(title.id)?.takeIf {
-        ru.qmods.anixq.tv.data.sources.YummyAnime.sameNumber(it.ep, ep.number) && it.pos > 5 && it.progress < 0.95
-    }?.pos
+    private fun putEpisodeReference(episodeId: Int, title: Title, number: String) {
+        val old = episodeReferences.put(episodeId, EpisodeReference(title, number))
+        if (old != null && old.title.slug != title.slug) referenceIdsByTitle[old.title.slug]?.remove(episodeId)
+        referenceIdsByTitle.getOrPut(title.slug) { mutableSetOf() }.add(episodeId)
+    }
+
+    /** Attach metadata to legacy positions when their original episode list is available. */
+    fun rememberEpisodeIds(title: Title, episodes: List<Episode>) {
+        if (SourceIds.shikiId(title) == null) return
+        val missing = episodes.filter { it.id in positions && it.id !in episodeReferences }
+        if (missing.isEmpty()) return
+        missing.forEach { putEpisodeReference(it.id, title, it.number) }
+        changed()
+    }
+
+    private fun knownCatalogTitles(): Sequence<Title> =
+        sequenceOf(history.asSequence().map { it.title }, bookmarks.values.asSequence().map { it.title },
+            referenceIdsByTitle.values.asSequence().mapNotNull { ids -> ids.firstOrNull()?.let { episodeReferences[it]?.title } }).flatten()
+
+    fun catalogAliases(title: Title): List<Title> = if (SourceIds.shikiId(title) == null) emptyList()
+        else AnimeSources.catalogAliases(title, knownCatalogTitles().asIterable())
+
+    private fun episodePosition(title: Title, ep: Episode): Pos? {
+        val slugs = (catalogAliases(title).map { it.slug } + title.slug).toSet()
+        val referenced = slugs.asSequence().flatMap { referenceIdsByTitle[it].orEmpty().asSequence() }
+            .filter { id -> episodeReferences[id]?.let { YummyAnime.sameNumber(it.number, ep.number) } == true }
+            .mapNotNull { positions[it] }
+        val legacy = history.asSequence().filter { it.title.slug in slugs && YummyAnime.sameNumber(it.ep, ep.number) }
+            .map { Pos(it.pos, it.dur, it.at) }
+        return (sequenceOf(positions[ep.id]).filterNotNull() + referenced + legacy).maxByOrNull { it.at }
+    }
+
+    fun resumeEpisode(title: Title, ep: Episode): Double? =
+        episodePosition(title, ep)?.takeIf { it.pos > 5 && it.progress < 0.95 }?.pos
+    fun episodeProgress(title: Title, ep: Episode): Double = episodePosition(title, ep)?.progress ?: 0.0
     fun progress(episodeId: Int): Double = positions[episodeId]?.progress ?: 0.0
     fun lastEntry(titleId: Int): WatchEntry? = history.firstOrNull { it.title.id == titleId }
+    fun lastEntry(title: Title): WatchEntry? {
+        val allowed = (catalogAliases(title).map { it.slug } + title.slug).toSet()
+        return history.filter { it.title.slug in allowed }.maxByOrNull { it.at }
+    }
     fun isWatched(titleId: Int, number: String) = watched[titleId]?.contains(number) == true
+    fun isWatched(title: Title, number: String): Boolean =
+        (catalogAliases(title).map { it.id } + title.id).any { id ->
+            watched[id]?.any { YummyAnime.sameNumber(it, number) || it == number } == true
+        }
     fun bookmark(slug: String) = bookmarks[slug]?.status
     fun titles(status: Bookmark) = bookmarks.values.filter { it.status == status }.sortedByDescending { it.at }.map { it.title }
     val continueList: List<WatchEntry> get() = history.sortedByDescending { it.at }.take(20)
@@ -350,7 +402,7 @@ object Store {
     fun hasPlaybackChoice(title: Title) = prefs.contains(playbackKey(title))
     fun prefersExternal(title: Title): Boolean = prefs.getString(playbackKey(title), null)?.let {
         runCatching { JSONObject(it).optString("source") != "animelib" }.getOrDefault(false)
-    } ?: (lastEntry(title.id)?.playbackSource?.let { it != "animelib" } ?: false)
+    } ?: (lastEntry(title)?.playbackSource?.let { it != "animelib" } ?: false)
     fun setPlaybackChoice(title: Title, player: Player) {
         prefs.edit().putString(playbackKey(title), JSONObject().put("source", player.source).put("balancer", player.balancer ?: "").put("dub", player.team.name).toString()).apply()
     }
@@ -362,7 +414,7 @@ object Store {
         return options.firstOrNull { it.source == saved.optString("source") && it.balancer.orEmpty() == saved.optString("balancer") && PlaybackChoices.sameDub(it.team.name, saved.optString("dub")) }
     }
     private fun playbackPreference(title: Title): JSONObject? {
-        val last = lastEntry(title.id)
+        val last = lastEntry(title)
         return prefs.getString(playbackKey(title), null)?.let { runCatching { JSONObject(it) }.getOrNull() }
             ?: last?.let { JSONObject().put("source", it.playbackSource).put("balancer", it.balancer ?: "").put("dub", it.teamName) }
     }
@@ -374,6 +426,7 @@ object Store {
     fun updateProgress(title: Title, ep: Episode, team: Team, pos: Double, dur: Double, player: Player? = null) {
         val t = now()
         positions[ep.id] = Pos(pos, dur, t)
+        if (SourceIds.shikiId(title) != null) putEpisodeReference(ep.id, title, ep.number)
         history.removeAll { it.title.id == title.id }
         history.add(0, WatchEntry(title, ep.id, ep.number, ep.name ?: "", team.id, team.name, pos, dur, t, player?.source ?: "animelib", player?.balancer))
         changed()
@@ -434,7 +487,13 @@ object Store {
 
     /** Remove a title from "Продолжить просмотр" (positions and watched marks stay). */
     fun removeFromHistory(titleId: Int) {
-        if (history.removeAll { it.title.id == titleId }) { hiddenHistory[titleId] = now(); changed() }
+        val title = lastEntry(titleId)?.title ?: return
+        val ids = (catalogAliases(title).map { it.id } + titleId).toSet()
+        if (history.removeAll { it.title.id in ids }) {
+            val at = now()
+            ids.forEach { hiddenHistory[it] = at }
+            changed()
+        }
     }
 
     /** Local changes not yet pushed to the gist (true at start so the first sync pushes once). */
@@ -459,18 +518,27 @@ object Store {
 
     // MARK: Sync document (docs/sync-format.md)
 
+    private fun putEpisodeReferenceInSync(id: Int, ref: EpisodeReference, titles: JSONObject, progress: JSONObject) {
+        val pos = positions[id] ?: return
+        if (!titles.has(ref.title.id.toString())) titles.put(ref.title.id.toString(), ref.title.toSync())
+        val p = progress.optJSONObject(id.toString()) ?: JSONObject().put("pos", pos.pos).put("dur", pos.dur).put("at", pos.at)
+        p.put("refTitle", ref.title.id).put("refEpisode", ref.number)
+        progress.put(id.toString(), p)
+    }
+
     fun exportSync(): JSONObject {
         val titles = JSONObject()
         history.forEach { titles.put(it.title.id.toString(), it.title.toSync()) }
         bookmarks.values.forEach { titles.put(it.title.id.toString(), it.title.toSync()) }
         val progress = JSONObject()
         positions.forEach { (eid, p) -> progress.put(eid.toString(), JSONObject().put("pos", p.pos).put("dur", p.dur).put("at", p.at)) }
-        history.forEach { e ->
+        history.sortedByDescending { it.at }.distinctBy { it.episodeId }.forEach { e ->
             val p = progress.optJSONObject(e.episodeId.toString()) ?: JSONObject().put("pos", e.pos).put("dur", e.dur).put("at", e.at)
             p.put("at", maxOf(p.optDouble("at", 0.0), e.at))
             p.put("title", e.title.id).put("ep", e.ep).put("epName", e.epName).put("team", e.teamId).put("teamName", e.teamName).put("playbackSource", e.playbackSource).put("balancer", e.balancer ?: "")
             progress.put(e.episodeId.toString(), p)
         }
+        episodeReferences.forEach { (id, ref) -> putEpisodeReferenceInSync(id, ref, titles, progress) }
         val w = JSONObject()
         watched.forEach { (tid, set) ->
             if (set.isNotEmpty()) w.put(tid.toString(), JSONObject()
@@ -482,6 +550,7 @@ object Store {
         removedBookmarks.forEach { (slug, at) -> if (!bookmarks.containsKey(slug)) b.put(slug, JSONObject().put("status", JSONObject.NULL).put("at", at)) }
         return JSONObject().put("v", 1).put("device", deviceName).put("updated", 0)
             .put("titles", titles).put("progress", progress).put("watched", w).put("bookmarks", b)
+            .put("hidden", JSONObject().apply { hiddenHistory.forEach { (id, at) -> put(id.toString(), at) } })
             .put("prefs", JSONObject().put("dubs", JSONArray(dubs)).put("at", dubsAt))
             .apply { if (remoteChannel.isNotEmpty()) put("remote", JSONObject().put("channel", remoteChannel).put("key", remoteKey).put("at", remoteAt)) }
     }
@@ -511,6 +580,12 @@ object Store {
                 if ((positions[eid]?.at ?: 0.0) < at && dur > 0) { positions[eid] = Pos(pos, dur, at); changed = true }
                 val t = title(p.int("title"))
                 val ep = p.str("ep"); val team = p.int("team")
+                val refTitle = title(p.int("refTitle")) ?: t
+                val refEpisode = p.str("refEpisode") ?: ep
+                if (refTitle != null && refEpisode != null && SourceIds.shikiId(refTitle) != null && eid in positions && eid !in episodeReferences) {
+                    putEpisodeReference(eid, refTitle, refEpisode)
+                    changed = true
+                }
                 if (t != null && ep != null && team != null) {
                     val local = history.firstOrNull { it.title.id == t.id }
                     if ((local?.at ?: 0.0) < at && at > (hiddenHistory[t.id] ?: 0.0)) {

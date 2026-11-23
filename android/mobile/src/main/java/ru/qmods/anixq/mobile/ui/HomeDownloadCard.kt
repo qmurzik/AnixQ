@@ -85,7 +85,7 @@ internal fun HomeDownloadCard(entry: WatchEntry) {
     }
     if (!atHome || dismissed) return
     val pending = HomeDownloads.nextEpisodes(entry, episodes) { episode ->
-        queued.containsKey(episode.id) || Store.isWatched(entry.title.id, episode.number)
+        queued.containsKey(episode.id) || Store.isWatched(entry.title, episode.number)
     }
     if (pending.isEmpty()) return
     Column(

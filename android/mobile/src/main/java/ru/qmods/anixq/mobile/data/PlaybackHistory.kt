@@ -32,11 +32,21 @@ internal object PlaybackHistory {
         prefs = context.applicationContext.getSharedPreferences("playback_metadata", Context.MODE_PRIVATE)
     }
 
-    fun canRecord(title: Title): Boolean = SourceIds.isYummy(title.slug) || cached(title) == true
+    fun canRecord(title: Title): Boolean {
+        val statuses = (Store.catalogAliases(title) + title).map(::cached)
+        return false !in statuses && (true in statuses || SourceIds.isYummy(title.slug))
+    }
 
-    fun lastEntry(title: Title) = Store.lastEntry(title.id)?.takeIf { canRecord(it.title) }
+    fun lastEntry(title: Title) = Store.lastEntry(title)?.takeIf { canRecord(title) }
 
-    fun entries() = Store.history.filter { canRecord(it.title) }.sortedByDescending { it.at }
+    fun entries(): List<ru.qmods.anixq.tv.data.WatchEntry> = buildList {
+        Store.history.sortedByDescending { it.at }.forEach { entry ->
+            if (canRecord(entry.title)) {
+                val aliases = Store.catalogAliases(entry.title).map { it.slug }.toSet()
+                if (none { it.title.slug in aliases }) add(entry)
+            }
+        }
+    }
 
     fun continueEntries() = entries().take(20)
 

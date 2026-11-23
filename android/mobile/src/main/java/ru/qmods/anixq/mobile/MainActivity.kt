@@ -158,7 +158,7 @@ class MainActivity : ComponentActivity() {
         Coil.setImageLoader(Images.loader(applicationContext))
         if (Store.libToken != null) lifecycleScope.launch { Api.loadProfile() }
         setContent {
-            val n = remember { Nav().also { nav = it; handle(intent, it) } }
+            val n = remember { Nav(Store.defaultCatalog).also { nav = it; handle(intent, it) } }
             androidx.compose.runtime.DisposableEffect(n) {
                 // Joined a friend's room: the first state says what they're watching — open it.
                 ru.qmods.anixq.tv.data.Room.onStateWithoutPlayer = { m ->
@@ -355,7 +355,7 @@ fun Root(nav: Nav) {
           )) {
             when (top) {
                 is PlayerRoute -> Unit
-                is TitleRoute -> holder.SaveableStateProvider("title-${top.title.id}-${nav.stack.size}") { TitleScreen(nav, top.title) }
+                is TitleRoute -> holder.SaveableStateProvider("title-${top.title.id}-${nav.stack.size}") { TitleScreen(nav, top) }
                 is CatalogRoute -> holder.SaveableStateProvider(top.stateKey) { CatalogListScreen(nav, top) }
                 is FolderRoute -> FolderScreen(nav, top.status)
                 ru.qmods.anixq.mobile.ui.DownloadsRoute -> ru.qmods.anixq.mobile.ui.DownloadsScreen(nav)

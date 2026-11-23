@@ -111,36 +111,40 @@ object TitleCache {
 fun nextIndex(title: Title, eps: List<Episode>): Int {
     if (eps.isEmpty()) return 0
     val last = PlaybackHistory.lastEntry(title)
-    val i = last?.let { e -> eps.indexOfFirst { it.id == e.episodeId }.takeIf { it >= 0 } ?: eps.indexOfFirst { it.number == e.ep }.takeIf { it >= 0 } }
+    val i = last?.let { e -> eps.indexOfFirst { it.id == e.episodeId }.takeIf { it >= 0 } ?: eps.indexOfFirst { ru.qmods.anixq.tv.data.sources.YummyAnime.sameNumber(it.number, e.ep) }.takeIf { it >= 0 } }
     if (last != null && i != null) {
-        val done = last.progress > 0.92 || Store.progress(eps[i].id) > 0.92
+        val done = last.progress > 0.92 || Store.episodeProgress(title, eps[i]) > 0.92
         return if (done && i + 1 < eps.size) i + 1 else i
     }
-    return eps.indexOfFirst { !Store.isWatched(title.id, it.number) }.takeIf { it >= 0 } ?: 0
+    return eps.indexOfFirst { !Store.isWatched(title, it.number) }.takeIf { it >= 0 } ?: 0
 }
 
 private fun teamLabel(o: TeamOption) = o.label
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
-fun TitleScreen(nav: Nav, start: Title) {
+fun TitleScreen(nav: Nav, route: TitleRoute) {
+    val start = route.catalogTitle
     val context = LocalContext.current
     val version by Store.version.collectAsState()
-    var detail by remember { mutableStateOf(TitleCache.detail[start.slug]) }
-    var episodes by remember { mutableStateOf(TitleCache.episodes[start.slug]) }
-    var teams by remember { mutableStateOf(TitleCache.teams[start.slug] ?: emptyList()) }
-    var teamId by remember { mutableStateOf(PlaybackHistory.lastEntry(start)?.teamId) }
-    var error by remember { mutableStateOf<String?>(null) }
-    var related by remember { mutableStateOf(TitleCache.related[start.slug] ?: emptyList()) }
-    var similar by remember { mutableStateOf(TitleCache.similar[start.slug] ?: emptyList()) }
-    var expanded by remember { mutableStateOf(false) }
-    var bookmarkMenu by remember { mutableStateOf(false) }
-    var allEpisodes by remember { mutableStateOf(false) }
-    var epMenu by remember { mutableStateOf<Episode?>(null) }
-    var noteEp by remember { mutableStateOf<Episode?>(null) }
-    var reload by remember { mutableStateOf(0) }
+    var detail by remember(start.slug) { mutableStateOf(TitleCache.detail[start.slug]) }
+    var episodes by remember(start.slug) { mutableStateOf(TitleCache.episodes[start.slug]) }
+    var teams by remember(start.slug) { mutableStateOf(TitleCache.teams[start.slug] ?: emptyList()) }
+    var teamId by remember(start.slug) { mutableStateOf(PlaybackHistory.lastEntry(start)?.teamId) }
+    var error by remember(start.slug) { mutableStateOf<String?>(null) }
+    var related by remember(start.slug) { mutableStateOf(TitleCache.related[start.slug] ?: emptyList()) }
+    var similar by remember(start.slug) { mutableStateOf(TitleCache.similar[start.slug] ?: emptyList()) }
+    var expanded by remember(start.slug) { mutableStateOf(false) }
+    var bookmarkMenu by remember(start.slug) { mutableStateOf(false) }
+    var allEpisodes by remember(start.slug) { mutableStateOf(false) }
+    var epMenu by remember(start.slug) { mutableStateOf<Episode?>(null) }
+    var noteEp by remember(start.slug) { mutableStateOf<Episode?>(null) }
+    var reload by remember(start.slug) { mutableStateOf(0) }
     val title = detail?.title?.let { d -> d.copy(cover = d.cover ?: start.cover, coverThumb = d.coverThumb ?: start.coverThumb) } ?: start
-    var franchise by remember { mutableStateOf<List<Pair<ru.qmods.anixq.tv.data.Franchise.Node, Title>>>(emptyList()) }
+    var catalogDegraded by remember(start.slug) { mutableStateOf(false) }
+    var playbackUnavailable by remember(start.slug) { mutableStateOf(false) }
+    var alternatives by remember(start.slug, reload) { mutableStateOf<List<Title>?>(null) }
+    var franchise by remember(start.slug) { mutableStateOf<List<Pair<ru.qmods.anixq.tv.data.Franchise.Node, Title>>>(emptyList()) }
     LaunchedEffect(title.shikiId) {
         val sid = title.shikiId ?: return@LaunchedEffect
         val nodes = ru.qmods.anixq.tv.data.Franchise.nodes(sid)
@@ -160,20 +164,43 @@ fun TitleScreen(nav: Nav, start: Title) {
     LaunchedEffect(Unit) { runCatching { GenreIds.load() } }
     LaunchedEffect(start.slug, reload) {
         error = null
+        catalogDegraded = false
+        playbackUnavailable = false
         launch { runCatching { Api.related(start.slug) }.getOrNull()?.filter { it.first.id != start.id }?.let { related = it; TitleCache.related[start.slug] = it } }
         launch { runCatching { Api.similar(start.slug) }.getOrNull()?.let { similar = it; TitleCache.similar[start.slug] = it } }
-        launch { runCatching { AnimeSources.detail(start) }.getOrNull()?.let { PlaybackHistory.remember(it.title, it.genres); detail = it; TitleCache.detail[start.slug] = it } }
+        launch {
+            try {
+                val loaded = AnimeSources.detail(start)
+                PlaybackHistory.remember(loaded.title, loaded.genres)
+                detail = loaded
+                TitleCache.detail[start.slug] = loaded
+                if (start.id > 0 && loaded.sourceUrl != null) catalogDegraded = true
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                catalogDegraded = true
+            }
+        }
         try {
             val downloads = ru.qmods.anixq.mobile.data.Downloads
             val eps = AnimeSources.episodes(start).ifEmpty { downloads.episodes(start.id).orEmpty() }
-            episodes = eps; TitleCache.episodes[start.slug] = eps
-            if (eps.isEmpty()) return@LaunchedEffect
+            episodes = eps
+            if (eps.isNotEmpty()) {
+                TitleCache.episodes[start.slug] = eps
+                Store.rememberEpisodeIds(title, eps)
+            }
+            if (eps.isEmpty()) {
+                playbackUnavailable = true
+                return@LaunchedEffect
+            }
+            if (start.id > 0 && eps.all { it.id < 0 }) catalogDegraded = true
             val target = eps[nextIndex(start, eps)]
             val sources = AnimeSources
             val base = sources.players(start, target, includeExternal = false)
             fun showTeams(players: List<ru.qmods.anixq.tv.data.Player>) {
                 val options = PlaybackChoices.options(players.filter(sources::supported))
                 teams = options
+                playbackUnavailable = options.isEmpty() && eps.none { downloads.offlinePlayer(it.id) != null }
                 TitleCache.teams[start.slug] = options
                 teamId = Store.playbackOption(start, options)?.team?.id
                     ?: teamId?.takeIf { id -> options.any { it.team.id == id } }
@@ -190,6 +217,19 @@ fun TitleScreen(nav: Nav, start: Title) {
         } catch (e: Exception) {
             if (episodes.isNullOrEmpty()) episodes = ru.qmods.anixq.mobile.data.Downloads.episodes(start.id)
             if (episodes.isNullOrEmpty()) error = e.message ?: "Ошибка загрузки"
+            playbackUnavailable = true
+        }
+    }
+
+    val needsAlternative = catalogDegraded || playbackUnavailable
+    LaunchedEffect(start.slug, needsAlternative, reload, title.shikiId, title.malId) {
+        if (!needsAlternative) return@LaunchedEffect
+        val currentSource = SourceIds.catalogSource(start.slug)
+        val known = Store.catalogAliases(title).associateBy { SourceIds.catalogSource(it.slug) }
+        alternatives = kotlinx.coroutines.coroutineScope {
+            MobileCatalogSources.filterNot { it.first == currentSource }.map { (source, _) ->
+                async { AnimeSources.catalogAlternative(title, source) ?: known[source] }
+            }.mapNotNull { it.await() }
         }
     }
 
@@ -202,7 +242,7 @@ fun TitleScreen(nav: Nav, start: Title) {
     fun play(i: Int) { eps.getOrNull(i)?.let { ep -> nav.play(PlayerRoute(title, ep.id, teamId)) } }
     val playLabel = when {
         eps.isEmpty() -> if (error != null) "Не удалось загрузить" else if (episodes == null) "Загрузка" else "Нет серий"
-        Store.resume(eps[idx].id) != null -> "Продолжить · серия ${eps[idx].number}"
+        Store.resumeEpisode(title, eps[idx]) != null -> "Продолжить · серия ${eps[idx].number}"
         eps.size == 1 -> "Смотреть"
         else -> "Смотреть · серия ${eps[idx].number}"
     }
@@ -240,7 +280,7 @@ fun TitleScreen(nav: Nav, start: Title) {
                             }
                             if (hasTv) GlassButton(Icons.Default.Tv, "Смотреть на ТВ") {
                                 eps.getOrNull(idx)?.let { ep ->
-                                    Remote.playOnTv(title, ep.id, teamId, Store.resume(ep.id))
+                                    Remote.playOnTv(title, ep.id, teamId, Store.resumeEpisode(title, ep))
                                     Toast.makeText(context, "Включаем серию ${ep.number} на телевизоре", Toast.LENGTH_SHORT).show()
                                     nav.push(RemoteRoute)
                                 }
@@ -299,6 +339,21 @@ fun TitleScreen(nav: Nav, start: Title) {
                     Text(if (online) "Смотреть на Шикимори" else "Открыть на Шикимори")
                 }
             }
+            if (needsAlternative) item(key = "catalog-alternatives") {
+                Column(Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    val found = alternatives
+                    Text(when {
+                        found == null -> "Ищем эту карточку в других каталогах…"
+                        found.isEmpty() -> "Совпадающая карточка в других каталогах не найдена"
+                        else -> "Открыть этот тайтл через другой каталог"
+                    }, color = Pal.muted, fontSize = 13.sp)
+                    found.orEmpty().forEach { candidate ->
+                        val label = MobileCatalogSources.first { it.first == SourceIds.catalogSource(candidate.slug) }.second
+                        TextButton(onClick = { route.openCatalogTitle(candidate) }) { Text("Открыть в $label") }
+                    }
+                }
+            }
             if (teams.isNotEmpty()) item(key = "playback") {
                 PlaybackSelector(teams, teamId) { option ->
                     teamId = option.team.id; Store.setPlaybackOption(title, option); Store.useDub(option.team.name)
@@ -307,6 +362,13 @@ fun TitleScreen(nav: Nav, start: Title) {
             item(key = "episodes") {
                 Column(Modifier.padding(top = 26.dp)) {
                     SectionHeader("Серии", if (eps.size > 6) "Все ${eps.size}" else null) { allEpisodes = true }
+                    val last = PlaybackHistory.lastEntry(title)
+                    if (last != null && eps.isNotEmpty() && eps.none {
+                            ru.qmods.anixq.tv.data.sources.YummyAnime.sameNumber(it.number, last.ep)
+                        }) {
+                        Text("Позиция серии ${last.ep} сохранена. В этом каталоге серии пока нет.",
+                            color = Pal.muted, modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp))
+                    }
                     val downloads by ru.qmods.anixq.mobile.data.Downloads.items.collectAsState()
                     var dlMenu by remember { mutableStateOf(false) }
                     fun download(list: List<Episode>) = ru.qmods.anixq.mobile.data.Downloads.enqueue(title, eps, list, teamId) {
@@ -322,7 +384,7 @@ fun TitleScreen(nav: Nav, start: Title) {
                         }
                         DropdownMenu(dlMenu, { dlMenu = false }, containerColor = Pal.cardHi) {
                             DropdownMenuItem({ Text("Скачать непросмотренные") }, onClick = { dlMenu = false
-                                download(eps.filter { !Store.isWatched(title.id, it.number) }.take(30)) })
+                                download(eps.filter { !Store.isWatched(title, it.number) }.take(30)) })
                             DropdownMenuItem({ Text("Скачать следующие 3") }, onClick = { dlMenu = false; download(eps.drop(idx).take(3)) })
                             DropdownMenuItem({ Text("Скачать все серии") }, onClick = { dlMenu = false; download(eps) })
                             if (saved > 0) DropdownMenuItem({ Text("Удалить скачанные", color = Pal.red) }, onClick = { dlMenu = false
@@ -340,14 +402,14 @@ fun TitleScreen(nav: Nav, start: Title) {
                             LazyRow(state = row, contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                                 itemsIndexed(eps, key = { _, e -> e.id }) { i, ep ->
                                     Box {
-                                        EpisodeCard(ep, detail?.background ?: title.poster, Store.progress(ep.id).toFloat(), Store.isWatched(title.id, ep.number),
+                                        EpisodeCard(ep, detail?.background ?: title.poster, Store.episodeProgress(title, ep).toFloat(), Store.isWatched(title, ep.number),
                                             downloads[ep.id]?.takeUnless { it.state == ru.qmods.anixq.mobile.data.Downloads.State.FAILED }?.let { if (it.state == ru.qmods.anixq.mobile.data.Downloads.State.DONE) 1f else it.progress.coerceAtLeast(0.01f) },
                                             Modifier.combinedClickable(onClick = { play(i) }, onLongClick = { epMenu = ep }))
                                         DropdownMenu(epMenu == ep, { epMenu = null }, containerColor = Pal.cardHi) {
                                             if (hasTv) DropdownMenuItem({ Text("Смотреть на ТВ") }, leadingIcon = { Icon(Icons.Default.Tv, null) }, onClick = {
-                                                epMenu = null; Remote.playOnTv(title, ep.id, teamId, Store.resume(ep.id)); nav.push(RemoteRoute)
+                                                epMenu = null; Remote.playOnTv(title, ep.id, teamId, Store.resumeEpisode(title, ep)); nav.push(RemoteRoute)
                                             })
-                                            if (!Store.isWatched(title.id, ep.number)) DropdownMenuItem({ Text("Отметить просмотренной") },
+                                            if (!Store.isWatched(title, ep.number)) DropdownMenuItem({ Text("Отметить просмотренной") },
                                                 leadingIcon = { Icon(Icons.Default.CheckCircle, null) }, onClick = { epMenu = null; Store.markWatched(title, ep) })
                                             DropdownMenuItem({ Text("Смотреть с начала") }, leadingIcon = { Icon(Icons.Default.PlayArrow, null) },
                                                 onClick = { epMenu = null; nav.play(PlayerRoute(title, ep.id, teamId, startAt = 0.0)) })
@@ -435,7 +497,7 @@ fun TitleScreen(nav: Nav, start: Title) {
                         Text(ru.qmods.anixq.tv.data.Spoilers.title(title.id, ep), fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         if (p > 0.02) ProgressLine(p.toFloat(), Modifier.padding(top = 6.dp), 3.dp)
                     }
-                    if (Store.isWatched(title.id, ep.number)) Icon(Icons.Default.CheckCircle, null, Modifier.padding(start = 8.dp).size(20.dp), tint = Pal.muted)
+                    if (Store.isWatched(title, ep.number)) Icon(Icons.Default.CheckCircle, null, Modifier.padding(start = 8.dp).size(20.dp), tint = Pal.muted)
                 }
                 HorizontalDivider(Modifier.padding(start = 64.dp), thickness = 0.5.dp, color = Color.White.copy(alpha = 0.08f))
             }

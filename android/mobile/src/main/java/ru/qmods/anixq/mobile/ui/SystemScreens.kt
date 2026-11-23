@@ -1,6 +1,8 @@
 package ru.qmods.anixq.mobile.ui
 
 import android.Manifest
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
@@ -8,6 +10,8 @@ import android.content.pm.PackageManager
 import android.content.pm.ShortcutInfo
 import android.content.pm.ShortcutManager
 import android.graphics.drawable.Icon as AIcon
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.net.Uri
 import android.os.Build
 import android.provider.CalendarContract
@@ -63,82 +67,75 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import okhttp3.Request
 import ru.qmods.anixq.mobile.data.PlaybackHistory
+import ru.qmods.anixq.mobile.data.ConnectionCheck
+import ru.qmods.anixq.mobile.data.ConnectionResult
 import ru.qmods.anixq.mobile.BuildConfig
 import ru.qmods.anixq.tv.data.Api
 import ru.qmods.anixq.tv.data.Crashes
 import ru.qmods.anixq.tv.data.Schedule
 import ru.qmods.anixq.tv.data.Store
 import ru.qmods.anixq.tv.data.Sync
-import java.util.concurrent.TimeUnit
 
 // MARK: - Diagnostics: is each server reachable from this network?
 
-private data class Probe(val name: String, val what: String, val url: String, val referer: Boolean = false)
-
-private val probes = listOf(
-    Probe("AnixQ кэш", "каталог и серии (быстрый путь)", "https://anixq-edge.qmurzik7.workers.dev/health"),
-    Probe("AnimeLib API", "каталог и серии", "https://api.cdnlibs.org/api/constants?fields[]=videoServers", referer = true),
-    Probe("AnimeLib API (запасной)", "если основной закрыт", "https://api.lib.social/api/constants?fields[]=videoServers", referer = true),
-    Probe("Видео AnimeLib 1", "зеркало video1", "https://video1.cdnlibs.org/", referer = true),
-    Probe("Видео AnimeLib 2", "зеркало video2", "https://video2.cdnlibs.org/", referer = true),
-    Probe("Видео AnimeLib 3", "зеркало imglib", "https://video1.imglib.info/", referer = true),
-    Probe("AniLibria", "их собственный сервер", "https://anilibria.top/api/v1/app/status"),
-    Probe("Видео AniLibria", "сервер видео", "https://cache.libria.fun/"),
-    Probe("Kodik", "плеер с рекламой", "https://kodik.info/"),
-    Probe("Shikimori", "оценки, расписание", "https://shikimori.io/api/calendar"),
-    Probe("GitHub", "синхронизация устройств", "https://api.github.com/"),
-)
-
 @Composable
 fun DiagnosticsScreen(nav: Nav) {
+    val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val results = remember { mutableStateListOf<Pair<String, String>?>().apply { repeat(probes.size) { add(null) } } }
+    val probes = ConnectionCheck.probes
+    val results = remember { mutableStateListOf<ConnectionResult?>().apply { repeat(probes.size) { add(null) } } }
     var running by remember { mutableStateOf(false) }
+    var network by remember { mutableStateOf("") }
     fun run() {
+        if (running) return
         running = true
+        network = connectionType(context)
         for (i in probes.indices) results[i] = null
         scope.launch {
-            val client = Api.http.newBuilder().callTimeout(8, TimeUnit.SECONDS).followRedirects(true).build()
-            coroutineScope {
-                probes.mapIndexed { i, p ->
-                    async(Dispatchers.IO) {
-                        val t0 = System.currentTimeMillis()
-                        val r = runCatching {
-                            client.newCall(Request.Builder().url(p.url).apply { if (p.referer) header("Referer", Api.SITE + "/") }
-                                .header("Range", "bytes=0-1023").build()).execute().use { it.code }
-                        }
-                        val ms = System.currentTimeMillis() - t0
-                        results[i] = r.fold({ code -> if (code < 500) "ok" to "отвечает · $ms мс" else "bad" to "ошибка сервера $code" },
-                            { e -> "bad" to (if (ms >= 7900) "не отвечает (8 с)" else (e.message ?: "нет связи").take(60)) })
-                            .let { (k, v) -> k to v }
+            try {
+                val client = ConnectionCheck.client()
+                coroutineScope {
+                    probes.forEachIndexed { index, probe ->
+                        launch { results[index] = ConnectionCheck.probe(client, probe) }
                     }
-                }.awaitAll()
+                }
+            } finally {
+                running = false
             }
-            running = false
         }
     }
+
+    fun copy() {
+        val report = buildString {
+            appendLine("AnixQ ${BuildConfig.VERSION_NAME} · $network")
+            probes.forEachIndexed { index, probe ->
+                appendLine("${probe.name} (${probe.host}) — ${results[index]?.display ?: "нет результата"}")
+            }
+        }
+        context.getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("Проверка связи AnixQ", report))
+        if (Build.VERSION.SDK_INT < 33) Toast.makeText(context, "Отчёт скопирован", Toast.LENGTH_SHORT).show()
+    }
+
     androidx.compose.runtime.LaunchedEffect(Unit) { run() }
     Column(Modifier.fillMaxSize().background(Pal.bg).statusBarsPadding()) {
-        TopBar("Проверка связи", { nav.pop() }) { TextButton({ if (!running) run() }) { Text("Ещё раз", color = Pal.pink) } }
+        TopBar("Проверка связи", { nav.pop() }) { TextButton({ run() }, enabled = !running) { Text("Ещё раз") } }
         Column(Modifier.verticalScroll(rememberScrollState()).padding(bottom = 24.dp)) {
-            Group(null, "Если не грузит видео, здесь видно, какой сервер недоступен из вашей сети. «Не отвечает» у всех видео-зеркал обычно значит, что их блокирует провайдер или VPN.") {
+            Group(network, "Запросы идут без входа в аккаунт. Строки видеосерверов показывают HTTP-ответ хоста, проверка серии не выполняется.") {
+                GroupRow("Скопировать отчёт", icon = Icons.Default.NetworkCheck, iconColor = Pal.blue, onClick = if (running || results.none { it != null }) null else ::copy)
                 probes.forEachIndexed { i, p ->
                     val r = results[i]
                     Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Box(Modifier.size(10.dp).clip(CircleShape).background(when (r?.first) { "ok" -> Pal.green; "bad" -> Pal.red; else -> Pal.faint }))
+                        Box(Modifier.size(10.dp).clip(CircleShape).background(when (r?.success) { true -> Pal.green; false -> Pal.red; null -> Pal.faint }))
                         Column(Modifier.padding(start = 12.dp).weight(1f)) {
                             Text(p.name, fontWeight = FontWeight.SemiBold)
-                            Text(p.what, fontSize = 12.sp, color = Pal.muted)
+                            Text(p.description, fontSize = 12.sp, color = Pal.muted)
                         }
                         if (r == null) CircularProgressIndicator(Modifier.size(16.dp), color = Pal.pink, strokeWidth = 2.dp)
-                        else Text(r.second, fontSize = 12.sp, color = if (r.first == "ok") Pal.muted else Pal.red, textAlign = TextAlign.End, modifier = Modifier.width(140.dp))
+                        else Text(r.display, fontSize = 12.sp, color = if (r.success) Pal.muted else Pal.red, textAlign = TextAlign.End, modifier = Modifier.width(140.dp))
                     }
                 }
             }
@@ -151,6 +148,18 @@ fun DiagnosticsScreen(nav: Nav) {
             Group { GroupRow("Сообщить о проблеме", icon = Icons.Default.BugReport, iconColor = Pal.red, chevron = true, divider = false) { nav.push(ReportRoute) } }
         }
     }
+}
+
+private fun connectionType(context: Context): String {
+    val manager = context.getSystemService(ConnectivityManager::class.java)
+    val capabilities = manager.getNetworkCapabilities(manager.activeNetwork) ?: return "Нет активной сети"
+    val transport = when {
+        capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> "Wi-Fi"
+        capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> "Мобильная сеть"
+        capabilities.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) -> "Ethernet"
+        else -> "Активная сеть"
+    }
+    return if (capabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN)) "$transport · VPN" else transport
 }
 
 fun deviceInfo(c: Context): String = listOf(

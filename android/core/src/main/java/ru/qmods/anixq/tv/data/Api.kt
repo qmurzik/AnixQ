@@ -9,6 +9,7 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -33,6 +34,11 @@ object Api {
     private fun demote(h: String) { if (hostOrder.remove(h)) hostOrder.add(h) }
     const val SITE = "https://anilib.me"
     private const val UA = "Mozilla/5.0 (Linux; Android 12; AndroidTV) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36"
+    /** Standard AnimeLib API headers, without account credentials. */
+    fun publicRequest(url: HttpUrl): Request.Builder = Request.Builder().url(url)
+        .header("Site-Id", "5").header("Referer", "$SITE/").header("Origin", SITE)
+        .header("Accept", "application/json").header("User-Agent", UA)
+
     private val fallbackServers = listOf("https://video1.cdnlibs.org/.аs/", "https://video2.cdnlibs.org/", "https://video1.imglib.info/")
 
     val http: OkHttpClient = OkHttpClient.Builder()
@@ -90,9 +96,7 @@ object Api {
                 val url = (host + "/api" + path).toHttpUrl().newBuilder().apply {
                     query.forEach { addQueryParameter(it.first, it.second) }
                 }.build()
-                val rb = Request.Builder().url(url)
-                    .header("Site-Id", "5").header("Referer", "$SITE/").header("Origin", SITE)
-                    .header("Accept", "application/json").header("User-Agent", UA)
+                val rb = publicRequest(url)
                 if (token != null) rb.header("Authorization", "Bearer $token")
                 when (method) {
                     "GET" -> rb.get()

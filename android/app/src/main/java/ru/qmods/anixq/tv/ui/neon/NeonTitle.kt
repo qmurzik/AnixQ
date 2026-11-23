@@ -37,51 +37,35 @@ import kotlinx.coroutines.launch
 import ru.qmods.anixq.tv.data.*
 import ru.qmods.anixq.tv.data.sources.AnimeSources
 import ru.qmods.anixq.tv.data.sources.YummyAccount
+import ru.qmods.anixq.tv.ui.rememberTvTitleData
+import ru.qmods.anixq.tv.ui.TvCatalogFallback
 import ru.qmods.anixq.tv.ui.*
 
 /** Title page: the poster on a lit wall, info in neon, the episodes as stations on a metro line. */
 @Composable
 fun NeonTitle(nav: Nav, start: Title) {
     val version by Store.version.collectAsState()
-    var detail by remember(start.slug) { mutableStateOf(TitleCache.detail[start.slug] ?: Spotlight.cached(start.slug)) }
-    var episodes by remember(start.slug) { mutableStateOf(TitleCache.episodes[start.slug]) }
-    var options by remember(start.slug) { mutableStateOf(TitleCache.teams[start.slug].orEmpty()) }
-    var related by remember(start.slug) { mutableStateOf(TitleCache.related[start.slug].orEmpty()) }
-    var similar by remember(start.slug) { mutableStateOf(TitleCache.similar[start.slug].orEmpty()) }
-    var franchise by remember(start.slug) { mutableStateOf<List<Title>>(emptyList()) }
-    var teamId by remember(start.slug) { mutableStateOf(Store.lastEntry(start.id)?.teamId) }
-    var error by remember(start.slug) { mutableStateOf<String?>(null) }
-    var loading by remember { mutableStateOf(false) }
-    var attempt by remember { mutableIntStateOf(0) }
-    var picker by remember { mutableStateOf<String?>(null) }
-    var menuEpisode by remember { mutableStateOf<Episode?>(null) }
+    var attempt by remember(start.slug) { mutableIntStateOf(0) }
+    val data = rememberTvTitleData(start, attempt)
+    val detail = data.detail
+    val episodes = data.episodes
+    val options = data.options
+    val related = data.related
+    val similar = data.similar
+    val loading = data.loading
+    val error = data.error
+    var teamId by remember(start.slug) { mutableStateOf(Store.lastEntry(start)?.teamId) }
+    LaunchedEffect(start.slug, options) {
+        teamId = Store.playbackOption(start, options)?.team?.id ?: teamId?.takeIf { id -> options.any { it.team.id == id } }
+            ?: options.firstOrNull { option -> Store.dubs.any { PlaybackChoices.sameDub(it, option.team.name) } }?.team?.id
+            ?: options.firstOrNull()?.team?.id
+    }
     val title = detail?.title ?: start
+    var franchise by remember(start.slug) { mutableStateOf<List<Title>>(emptyList()) }
+    var picker by remember(start.slug) { mutableStateOf<String?>(null) }
+    var menuEpisode by remember(start.slug) { mutableStateOf<Episode?>(null) }
     val scope = "neon:title:${start.id}"
     val color = if (title.isOngoing) N.pink else N.cyan
-    LaunchedEffect(start.slug, attempt) {
-        loading = true; error = null
-        coroutineScope {
-            launch {
-                try { Api.detail(start.slug).also { detail = it; TitleCache.detail[start.slug] = it } }
-                catch (e: CancellationException) { throw e } catch (e: Exception) { if (detail == null) error = e.message }
-            }
-            launch { runCatching { Api.related(start.slug).filter { it.first.id != start.id } }.getOrNull()?.let { related = it; TitleCache.related[start.slug] = it } }
-            launch { runCatching { Api.similar(start.slug) }.getOrNull()?.let { similar = it; TitleCache.similar[start.slug] = it } }
-            try {
-                val eps = Api.episodes(start.slug)
-                episodes = eps; TitleCache.episodes[start.slug] = eps
-                val target = resumePlan(start, eps)?.episode
-                if (target != null) {
-                    val players = AnimeSources.players(start, target).filter(AnimeSources::supported)
-                    options = PlaybackChoices.options(players); TitleCache.teams[start.slug] = options
-                    teamId = Store.playbackOption(start, options)?.team?.id ?: teamId?.takeIf { id -> options.any { it.team.id == id } }
-                        ?: options.firstOrNull { o -> Store.dubs.any { PlaybackChoices.sameDub(it, o.team.name) } }?.team?.id ?: options.firstOrNull()?.team?.id
-                }
-            } catch (e: CancellationException) { throw e }
-            catch (e: Exception) { error = e.message ?: "Не удалось получить серии" }
-            finally { loading = false }
-        }
-    }
     LaunchedEffect(title.shikiId) {
         title.shikiId?.let { id ->
             try {
@@ -128,7 +112,7 @@ fun NeonTitle(nav: Nav, start: Title) {
                         Row(Modifier.padding(top = 20.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             if (plan != null) NButton(plan.label, Icons.Rounded.PlayArrow, color, primary = true,
                                 modifier = Modifier.memo(scope, "play", initial = true).testTag("neon-title-play")) {
-                                nav.play(title, plan.episode.id, teamId, resume = Store.lastEntry(title.id) != null)
+                                nav.play(title, plan.episode.id, teamId, resume = Store.lastEntry(title) != null)
                             } else if (error != null) NButton("Повторить", Icons.Rounded.Refresh, color, modifier = Modifier.memo(scope, "retry", initial = true)) { attempt++ }
                             else Text(if (loading) "Ждём поезд…" else "Серий пока нет", color = N.muted, fontSize = 14.sp, modifier = Modifier.padding(top = 10.dp))
                             NButton(bookmark?.title ?: "В коллекцию", if (bookmark == null) Icons.Rounded.Add else Icons.Rounded.Check, N.violet,
@@ -152,6 +136,7 @@ fun NeonTitle(nav: Nav, start: Title) {
                     Field(if (selected?.team?.isSubtitles == true) "Субтитры" else "Озвучка", selected?.dubLabel.orEmpty(), Modifier.weight(1.6f), voices.size > 1, N.pink) { picker = "voice" }
                 }
             }
+            if (data.needsAlternative) item("catalog-fallback") { TvCatalogFallback(data, scope, nav, Modifier.padding(horizontal = 52.dp)) }
             error?.let { m -> item("error") { NMessage("Линия закрыта", m, "Повторить") { attempt++ } } }
             if (!YummyAccount.signedIn) item("yummy") { Text("Aksor доступен без входа, если серия открыта. Для остальных озвучек — вход в YummyAnime в настройках", color = N.muted, fontSize = 11.sp, modifier = Modifier.padding(start = 52.dp, bottom = 14.dp)) }
             episodes?.takeIf { it.isNotEmpty() }?.let { eps -> item("line") {
@@ -186,7 +171,7 @@ fun NeonTitle(nav: Nav, start: Title) {
     }
     menuEpisode?.let { ep ->
         val resume = Store.resume(ep.id)
-        val watched = Store.isWatched(title.id, ep.number) || Store.progress(ep.id) > .92
+        val watched = Store.isWatched(title, ep.number) || Store.episodeProgress(title, ep) > .92
         val choices = listOf("play" to Choice(if (resume != null) "Продолжить с ${fmt(resume)}" else "Смотреть")) +
             (if (resume != null || watched) listOf("restart" to Choice("Смотреть с начала")) else emptyList()) +
             (if (!watched) listOf("watched" to Choice("Отметить просмотренной")) else emptyList())
@@ -234,8 +219,8 @@ private fun MetroLine(title: Title, episodes: List<Episode>, current: Int?, scop
         }
         Pivot { LazyRow(state = list, contentPadding = PaddingValues(horizontal = 52.dp, vertical = 10.dp)) {
             itemsIndexed(episodes, key = { _, e -> e.id }) { i, ep ->
-                val progress = remember(version) { Store.progress(ep.id) }
-                val watched = remember(version) { Store.isWatched(title.id, ep.number) || progress > .92 }
+                val progress = remember(version) { Store.episodeProgress(title, ep) }
+                val watched = remember(version) { Store.isWatched(title, ep.number) || progress > .92 }
                 var focused by remember { mutableStateOf(false) }
                 val light = flicker(focused)
                 Column(Modifier.width(118.dp), horizontalAlignment = Alignment.CenterHorizontally) {

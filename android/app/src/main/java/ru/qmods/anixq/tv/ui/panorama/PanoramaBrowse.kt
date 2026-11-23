@@ -1,5 +1,6 @@
 package ru.qmods.anixq.tv.ui.panorama
 
+import ru.qmods.anixq.tv.data.playbackSourceLabel
 import android.app.Activity
 import android.content.Intent
 import android.speech.RecognizerIntent
@@ -29,6 +30,9 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import ru.qmods.anixq.tv.data.*
+import ru.qmods.anixq.tv.ui.nextTvCatalog
+import ru.qmods.anixq.tv.ui.searchTvCatalog
+import ru.qmods.anixq.tv.ui.tvCatalogSources
 import ru.qmods.anixq.tv.ui.*
 
 @Composable
@@ -84,9 +88,9 @@ fun PanoramaCatalog(nav: Nav) {
                     PClock()
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.horizontalScroll(rememberScrollState()).padding(bottom = 14.dp)) {
-                    PButton(if (query.source == "yummy") "YummyAnime" else "AnimeLib", Icons.Rounded.SwapHoriz,
+                    PButton(playbackSourceLabel(query.source), Icons.Rounded.SwapHoriz,
                         modifier = Modifier.memo("panorama:catalog", "source", initial = true).testTag("panorama-catalog-source")) {
-                        apply(CatalogQuery(source = if (query.source == "yummy") "animelib" else "yummy"))
+                        apply(CatalogQuery(source = nextTvCatalog(query.source)))
                     }
                     PButton(query.sort.title, Icons.Rounded.Sort) { dialog = "sort" }
                     PButton(statuses.firstOrNull { it.first == query.status }?.second ?: "Статус", selected = query.status != null) { dialog = "status" }
@@ -94,7 +98,7 @@ fun PanoramaCatalog(nav: Nav) {
                     PButton(types.firstOrNull { it.first == query.type }?.second ?: "Формат", selected = query.type != null) { dialog = "type" }
                     if (query != CatalogQuery(source = query.source)) PButton("Сбросить", Icons.Rounded.Close) { apply(CatalogQuery(source = query.source)) }
                 }
-                Text("${if (query.source == "yummy") "YummyAnime" else "AnimeLib"}  /  ${CatalogState.items.size}${if (CatalogState.more) "+" else ""} тайтлов загружено", color = P.muted, fontSize = 11.sp)
+                Text("${playbackSourceLabel(query.source)}  /  ${CatalogState.items.size}${if (CatalogState.more) "+" else ""} тайтлов загружено", color = P.muted, fontSize = 11.sp)
             }
         }
         items(CatalogState.items, key = { it.id }) { title -> PPoster(title, { nav.open(title) },
@@ -123,7 +127,7 @@ fun PanoramaCatalog(nav: Nav) {
 fun PanoramaSearch(nav: Nav) {
     var text by rememberSaveable { mutableStateOf("") }
     var latin by rememberSaveable { mutableStateOf(false) }
-    var source by rememberSaveable { mutableStateOf("animelib") }
+    var source by rememberSaveable(nav.defaultCatalog) { mutableStateOf(nav.defaultCatalog) }
     var results by remember { mutableStateOf<List<Title>>(emptyList()) }
     var popular by remember { mutableStateOf<List<Title>>(emptyList()) }
     var recent by remember { mutableStateOf(Store.recentSearches) }
@@ -141,7 +145,7 @@ fun PanoramaSearch(nav: Nav) {
         if (q.length < 2) { results = emptyList(); return@LaunchedEffect }
         delay(350); busy = true
         try {
-            val found = if (source == "yummy") Api.catalog(CatalogQuery(text = q, source = source), 1).first to null else SmartSearch.search(q)
+            val found = searchTvCatalog(q, source)
             results = found.first; corrected = found.second
             if (results.isNotEmpty()) { recent = (listOf(q) + recent.filter { it != q }).take(8); Store.recentSearches = recent }
             if (SearchRequest.playFirst && results.isNotEmpty()) { SearchRequest.playFirst = false; nav.open(results.first()) }
@@ -164,8 +168,9 @@ fun PanoramaSearch(nav: Nav) {
                 Text(text.ifBlank { "Название аниме…" }, color = if (text.isBlank()) P.muted else P.ink, fontSize = 17.sp, maxLines = 1)
             }
             Row(Modifier.padding(top = 12.dp, bottom = 14.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                PButton("AnimeLib", selected = source == "animelib") { source = "animelib" }
-                PButton("YummyAnime", selected = source == "yummy") { source = "yummy" }
+                tvCatalogSources.forEach { key ->
+                    PButton(playbackSourceLabel(key), selected = source == key) { source = key }
+                }
             }
             val keys = if (latin) listOf("abcdef", "ghijkl", "mnopqr", "stuvwx", "yz1234", "567890") else
                 listOf("абвгде", "ёжзийк", "лмнопр", "стуфхц", "чшщъыь", "эюя123", "456789")

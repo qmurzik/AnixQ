@@ -33,7 +33,7 @@ class MainActivity : ComponentActivity() {
         Coil.setImageLoader(Images.loader(applicationContext))
         if (Store.libToken != null) lifecycleScope.launch { Api.loadProfile() }
         setContent {
-            val nav = remember { Nav().also { applyLaunchExtras(it); this.nav = it } }
+            val nav = remember { Nav(Store.defaultCatalog).also { applyLaunchExtras(it); this.nav = it } }
             androidx.compose.runtime.DisposableEffect(nav) {
                 Remote.navigator = { m -> nav.playFromPhone(m) }
                 Remote.searchHandler = { q ->
@@ -84,7 +84,7 @@ class MainActivity : ComponentActivity() {
         i.getStringExtra("tab")?.toIntOrNull()?.let { nav.tab = Tab.entries.getOrElse(it) { Tab.HOME } }
         if (i.getStringExtra("login") != null) { nav.push(LoginRoute); return }
         val slug = i.getStringExtra("slug") ?: return
-        val t = Title(id = if (slug.startsWith("yummy:")) -(slug.substringAfter(":").toIntOrNull() ?: 0) else slug.substringBefore("--").toIntOrNull() ?: 0, slug = slug)
+        val t = Title(id = ru.qmods.anixq.tv.data.sources.SourceIds.localTitleId(slug), slug = slug)
         if (i.getBooleanExtra("play", false)) nav.play(t, null) else nav.open(t)
     }
 

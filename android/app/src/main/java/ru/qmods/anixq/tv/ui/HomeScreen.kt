@@ -64,28 +64,53 @@ object HomeData {
     val error = MutableStateFlow<String?>(null)
     private var loadedAt = 0L
 
-    suspend fun load(force: Boolean = false) {
-        if (rows.value.isEmpty()) rows.value = Store.loadHomeCache()   // instant start with last run's rows
-        if (!force && loadedAt > 0 && System.currentTimeMillis() - loadedAt < 15 * 60_000) return
-        try {
-            coroutineScope {
-                val specs = listOf(
-                    "Новые серии" to CatalogQuery(sort = CatalogSort.UPDATED, status = 1),
-                    "Популярные онгоинги" to CatalogQuery(sort = CatalogSort.POPULAR, status = 1),
-                    "Популярное" to CatalogQuery(sort = CatalogSort.POPULAR),
-                    "Высокий рейтинг" to CatalogQuery(sort = CatalogSort.RATING),
-                    "Недавно добавлены" to CatalogQuery(sort = CatalogSort.NEWEST),
-                )
-                val parts = specs.map { (name, q) -> async { name to runCatching { Api.catalog(q, 1).first }.getOrDefault(emptyList()) } }
-                val fresh = parts.map { it.await() }.filter { it.second.isNotEmpty() }
-                if (fresh.isNotEmpty()) { rows.value = fresh; Store.saveHomeCache(fresh) }
-            }
-            error.value = if (rows.value.isEmpty()) "Не удалось загрузить каталог. Проверьте интернет." else null
-            loadedAt = System.currentTimeMillis()
-        } catch (e: Exception) {
-            error.value = e.message
+    private var source: String? = null
+    val visibleSource = MutableStateFlow("animelib")
+
+    suspend fun load(force: Boolean = false, catalog: String = Store.defaultCatalog) {
+        if (source != catalog) {
+            source = catalog
+            visibleSource.value = catalog
+            loadedAt = 0
+            error.value = null
+            rows.value = Store.loadHomeCache(catalog)
         }
+        if (!force && loadedAt > 0 && System.currentTimeMillis() - loadedAt < 15 * 60_000) return
+        suspend fun shelves(key: String): List<Pair<String, List<Title>>> = coroutineScope {
+            val specs = listOf(
+                "Новые серии" to CatalogQuery(sort = CatalogSort.UPDATED, status = 1),
+                "Популярные онгоинги" to CatalogQuery(sort = CatalogSort.POPULAR, status = 1),
+                "Популярное" to CatalogQuery(sort = CatalogSort.POPULAR),
+                "Высокий рейтинг" to CatalogQuery(sort = CatalogSort.RATING),
+                "Недавно добавлены" to CatalogQuery(sort = CatalogSort.NEWEST),
+            ).filter { key != "yummy" || it.second.sort != CatalogSort.UPDATED }
+            specs.map { (name, query) ->
+                async {
+                    val titles = try {
+                        kotlinx.coroutines.withTimeoutOrNull(5_000) { Api.catalog(query.copy(source = key), 1).first }.orEmpty()
+                    } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+                    catch (_: Exception) { emptyList() }
+                    name to titles
+                }
+            }.map { it.await() }.filter { it.second.isNotEmpty() }
+        }
+
+        var actual = catalog
+        var fresh = shelves(catalog)
+        if (fresh.isEmpty() && catalog == "animelib") {
+            actual = "shiki"
+            fresh = shelves(actual).ifEmpty { Store.loadHomeCache(actual) }
+        }
+        if (source != catalog) return
+        if (fresh.isNotEmpty()) {
+            visibleSource.value = actual
+            rows.value = fresh
+            Store.saveHomeCache(fresh, actual)
+        }
+        error.value = if (rows.value.isEmpty()) "Не удалось загрузить каталог" else null
+        loadedAt = System.currentTimeMillis()
     }
+
 }
 
 /** Description + wide art for the title under the cursor (fetched once, kept for the session). */
@@ -105,10 +130,13 @@ object GenreTiles {
     private val wanted = listOf("Экшен", "Романтика", "Комедия", "Фэнтези", "Исекай", "Повседневность", "Драма", "Сёнэн",
         "Детектив", "Ужасы", "Спорт", "Меха", "Психологическое", "Школа")
     val list = MutableStateFlow<List<Pair<Int, String>>>(emptyList())
-    suspend fun load() {
-        if (list.value.isNotEmpty()) return
-        val all = CatalogState.genres.ifEmpty { Api.genres().also { CatalogState.genres = it } }
-        list.value = wanted.mapNotNull { w -> all.firstOrNull { it.second.equals(w, true) } }
+    private var source: String? = null
+    suspend fun load(catalog: String) {
+        if (source == catalog && list.value.isNotEmpty()) return
+        source = catalog
+        list.value = emptyList()
+        val all = Api.genres(catalog)
+        if (source == catalog) list.value = wanted.mapNotNull { w -> all.firstOrNull { it.second.equals(w, true) } }
     }
     val colors = listOf(0xFFFF4D7A, 0xFF8B5CFF, 0xFF34C3FF, 0xFFFF9F43, 0xFF2ED47A, 0xFFFF5C5C, 0xFF7C83FD)
 }
@@ -133,7 +161,7 @@ object EpisodeCounts {
     suspend fun refresh(entries: List<ru.qmods.anixq.tv.data.WatchEntry>) = coroutineScope {
         entries.take(14).map { e ->
             async {
-                val eps = runCatching { Api.episodes(e.title.slug) }.getOrNull() ?: return@async null
+                val eps = runCatching { ru.qmods.anixq.tv.data.sources.AnimeSources.episodes(e.title) }.getOrNull() ?: return@async null
                 val i = eps.indexOfFirst { it.id == e.episodeId }.takeIf { it >= 0 } ?: eps.indexOfFirst { it.number == e.ep }
                 if (i < 0) null else e.title.id to (eps.size - i - 1)
             }
@@ -156,10 +184,10 @@ fun HomeScreen(nav: Nav) {
     val error by HomeData.error.collectAsState()
     // Written by cards, read only by the hero: moving the cursor doesn't redraw the rows.
     val spot = remember { mutableStateOf<Title?>(null) }
-    LaunchedEffect(Unit) { HomeData.load() }
-    LaunchedEffect(error) { if (error == null && rows.isEmpty()) HomeData.load(force = true) }
+    val catalog by HomeData.visibleSource.collectAsState()
+    LaunchedEffect(nav.defaultCatalog) { HomeData.load(catalog = nav.defaultCatalog) }
 
-    val cont = remember(version) { Store.continueList }
+    val cont = remember(version) { tvContinueEntries() }
     val watching = remember(version) { Store.titles(Bookmark.WATCHING).filter { w -> cont.none { it.title.id == w.id } } }
     val planned = remember(version) { Store.titles(Bookmark.PLANNED) }
     val fallback = cont.firstOrNull()?.title ?: rows.firstOrNull()?.second?.firstOrNull()
@@ -169,7 +197,7 @@ fun HomeScreen(nav: Nav) {
     val forYou by ForYou.rows.collectAsState()
     LaunchedEffect(cont.take(2).map { it.title.id }) { if (cont.isNotEmpty()) ForYou.refresh(cont) }
     val scope = androidx.compose.runtime.rememberCoroutineScope()
-    LaunchedEffect(Unit) { GenreTiles.load() }
+    LaunchedEffect(catalog) { runCatching { GenreTiles.load(catalog) } }
     LaunchedEffect(cont.map { it.title.id to it.episodeId }) { EpisodeCounts.refresh(cont) }
 
     Box(Modifier.fillMaxSize()) {
@@ -214,11 +242,11 @@ fun HomeScreen(nav: Nav) {
                             item("radio") { GenreTile("Режим «фон»", "опенинги ваших тайтлов", 0xFFFF4D7A) { nav.push(RadioRoute) } }
                             item("lucky") { GenreTile("Мне повезёт", "случайный хит", 0xFFFFC94D) { scope.launch {
                                 val page = (1..5).random()
-                                runCatching { Api.catalog(CatalogQuery(sort = CatalogSort.RATING), page).first }.getOrNull()?.randomOrNull()?.let { nav.open(it) }
+                                runCatching { Api.catalog(CatalogQuery(sort = CatalogSort.RATING, source = catalog), page).first }.getOrNull()?.randomOrNull()?.let { nav.open(it) }
                             } } }
                             items(genres.size) { i ->
                                 val (id, name) = genres[i]
-                                GenreTile(name, null, GenreTiles.colors[i % GenreTiles.colors.size]) { CatalogState.openWith(nav, CatalogQuery(genre = id)) }
+                                GenreTile(name, null, GenreTiles.colors[i % GenreTiles.colors.size]) { CatalogState.openWith(nav, CatalogQuery(genre = id, source = catalog)) }
                             }
                         }
                     }

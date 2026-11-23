@@ -36,7 +36,7 @@ import ru.qmods.anixq.tv.data.Store
 fun LibraryScreen(nav: Nav) {
     val version by Store.version.collectAsState()
     var section by rememberSaveable { mutableStateOf(-1) } // -1 = history
-    val history = remember(version) { Store.continueList }
+    val history = remember(version) { tvContinueEntries() }
     val counts by EpisodeCounts.after.collectAsState()
     val titles = remember(version, section) { if (section < 0) emptyList() else Store.titles(Bookmark.entries[section]) }
 

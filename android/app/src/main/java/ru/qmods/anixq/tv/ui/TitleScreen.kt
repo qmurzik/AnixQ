@@ -76,15 +76,15 @@ data class ResumePlan(val episode: Episode, val label: String, val sub: String?)
 
 fun resumePlan(title: Title, eps: List<Episode>): ResumePlan? {
     if (eps.isEmpty()) return null
-    val last = Store.lastEntry(title.id)
-    val i = last?.let { e -> eps.indexOfFirst { it.id == e.episodeId }.takeIf { it >= 0 } ?: eps.indexOfFirst { it.number == e.ep } }
+    val last = Store.lastEntry(title)
+    val i = last?.let { e -> eps.indexOfFirst { it.id == e.episodeId }.takeIf { it >= 0 } ?: eps.indexOfFirst { ru.qmods.anixq.tv.data.sources.YummyAnime.sameNumber(it.number, e.ep) } }
     if (last != null && i != null && i >= 0) {
-        val done = last.progress > 0.92 || Store.progress(eps[i].id) > 0.92
+        val done = last.progress > 0.92 || Store.episodeProgress(title, eps[i]) > 0.92
         if (done && i + 1 < eps.size) return ResumePlan(eps[i + 1], "Следующая серия ${eps[i + 1].number}", null)
         if (!done) return ResumePlan(eps[i], "Продолжить серию ${eps[i].number}", "с ${fmt(last.pos)} из ${fmt(last.dur)}")
         return ResumePlan(eps[i], "Пересмотреть серию ${eps[i].number}", null)
     }
-    val firstUnwatched = eps.firstOrNull { !Store.isWatched(title.id, it.number) } ?: eps.first()
+    val firstUnwatched = eps.firstOrNull { !Store.isWatched(title, it.number) } ?: eps.first()
     return if (firstUnwatched == eps.first()) ResumePlan(eps.first(), "Смотреть с 1 серии", null)
     else ResumePlan(firstUnwatched, "Смотреть серию ${firstUnwatched.number}", null)
 }
@@ -97,36 +97,24 @@ fun fmt(s: Double): String {
 @Composable
 fun TitleScreen(nav: Nav, start: Title) {
     val version by Store.version.collectAsState()
-    var detail by remember { mutableStateOf(TitleCache.detail[start.slug] ?: Spotlight.cached(start.slug)) }
-    var episodes by remember { mutableStateOf(TitleCache.episodes[start.slug]) }
-    var teams by remember { mutableStateOf(TitleCache.teams[start.slug] ?: emptyList()) }
-    var teamId by remember { mutableStateOf(Store.lastEntry(start.id)?.teamId) }
-    var error by remember { mutableStateOf<String?>(null) }
-    var related by remember { mutableStateOf(TitleCache.related[start.slug] ?: emptyList()) }
-    var similar by remember { mutableStateOf(TitleCache.similar[start.slug] ?: emptyList()) }
-    var dialog by remember { mutableStateOf<String?>(null) }
-    var menuEp by remember { mutableStateOf<Episode?>(null) }
-    val title = detail?.title ?: start
-    val sc = "title:${start.id}"
-
-    LaunchedEffect(start.slug) {
-        try {
-            launch { Api.related(start.slug).filter { it.first.id != start.id }.also { related = it; TitleCache.related[start.slug] = it } }
-            launch { Api.similar(start.slug).also { similar = it; TitleCache.similar[start.slug] = it } }
-            launch { runCatching { Api.detail(start.slug) }.getOrNull()?.let { detail = it; TitleCache.detail[start.slug] = it } }
-            val eps = Api.episodes(start.slug)
-            episodes = eps; TitleCache.episodes[start.slug] = eps
-            val target = resumePlan(start, eps)?.episode ?: return@LaunchedEffect
-            val players = ru.qmods.anixq.tv.data.sources.AnimeSources.players(start, target).filter(ru.qmods.anixq.tv.data.sources.AnimeSources::supported)
-            val opts = PlaybackChoices.options(players)
-            teams = opts; TitleCache.teams[start.slug] = opts
-            // Warm the video mirrors now, so pressing "Смотреть" starts in a moment.
-            launch { players.firstOrNull { it.isNative }?.hrefs?.values?.firstOrNull()?.let { if (!it.startsWith("http")) runCatching { Api.rankServers(it) } } }
-            teamId = Store.playbackOption(start, opts)?.team?.id ?: teamId?.takeIf { id -> opts.any { it.team.id == id } }
-                ?: opts.firstOrNull { o -> Store.dubs.any { PlaybackChoices.sameDub(it, o.team.name) } }?.team?.id ?: opts.firstOrNull()?.team?.id
-
-        } catch (e: Exception) { error = e.message ?: "Ошибка загрузки" }
+    var attempt by remember(start.slug) { mutableStateOf(0) }
+    val data = rememberTvTitleData(start, attempt)
+    val detail = data.detail
+    val episodes = data.episodes
+    val related = data.related
+    val similar = data.similar
+    val error = data.error
+    val teams = data.options
+    var teamId by remember(start.slug) { mutableStateOf(Store.lastEntry(start)?.teamId) }
+    LaunchedEffect(start.slug, teams) {
+        teamId = Store.playbackOption(start, teams)?.team?.id ?: teamId?.takeIf { id -> teams.any { it.team.id == id } }
+            ?: teams.firstOrNull { option -> Store.dubs.any { PlaybackChoices.sameDub(it, option.team.name) } }?.team?.id
+            ?: teams.firstOrNull()?.team?.id
     }
+    val title = detail?.title ?: start
+    var dialog by remember(start.slug) { mutableStateOf<String?>(null) }
+    var menuEp by remember(start.slug) { mutableStateOf<Episode?>(null) }
+    val sc = "title:${start.id}"
 
     val plan = remember(version, episodes) { episodes?.let { resumePlan(title, it) } }
     val bookmark = remember(version) { Store.bookmark(start.slug) }
@@ -183,14 +171,15 @@ fun TitleScreen(nav: Nav, start: Title) {
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
                     when {
                         plan != null -> PillButton(plan.label, Icons.Rounded.PlayArrow, primary = true,
-                            modifier = Modifier.memo(sc, "play", initial = true)) { nav.play(title, plan.episode.id, teamId, resume = Store.lastEntry(title.id) != null) }
-                        error != null -> PillButton("Повторить", modifier = Modifier.memo(sc, "retry", initial = true)) { nav.pop(); nav.open(start) }
+                            modifier = Modifier.memo(sc, "play", initial = true)) { nav.play(title, plan.episode.id, teamId, resume = Store.lastEntry(title) != null) }
+                        error != null -> PillButton("Повторить", modifier = Modifier.memo(sc, "retry", initial = true)) { attempt++ }
                         episodes?.isEmpty() == true -> Text("Серий пока нет", color = C.muted, fontSize = 17.sp)
                         else -> Text("Загрузка серий…", color = C.muted, fontSize = 17.sp)
                     }
                     PillButton(bookmark?.title ?: "", if (bookmark != null) Icons.Rounded.BookmarkAdded else Icons.Rounded.BookmarkAdd,
                         modifier = Modifier.memo(sc, "bm")) { dialog = "bookmark" }
                 }
+                TvCatalogFallback(data, sc, nav)
                 if (teams.isNotEmpty()) PlaybackSelector(teams, teamId) { option ->
                     teamId = option.team.id; Store.setPlaybackOption(title, option); Store.useDub(option.team.name)
                 }
@@ -246,7 +235,7 @@ fun TitleScreen(nav: Nav, start: Title) {
             Store.setDubs(listOf(name) + Store.dubs.filter { !it.equals(name, true) })
         }
         "ep" -> menuEp?.let { ep ->
-            val watched = Store.isWatched(title.id, ep.number) || Store.progress(ep.id) > 0.92
+            val watched = Store.isWatched(title, ep.number) || Store.episodeProgress(title, ep) > 0.92
             val resume = Store.resume(ep.id)
             val opts = listOfNotNull(
                 Choice(if (resume != null) "Продолжить с ${fmt(resume)}" else "Смотреть"),
@@ -293,8 +282,8 @@ private fun EpisodeStrip(eps: List<Episode>, title: Title, current: Int?, sc: St
         }
         Pivot { LazyRow(state = list, contentPadding = PaddingValues(horizontal = 56.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
             itemsIndexed(eps, key = { _, e -> e.id }) { _, e ->
-                val prog = remember(version) { Store.progress(e.id) }
-                val watched = remember(version) { Store.isWatched(title.id, e.number) || prog > 0.92 }
+                val prog = remember(version) { Store.episodeProgress(title, e) }
+                val watched = remember(version) { Store.isWatched(title, e.number) || prog > 0.92 }
                 Column(Modifier.width(184.dp)) {
                     Focusable(onClick = { onPlay(e) }, onLongClick = { onMenu(e) }, modifier = Modifier.fillMaxWidth().height(100.dp).memo(sc, "e${e.id}"),
                         container = if (e.id == current) C.pink.copy(alpha = 0.22f) else C.card) {

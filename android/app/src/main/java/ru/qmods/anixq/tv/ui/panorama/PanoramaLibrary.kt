@@ -1,5 +1,6 @@
 package ru.qmods.anixq.tv.ui.panorama
 
+import ru.qmods.anixq.tv.ui.tvContinueEntries
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
@@ -30,7 +31,7 @@ import java.util.Locale
 fun PanoramaLibrary(nav: Nav) {
     val version by Store.version.collectAsState()
     var section by rememberSaveable { mutableStateOf<Bookmark?>(null) }
-    val history = remember(version) { Store.continueList }
+    val history = remember(version) { tvContinueEntries() }
     val titles = remember(version, section) { section?.let(Store::titles).orEmpty() }
     val counts by EpisodeCounts.after.collectAsState()
     var shiki by remember { mutableStateOf(Shiki.totals) }

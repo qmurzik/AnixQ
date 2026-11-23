@@ -1,5 +1,6 @@
 package ru.qmods.anixq.tv.ui
 
+import ru.qmods.anixq.tv.data.playbackSourceLabel
 import android.app.Activity
 import android.content.Intent
 import android.speech.RecognizerIntent
@@ -71,7 +72,7 @@ fun SearchScreen(nav: Nav) {
     var text by rememberSaveable { mutableStateOf("") }
     LaunchedEffect(SearchRequest.pending) { SearchRequest.pending?.let { text = it; SearchRequest.pending = null } }
     var latin by rememberSaveable { mutableStateOf(false) }
-    var catalogSource by rememberSaveable { mutableStateOf("animelib") }
+    var catalogSource by rememberSaveable(nav.defaultCatalog) { mutableStateOf(nav.defaultCatalog) }
     var searchError by remember { mutableStateOf<String?>(null) }
     var results by remember { mutableStateOf<List<Title>>(emptyList()) }
     var popular by remember { mutableStateOf(SearchState.popular) }
@@ -104,9 +105,9 @@ fun SearchScreen(nav: Nav) {
         delay(350)
         busy = true
         // Forgiving search: layout, transliteration, a typo at the end, Shikimori.
-        val (found, used) = if (catalogSource == "yummy") {
-            try { Api.catalog(CatalogQuery(text = q, source = "yummy"), 1).first to null } catch(e: kotlinx.coroutines.CancellationException) { throw e } catch(e: Exception) { searchError = e.message; emptyList<Title>() to null }
-        } else SmartSearch.search(q)
+        val (found, used) = try { searchTvCatalog(q, catalogSource) }
+        catch (e: kotlinx.coroutines.CancellationException) { throw e }
+        catch (e: Exception) { searchError = e.message; emptyList<Title>() to null }
         results = found
         corrected = used
         busy = false
@@ -124,8 +125,9 @@ fun SearchScreen(nav: Nav) {
                     color = if (text.isEmpty()) C.muted else Color.White)
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Chip("AnimeLib", catalogSource == "animelib") { catalogSource = "animelib" }
-                Chip("YummyAnime", catalogSource == "yummy") { catalogSource = "yummy" }
+                tvCatalogSources.forEach { source ->
+                    Chip(playbackSourceLabel(source), catalogSource == source) { catalogSource = source }
+                }
             }
             searchError?.let { Text(it, color = C.muted) }
             Spacer(Modifier.height(14.dp))

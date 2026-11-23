@@ -1,5 +1,6 @@
 package ru.qmods.anixq.tv.ui.panorama
 
+import ru.qmods.anixq.tv.ui.tvContinueEntries
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -38,14 +39,16 @@ fun PanoramaHome(nav: Nav) {
     val counts by EpisodeCounts.after.collectAsState()
     val recommendations by ForYou.rows.collectAsState()
     val genres by GenreTiles.list.collectAsState()
-    val history = remember(version) { Store.continueList }
+    val history = remember(version) { tvContinueEntries() }
     val watching = remember(version) { Store.titles(Bookmark.WATCHING).filter { t -> history.none { it.title.id == t.id } } }
     val planned = remember(version) { Store.titles(Bookmark.PLANNED) }
     var featured by remember { mutableStateOf<Title?>(null) }
     var slot by remember { mutableIntStateOf(0) }
     val candidates = remember(rows, history) { (rows.firstOrNull()?.second.orEmpty().take(6) + history.map { it.title }).distinctBy { it.id } }
     val scope = rememberCoroutineScope()
-    LaunchedEffect(Unit) { HomeData.load(); runCatching { GenreTiles.load() } }
+    val catalog by HomeData.visibleSource.collectAsState()
+    LaunchedEffect(nav.defaultCatalog) { HomeData.load(catalog = nav.defaultCatalog) }
+    LaunchedEffect(catalog) { runCatching { GenreTiles.load(catalog) } }
     LaunchedEffect(history.map { it.title.id to it.episodeId }) {
         runCatching { EpisodeCounts.refresh(history) }
         runCatching { ForYou.refresh(history) }
@@ -88,9 +91,9 @@ fun PanoramaHome(nav: Nav) {
                     LazyRow(contentPadding = PaddingValues(horizontal = 38.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         item { PButton("Режим «фон»", Icons.Rounded.MusicNote) { nav.push(RadioRoute) } }
                         item { PButton("Мне повезёт", Icons.Rounded.Shuffle) {
-                            scope.launch { runCatching { Api.catalog(CatalogQuery(sort = CatalogSort.RATING), (1..5).random()).first.randomOrNull() }.getOrNull()?.let(nav::open) }
+                            scope.launch { runCatching { Api.catalog(CatalogQuery(sort = CatalogSort.RATING, source = catalog), (1..5).random()).first.randomOrNull() }.getOrNull()?.let(nav::open) }
                         } }
-                        items(genres, key = { it.first }) { (id, name) -> PButton(name) { CatalogState.openWith(nav, CatalogQuery(genre = id)) } }
+                        items(genres, key = { it.first }) { (id, name) -> PButton(name) { CatalogState.openWith(nav, CatalogQuery(genre = id, source = catalog)) } }
                     }
                 }
             }
@@ -98,7 +101,7 @@ fun PanoramaHome(nav: Nav) {
         recommendations.forEach { (name, titles) -> item("for-you/$name") { PTitleRow(name, titles, "panorama:home", nav, onFocus = { featured = it }) } }
         if (planned.isNotEmpty()) item("planned") { PTitleRow("На другой вечер", planned, "panorama:home", nav, onFocus = { featured = it }) }
         if (rows.isEmpty()) item("empty") {
-            if (error != null) PMessage("Не удалось обновить каталог", error!!, "Повторить") { scope.launch { HomeData.load(force = true) } }
+            if (error != null) PMessage("Не удалось обновить каталог", error!!, "Повторить") { scope.launch { HomeData.load(force = true, catalog = nav.defaultCatalog) } }
             else PMessage("Подбираем аниме", "Каталог появится здесь после загрузки.")
         }
         if (Store.libToken == null) item("login") {
@@ -169,7 +172,7 @@ internal fun PanoramaHero(target: Title?, nav: Nav, scope: String, hasMore: Bool
             }
             // Keep one focus target alive while the initial catalogue/scene loads.
             Row(Modifier.padding(top=24.dp),horizontalArrangement=Arrangement.spacedBy(11.dp)) {
-                val last=title?.let { Store.lastEntry(it.id) }
+                val last=title?.let { Store.lastEntry(it) }
                 val label=if(title==null) "Выбрать аниме" else if(last!=null&&last.progress<=.92) "Продолжить просмотр" else "Открыть тайтл"
                 PButton(label,Icons.Rounded.PlayArrow,primary=true,
                     modifier=Modifier.memo(scope,"hero-primary",initial=true).testTag("panorama-hero-primary")) {

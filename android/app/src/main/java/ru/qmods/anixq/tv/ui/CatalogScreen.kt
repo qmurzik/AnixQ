@@ -1,5 +1,6 @@
 package ru.qmods.anixq.tv.ui
 
+import ru.qmods.anixq.tv.data.playbackSourceLabel
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.rememberScrollState
@@ -47,6 +48,15 @@ internal object CatalogState {
     var more = true
     var genres: List<Pair<Int, String>> = emptyList()
 
+    fun useDefault(source: String) {
+        query = CatalogQuery(source = source)
+        items.clear()
+        page = 0
+        more = true
+        genres = emptyList()
+        Focus.reset("catalog")
+    }
+
     /** Open the catalog already filtered (e.g. a genre tile on the home screen). */
     fun openWith(nav: Nav, q: CatalogQuery) {
         query = q; items.clear(); page = 0; more = true
@@ -92,7 +102,6 @@ fun CatalogScreen(nav: Nav) {
 
     LaunchedEffect(Unit) {
         if (CatalogState.items.isEmpty()) loadMore(reset = true)
-        if (genres.isEmpty()) { genres = Api.genres(); CatalogState.genres = genres }
     }
 
     LaunchedEffect(query.source) { genres = runCatching { Api.genres(query.source) }.getOrDefault(emptyList()) }
@@ -111,8 +120,8 @@ fun CatalogScreen(nav: Nav) {
         item(span = { GridItemSpan(maxLineSpan) }, key = "head") { ScreenTitle("Каталог") }
         item(span = { GridItemSpan(maxLineSpan) }, key = "filters") {
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.padding(bottom = 6.dp).horizontalScroll(rememberScrollState())) {
-                Chip(if (query.source == "yummy") "YummyAnime" else "AnimeLib", true) {
-                    apply(CatalogQuery(source = if (query.source == "yummy") "animelib" else "yummy"))
+                Chip(playbackSourceLabel(query.source), true) {
+                    apply(CatalogQuery(source = nextTvCatalog(query.source)))
                 }
                 CatalogSort.entries.filter { query.source != "yummy" || it != CatalogSort.UPDATED }.forEach { s ->
                     Chip(s.title, query.sort == s) { apply(query.copy(sort = s)) }

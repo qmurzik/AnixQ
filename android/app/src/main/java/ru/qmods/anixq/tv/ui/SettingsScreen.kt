@@ -1,5 +1,6 @@
 package ru.qmods.anixq.tv.ui
 
+import ru.qmods.anixq.tv.data.playbackSourceLabel
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -68,6 +69,11 @@ fun SettingsScreen(nav: Nav) {
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 56.dp, end = 56.dp, bottom = 48.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         item { ScreenTitle("Настройки") }
         item { TvInterfaceSettings() }
+        item { Section("Каталог") {
+            PillButton("По умолчанию · ${playbackSourceLabel(nav.defaultCatalog)}",
+                modifier = Modifier.memo("settings", "default-catalog")) { dialog = "defaultCatalog" }
+        } }
+
         item { Section("YummyAnime") {
             Text("Войдите в аккаунт — AnixQ автоматически настроит доступ к каталогу и видео.", color = C.muted)
             if (ru.qmods.anixq.tv.data.sources.YummyAccount.signedIn) PillButton("Выйти из YummyAnime") { auth { ru.qmods.anixq.tv.data.sources.YummyAccount.logout() } }
@@ -188,6 +194,14 @@ fun SettingsScreen(nav: Nav) {
     }
 
     if (pairing) PairDialog { pairing = false }
+    if (dialog == "defaultCatalog") ChoiceDialog("Каталог по умолчанию",
+        tvCatalogSources.map { Choice(playbackSourceLabel(it), it == nav.defaultCatalog) },
+        { dialog = null }) { index ->
+        val source = tvCatalogSources[index]
+        Store.defaultCatalog = source
+        nav.updateDefaultCatalog(source)
+        dialog = null
+    }
     if (dialog == "yummyAdvanced") ChoiceDialog("Подключение YummyAnime", listOf(Choice("Личный токен", hint = "Вместо входа по паролю"), Choice("Ключ приложения", hint = "Ручная настройка, если автоматическая недоступна")), { dialog = null }) { i ->
         dialog = if (i == 0) "yummyPersonalToken" else "yummyToken"
     }

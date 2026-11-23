@@ -88,6 +88,7 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.async
 import ru.qmods.anixq.tv.data.sources.AnimeSources
 import ru.qmods.anixq.tv.data.sources.qualityHeight
 import ru.qmods.anixq.tv.data.PlaybackLabels
@@ -106,7 +107,7 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
 
     override fun roomState(): org.json.JSONObject = org.json.JSONObject()
         .put("slug", title.slug).put("titleName", title.title).put("episodeId", episode?.id ?: 0)
-        .put("catalogSource", if (title.slug.startsWith("yummy:")) "yummy" else "animelib")
+        .put("catalogSource", ru.qmods.anixq.tv.data.sources.SourceIds.catalogSource(title.slug))
         .put("playbackSource", player?.source ?: "animelib").put("balancer", player?.balancer ?: "").put("dubbing", player?.team?.name ?: "")
         .put("episodeNumber", episode?.number ?: "").put("teamId", player?.team?.id ?: 0).put("team", player?.team?.name ?: "")
         .put("playing", playing).put("position", pos).put("rate", speed.toDouble())
@@ -328,19 +329,31 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
         scope.launch {
             try {
                 // Fresh progress from the phone first, so we resume exactly where it stopped.
-                Sync.pullFresh()
-                val eps = Api.episodes(title.slug)
+                val sync = async { Sync.pullFresh() }
+                val eps = AnimeSources.episodes(title)
                 if (eps.isEmpty()) { message = "Серий нет"; failed = true; return@launch }
                 episodes = eps
+                Store.rememberEpisodeIds(title, eps)
+                if (route.resume) kotlinx.coroutines.withTimeoutOrNull(3_000) { sync.await() }
                 // "Continue" re-reads the newest entry: the phone may have moved on since the card was drawn.
-                val latest = if (route.resume) Store.lastEntry(title.id) else null
+                val latest = if (route.resume) Store.lastEntry(title) else null
                 val epId = latest?.episodeId ?: route.episodeId
                 val next = if (latest != null) latest.progress > 0.92 else route.next
-                var i = epId?.let { id -> eps.indexOfFirst { it.id == id } }?.takeIf { it >= 0 }
-                    ?: latest?.let { l -> eps.indexOfFirst { it.number == l.ep } }?.takeIf { it >= 0 } ?: 0
+                val number = latest?.ep ?: Store.lastEntry(title)?.takeIf { it.episodeId == epId }?.ep
+                    ?: TitleCache.episodes[title.slug]?.firstOrNull { it.id == epId }?.number
+                val matched = epId?.let { id -> eps.indexOfFirst { it.id == id }.takeIf { it >= 0 } }
+                    ?: number?.let { saved -> eps.indexOfFirst { ru.qmods.anixq.tv.data.sources.YummyAnime.sameNumber(it.number, saved) }.takeIf { it >= 0 } }
+                if (epId != null && matched == null) {
+                    message = number?.let { "Серия $it недоступна в этом каталоге. Позиция сохранена." }
+                        ?: "Выбранная серия недоступна. Откройте карточку и выберите серию."
+                    failed = true
+                    return@launch
+                }
+                var i = matched ?: 0
                 if (next && i + 1 < eps.size) i += 1
                 load(i, teamId = latest?.teamId ?: route.teamId)
-            } catch (e: Exception) { message = e.message ?: "Ошибка"; failed = true }
+            } catch (e: CancellationException) { throw e }
+            catch (e: Exception) { message = e.message ?: "Ошибка"; failed = true }
         }
     }
 
@@ -368,14 +381,15 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
         buffering = true
         loadJob = scope.launch {
             try {
-                val includeExternal = Store.prefersExternal(title) || title.id < 0 ||
-                    teamId?.let { it < 0 } == true || previousChoice?.isExternalEmbed == true
+                val includeExternal = title.id < 0 || (teamId?.let { it < 0 }
+                    ?: (previousChoice?.isExternalEmbed == true || Store.prefersExternal(title)))
                 val list = if (sameEpisode && players.isNotEmpty()) players else
                     playersCache.remove(ep.id)?.takeUnless { includeExternal }
-                        ?: AnimeSources.players(title, ep, includeExternal = includeExternal)
+                        ?: AnimeSources.players(title, ep, includeExternal = includeExternal, preferredTeamId = teamId)
                 players = list
-                if (!includeExternal && title.id > 0 && list.any(AnimeSources::supported) && list.none { it.isExternalEmbed }) launch {
-                    val extra = AnimeSources.additional(title, ep)
+                if (list.isNotEmpty() && ((!includeExternal && title.id > 0 && list.any(AnimeSources::supported) &&
+                        list.none { it.isExternalEmbed }) || list.all { it.source == "shiki" })) launch {
+                    val extra = AnimeSources.additional(title, ep, includeShiki = list.none { it.source == "shiki" })
                     if (generation == loadGeneration && episode?.id == ep.id) players = (players + extra).distinctBy { "${it.source}:${it.team.id}" }
                 }
                 if (list.isEmpty()) { message = "Для этой серии нет видео"; failed = true; return@launch }
@@ -431,7 +445,7 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
         native = true
         val e = exo ?: ExoEngine(context) { err -> onNativeError(err) }.also { exo = it }
         currentUrl = if (direct) href else Api.videoUrl(servers[0], href)
-        e.load(currentUrl!!, startAt, p.subtitles, upscale, p.headers)
+        e.load(currentUrl!!, startAt, p.subtitles, upscale, p.headers, p.mimeTypes[q])
         ru.qmods.anixq.tv.data.Room.sendState()
         e.setAutomaticQuality(q.equals("auto", true) || Store.automaticQuality)
         e.setSubtitles(subtitlesOn)
@@ -590,7 +604,7 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
             val sourceEngine = exo
             scope.launch {
                 runCatching {
-                    val ps = playersCache[next.id] ?: AnimeSources.players(title, next).also { playersCache[next.id] = it }
+                    val ps = playersCache[next.id] ?: AnimeSources.players(title, next, includeExternal = false).also { playersCache[next.id] = it }
                     var p = ps.firstOrNull { it.team.id == player?.team?.id && it.isNative }
                     // AniLibria now: queue their file of the next episode (the one the player will pick).
                     if (player?.isLibria == true) {
@@ -604,10 +618,10 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
                         ?: keys.firstOrNull { (qualityHeight(it)) <= Store.preferredQuality } ?: keys.last()
                     val href = p.hrefs.getValue(q)
                     if (generation != loadGeneration || loading || sourceEngine !== exo) return@runCatching
-                    if (href.startsWith("http")) { sourceEngine?.queueNext(href, p.subtitles, p.headers); return@runCatching }
+                    if (href.startsWith("http")) { sourceEngine?.queueNext(href, p.subtitles, p.headers, p.mimeTypes[q]); return@runCatching }
                     val server = Api.rankServers(href).firstOrNull() ?: return@runCatching
                     if (generation == loadGeneration && !loading && sourceEngine === exo)
-                        sourceEngine?.queueNext(Api.videoUrl(server, href), p.subtitles, p.headers)
+                        sourceEngine?.queueNext(Api.videoUrl(server, href), p.subtitles, p.headers, p.mimeTypes[q])
                 }
             }
         }
@@ -1313,8 +1327,8 @@ internal fun EpisodesPanel(m: PlayerModel, onPick: (Int) -> Unit) {
             itemsIndexed(m.episodes, key = { _, e -> e.id }) { i, e ->
                 val fr = remember { FocusRequester() }
                 if (i == m.index) LaunchedEffect(Unit) { delay(80); runCatching { fr.requestFocus() } }
-                val prog = Store.progress(e.id)
-                val watched = Store.isWatched(m.title.id, e.number) || prog > 0.92
+                val prog = Store.episodeProgress(m.title, e)
+                val watched = Store.isWatched(m.title, e.number) || prog > 0.92
                 Column(Modifier.width(190.dp)) {
                     Focusable(onClick = { onPick(i) }, modifier = Modifier.fillMaxWidth().height(106.dp).focusRequester(fr),
                         container = if (i == m.index) C.pink.copy(alpha = 0.35f) else C.card) {

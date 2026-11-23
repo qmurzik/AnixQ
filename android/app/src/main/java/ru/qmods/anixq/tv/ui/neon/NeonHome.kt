@@ -1,5 +1,6 @@
 package ru.qmods.anixq.tv.ui.neon
 
+import ru.qmods.anixq.tv.ui.tvContinueEntries
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -44,14 +45,16 @@ fun NeonHome(nav: Nav) {
     val counts by EpisodeCounts.after.collectAsState()
     val recommendations by ForYou.rows.collectAsState()
     val genres by GenreTiles.list.collectAsState()
-    val history = remember(version) { Store.continueList }
+    val history = remember(version) { tvContinueEntries() }
     val watching = remember(version) { Store.titles(Bookmark.WATCHING).filter { t -> history.none { it.title.id == t.id } } }
     val planned = remember(version) { Store.titles(Bookmark.PLANNED) }
     var featured by remember { mutableStateOf<Title?>(null) }
     val candidates = remember(rows, history) { (rows.firstOrNull()?.second.orEmpty().take(6) + history.map { it.title }).distinctBy { it.id } }
     var slot by remember { mutableIntStateOf(0) }
     val scope = rememberCoroutineScope()
-    LaunchedEffect(Unit) { HomeData.load(); runCatching { GenreTiles.load() } }
+    val catalog by HomeData.visibleSource.collectAsState()
+    LaunchedEffect(nav.defaultCatalog) { HomeData.load(catalog = nav.defaultCatalog) }
+    LaunchedEffect(catalog) { runCatching { GenreTiles.load(catalog) } }
     LaunchedEffect(history.map { it.title.id to it.episodeId }) { runCatching { EpisodeCounts.refresh(history) }; runCatching { ForYou.refresh(history) } }
     LaunchedEffect(rows) {
         if (Store.hoverPreview && !Store.weakDevice) { delay(2500); PreviewClips.prefetch((history.map { it.title } + rows.firstOrNull()?.second.orEmpty().take(6)).distinctBy { it.id }) }
@@ -84,9 +87,9 @@ fun NeonHome(nav: Nav) {
                     LazyRow(contentPadding = PaddingValues(horizontal = 44.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         item { NButton("Режим «фон»", Icons.Rounded.MusicNote, N.pink) { nav.push(RadioRoute) } }
                         item { NButton("Мне повезёт", Icons.Rounded.Casino, N.amber) {
-                            scope.launch { runCatching { Api.catalog(CatalogQuery(sort = CatalogSort.RATING), (1..5).random()).first.randomOrNull() }.getOrNull()?.let(nav::open) }
+                            scope.launch { runCatching { Api.catalog(CatalogQuery(sort = CatalogSort.RATING, source = catalog), (1..5).random()).first.randomOrNull() }.getOrNull()?.let(nav::open) }
                         } }
-                        items(genres, key = { it.first }) { (id, name) -> NButton(name, color = N.amber) { CatalogState.openWith(nav, CatalogQuery(genre = id)) } }
+                        items(genres, key = { it.first }) { (id, name) -> NButton(name, color = N.amber) { CatalogState.openWith(nav, CatalogQuery(genre = id, source = catalog)) } }
                     }
                 }
             }
@@ -94,7 +97,7 @@ fun NeonHome(nav: Nav) {
         recommendations.forEach { (name, titles) -> item("for-you/$name") { NRow("推", name, titles, "neon:home", nav, N.pink, focus) } }
         if (planned.isNotEmpty()) item("planned") { NRow("約", "На другой вечер", planned, "neon:home", nav, N.cyan, focus) }
         if (rows.isEmpty()) item("empty") {
-            if (error != null) NMessage("Город не отвечает", error!!, "Повторить") { scope.launch { HomeData.load(force = true) } }
+            if (error != null) NMessage("Город не отвечает", error!!, "Повторить") { scope.launch { HomeData.load(force = true, catalog = nav.defaultCatalog) } }
             else NMessage("Зажигаем вывески…", "Каталог появится через секунду.")
         }
         if (Store.libToken == null) item("login") {
@@ -167,7 +170,7 @@ internal fun Billboard(target: Title?, nav: Nav, hasMore: Boolean, onNext: () ->
                     maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 10.dp).height(38.dp))
             } else Glow("Город\nпросыпается", N.pink, 44.sp, maxLines = 2, lineHeight = 50.sp)
             Row(Modifier.padding(top = 18.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                val last = t?.let { Store.lastEntry(it.id) }
+                val last = t?.let { Store.lastEntry(it) }
                 val resume = last != null && last.progress <= .92
                 NButton(if (t == null) "В каталог" else if (resume) "Продолжить" else "Открыть", Icons.Rounded.PlayArrow, color, primary = true,
                     modifier = Modifier.memo("neon:home", "billboard", initial = true).testTag("neon-billboard-primary")) {

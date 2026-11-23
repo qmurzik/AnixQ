@@ -38,6 +38,7 @@ jobs:
           BEFORE: ${{ github.event.before }}
         run: |
           TV=true
+          PHONE=true
           if [ "$GITHUB_EVENT_NAME" = push ] && git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
             CHANGED=$(git diff --name-only "$BEFORE" "$GITHUB_SHA")
             if printf '%s\n' "$CHANGED" | grep -q '^android/mobile/' &&
@@ -50,8 +51,14 @@ jobs:
                ! printf '%s\n' "$CHANGED" | grep -qE '^android/(app/|ci/|[^/]+$)'; then
               TV=false
             fi
+            if [ "$(git log -1 --format='%(trailers:key=TV-Only,valueonly)')" = true ] &&
+               printf '%s\n' "$CHANGED" | grep -q '^android/app/' &&
+               ! printf '%s\n' "$CHANGED" | grep -qE '^android/(mobile/|core/|ci/|[^/]+$)'; then
+              PHONE=false
+            fi
           fi
           echo "tv=$TV" >> "$GITHUB_OUTPUT"
+          echo "phone=$PHONE" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-java@v4
         with: { distribution: temurin, java-version: "17" }
       - uses: gradle/actions/setup-gradle@v4
@@ -86,7 +93,7 @@ jobs:
       - name: Source selection, remote and sync regression tests
         if: steps.targets.outputs.tv == 'true'
         working-directory: android
-        run: gradle --no-daemon :app:testDebugUnitTest --tests 'ru.qmods.anixq.tv.focus.YummySourceTest' --tests 'ru.qmods.anixq.tv.focus.PlaybackSelectorTest' --tests 'ru.qmods.anixq.tv.focus.PublicSourcePlaybackTest' --tests 'ru.qmods.anixq.tv.focus.VideoEffectFailureTest'
+        run: gradle --no-daemon :app:testDebugUnitTest --tests 'ru.qmods.anixq.tv.focus.YummySourceTest' --tests 'ru.qmods.anixq.tv.focus.PlaybackSelectorTest' --tests 'ru.qmods.anixq.tv.focus.PublicSourcePlaybackTest' --tests 'ru.qmods.anixq.tv.focus.VideoEffectFailureTest' --tests 'ru.qmods.anixq.tv.focus.TvCatalogContinuityTest'
       - name: Alternate TV interface and D-pad regression tests
         if: steps.targets.outputs.tv == 'true'
         working-directory: android
@@ -95,26 +102,31 @@ jobs:
         working-directory: android
         run: gradle --no-daemon :core:testDebugUnitTest
       - name: Phone playback, picker and PiP regression tests
+        if: steps.targets.outputs.phone == 'true'
         working-directory: android
         run: gradle --no-daemon :mobile:testDebugUnitTest
-      - name: Build (TV + phone)
+      - name: Build selected Android releases
         working-directory: android
         env: { BUILD_NUMBER: "${{ github.run_number }}" }
         run: |
-          TASKS=(:mobile:assembleRelease)
+          TASKS=()
+          if [ "${{ steps.targets.outputs.phone }}" = true ]; then TASKS+=(:mobile:assembleRelease); fi
           if [ "${{ steps.targets.outputs.tv }}" = true ]; then TASKS+=(:app:assembleRelease); fi
           gradle --no-daemon "${TASKS[@]}"
       - run: |
           if [ "${{ steps.targets.outputs.tv }}" = true ]; then
             cp android/app/build/outputs/apk/release/app-release.apk AnixQ-TV.apk
           fi
-          cp android/mobile/build/outputs/apk/release/mobile-release.apk AnixQ.apk
+          if [ "${{ steps.targets.outputs.phone }}" = true ]; then
+            cp android/mobile/build/outputs/apk/release/mobile-release.apk AnixQ.apk
+          fi
       - name: Verify update signing compatibility
         if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
         env: { GH_TOKEN: "${{ github.token }}" }
         run: |
           SIGNER=$(ls -1 "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -n 1)
-          CHANNELS=(android)
+          CHANNELS=()
+          if [ "${{ steps.targets.outputs.phone }}" = true ]; then CHANNELS+=(android); fi
           if [ "${{ steps.targets.outputs.tv }}" = true ]; then CHANNELS+=(tv); fi
           for CHANNEL in "${CHANNELS[@]}"; do
             if [ "$CHANNEL" = tv ]; then APK=AnixQ-TV.apk; else APK=AnixQ.apk; fi
@@ -131,6 +143,7 @@ jobs:
         if: steps.targets.outputs.tv == 'true'
         with: { name: apk, path: AnixQ-TV.apk }
       - uses: actions/upload-artifact@v4
+        if: steps.targets.outputs.phone == 'true'
         with: { name: android-apk, path: AnixQ.apk }
       - name: Publish TV release
         if: github.event_name == 'push' && steps.targets.outputs.tv == 'true'
@@ -147,7 +160,7 @@ jobs:
             "${{ github.run_number }}" "$V" "$NOTES"
           gh release upload tv AnixQ-TV.apk tv-version.json --clobber
       - name: Publish Android release
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' && steps.targets.outputs.phone == 'true'
         env: { GH_TOKEN: "${{ github.token }}" }
         run: |
           V=${{ steps.v.outputs.version }}

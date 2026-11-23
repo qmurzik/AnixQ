@@ -1,5 +1,7 @@
 package ru.qmods.anixq.tv.ui.neon
 
+import ru.qmods.anixq.tv.ui.tvContinueEntries
+import ru.qmods.anixq.tv.data.playbackSourceLabel
 import android.app.Activity
 import android.content.Intent
 import android.speech.RecognizerIntent
@@ -38,6 +40,9 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import ru.qmods.anixq.tv.data.*
+import ru.qmods.anixq.tv.ui.nextTvCatalog
+import ru.qmods.anixq.tv.ui.searchTvCatalog
+import ru.qmods.anixq.tv.ui.tvCatalogSources
 import ru.qmods.anixq.tv.ui.*
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -97,10 +102,10 @@ fun NeonCatalog(nav: Nav) {
         horizontalArrangement = Arrangement.spacedBy(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         item(span = { GridItemSpan(maxLineSpan) }, key = "heading") {
             Column {
-                Heading("店", "Рынок историй", "${if (query.source == "yummy") "YummyAnime" else "AnimeLib"} · ${CatalogState.items.size}${if (CatalogState.more) "+" else ""} тайтлов", N.cyan)
+                Heading("店", "Рынок историй", "${playbackSourceLabel(query.source)} · ${CatalogState.items.size}${if (CatalogState.more) "+" else ""} тайтлов", N.cyan)
                 Row(Modifier.horizontalScroll(rememberScrollState()).padding(bottom = 14.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    NButton(if (query.source == "yummy") "YummyAnime" else "AnimeLib", Icons.Rounded.SwapHoriz, N.cyan,
-                        modifier = Modifier.memo("neon:catalog", "source", initial = true)) { apply(CatalogQuery(source = if (query.source == "yummy") "animelib" else "yummy")) }
+                    NButton(playbackSourceLabel(query.source), Icons.Rounded.SwapHoriz, N.cyan,
+                        modifier = Modifier.memo("neon:catalog", "source", initial = true)) { apply(CatalogQuery(source = nextTvCatalog(query.source))) }
                     NButton(query.sort.title, Icons.Rounded.Sort, N.cyan) { dialog = "sort" }
                     NButton(statuses.firstOrNull { it.first == query.status }?.second ?: "Статус", color = N.pink, selected = query.status != null) { dialog = "status" }
                     NButton(genres.firstOrNull { it.first == query.genre }?.second ?: "Жанр", color = N.violet, selected = query.genre != null) { dialog = "genre" }
@@ -136,7 +141,7 @@ fun NeonCatalog(nav: Nav) {
 fun NeonSearch(nav: Nav) {
     var text by rememberSaveable { mutableStateOf("") }
     var latin by rememberSaveable { mutableStateOf(false) }
-    var source by rememberSaveable { mutableStateOf("animelib") }
+    var source by rememberSaveable(nav.defaultCatalog) { mutableStateOf(nav.defaultCatalog) }
     var results by remember { mutableStateOf<List<Title>>(emptyList()) }
     var popular by remember { mutableStateOf<List<Title>>(emptyList()) }
     var recent by remember { mutableStateOf(Store.recentSearches) }
@@ -150,7 +155,7 @@ fun NeonSearch(nav: Nav) {
         if (q.length < 2) { results = emptyList(); return@LaunchedEffect }
         delay(350); busy = true
         try {
-            val found = if (source == "yummy") Api.catalog(CatalogQuery(text = q, source = source), 1).first to null else SmartSearch.search(q)
+            val found = searchTvCatalog(q, source)
             results = found.first; corrected = found.second
             if (results.isNotEmpty()) { recent = (listOf(q) + recent.filter { it != q }).take(8); Store.recentSearches = recent }
             if (SearchRequest.playFirst && results.isNotEmpty()) { SearchRequest.playFirst = false; nav.open(results.first()) }
@@ -175,8 +180,9 @@ fun NeonSearch(nav: Nav) {
                 if (text.isBlank()) Text("    Название аниме…", color = N.muted, fontSize = 15.sp)
             }
             Row(Modifier.padding(top = 12.dp, bottom = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                NButton("AnimeLib", color = N.amber, selected = source == "animelib") { source = "animelib" }
-                NButton("YummyAnime", color = N.amber, selected = source == "yummy") { source = "yummy" }
+                tvCatalogSources.forEach { key ->
+                    NButton(playbackSourceLabel(key), color = N.amber, selected = source == key) { source = key }
+                }
             }
             val keys = if (latin) listOf("abcdef", "ghijkl", "mnopqr", "stuvwx", "yz1234", "567890") else
                 listOf("абвгде", "ёжзийк", "лмнопр", "стуфхц", "чшщъыь", "эюя123", "456789")
@@ -223,7 +229,7 @@ fun NeonSearch(nav: Nav) {
 fun NeonLibrary(nav: Nav) {
     val version by Store.version.collectAsState()
     var section by rememberSaveable { mutableStateOf<Bookmark?>(null) }
-    val history = remember(version) { Store.continueList }
+    val history = remember(version) { tvContinueEntries() }
     val titles = remember(version, section) { section?.let(Store::titles).orEmpty() }
     val counts by EpisodeCounts.after.collectAsState()
     var shiki by remember { mutableStateOf(Shiki.totals) }

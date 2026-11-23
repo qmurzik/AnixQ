@@ -1,5 +1,6 @@
 package ru.qmods.anixq.tv.ui.panorama
 
+import ru.qmods.anixq.tv.data.playbackSourceLabel
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.border
@@ -36,50 +37,33 @@ import kotlinx.coroutines.launch
 import ru.qmods.anixq.tv.data.*
 import ru.qmods.anixq.tv.data.sources.AnimeSources
 import ru.qmods.anixq.tv.data.sources.YummyAccount
+import ru.qmods.anixq.tv.ui.rememberTvTitleData
+import ru.qmods.anixq.tv.ui.TvCatalogFallback
 import ru.qmods.anixq.tv.ui.*
 
 @Composable
 fun PanoramaTitle(nav: Nav, start: Title) {
     val version by Store.version.collectAsState()
-    var detail by remember(start.slug) { mutableStateOf(TitleCache.detail[start.slug] ?: Spotlight.cached(start.slug)) }
-    var episodes by remember(start.slug) { mutableStateOf(TitleCache.episodes[start.slug]) }
-    var options by remember(start.slug) { mutableStateOf(TitleCache.teams[start.slug].orEmpty()) }
-    var related by remember(start.slug) { mutableStateOf(TitleCache.related[start.slug].orEmpty()) }
-    var similar by remember(start.slug) { mutableStateOf(TitleCache.similar[start.slug].orEmpty()) }
-    var franchise by remember(start.slug) { mutableStateOf<List<Title>>(emptyList()) }
-    var teamId by remember(start.slug) { mutableStateOf(Store.lastEntry(start.id)?.teamId) }
-    var error by remember(start.slug) { mutableStateOf<String?>(null) }
-    var loading by remember { mutableStateOf(false) }
-    var attempt by remember { mutableIntStateOf(0) }
-    var picker by remember { mutableStateOf<String?>(null) }
-    var menuEpisode by remember { mutableStateOf<Episode?>(null) }
-    val title = detail?.title ?: start
-    val focusScope = "panorama:title:${start.id}"
-    LaunchedEffect(start.slug, attempt) {
-        loading = true; error = null
-        coroutineScope {
-            launch {
-                try { Api.detail(start.slug).also { detail = it; TitleCache.detail[start.slug] = it } }
-                catch(e: CancellationException) { throw e } catch(e: Exception) { if (detail == null) error = e.message }
-            }
-            launch { Api.related(start.slug).filter { it.first.id != start.id }.also { related = it; TitleCache.related[start.slug] = it } }
-            launch { Api.similar(start.slug).also { similar = it; TitleCache.similar[start.slug] = it } }
-            try {
-                val eps = Api.episodes(start.slug)
-                episodes = eps; TitleCache.episodes[start.slug] = eps
-                val target = resumePlan(start, eps)?.episode
-                if (target != null) {
-                    val players = AnimeSources.players(start, target).filter(AnimeSources::supported)
-                    options = PlaybackChoices.options(players); TitleCache.teams[start.slug] = options
-                    teamId = Store.playbackOption(start, options)?.team?.id ?: teamId?.takeIf { id -> options.any { it.team.id == id } }
-                        ?: options.firstOrNull { option -> Store.dubs.any { PlaybackChoices.sameDub(it, option.team.name) } }?.team?.id
-                        ?: options.firstOrNull()?.team?.id
-                }
-            } catch(e: CancellationException) { throw e }
-            catch(e: Exception) { error = e.message ?: "Не удалось получить серии" }
-            finally { loading = false }
-        }
+    var attempt by remember(start.slug) { mutableIntStateOf(0) }
+    val data = rememberTvTitleData(start, attempt)
+    val detail = data.detail
+    val episodes = data.episodes
+    val options = data.options
+    val related = data.related
+    val similar = data.similar
+    val loading = data.loading
+    val error = data.error
+    var teamId by remember(start.slug) { mutableStateOf(Store.lastEntry(start)?.teamId) }
+    LaunchedEffect(start.slug, options) {
+        teamId = Store.playbackOption(start, options)?.team?.id ?: teamId?.takeIf { id -> options.any { it.team.id == id } }
+            ?: options.firstOrNull { option -> Store.dubs.any { PlaybackChoices.sameDub(it, option.team.name) } }?.team?.id
+            ?: options.firstOrNull()?.team?.id
     }
+    val title = detail?.title ?: start
+    var franchise by remember(start.slug) { mutableStateOf<List<Title>>(emptyList()) }
+    var picker by remember(start.slug) { mutableStateOf<String?>(null) }
+    var menuEpisode by remember(start.slug) { mutableStateOf<Episode?>(null) }
+    val focusScope = "panorama:title:${start.id}"
     LaunchedEffect(title.shikiId) {
         title.shikiId?.let { id ->
             try {
@@ -106,7 +90,7 @@ fun PanoramaTitle(nav: Nav, start: Title) {
                 Column(Modifier.padding(start = 52.dp, end = 52.dp, top = 24.dp, bottom = 24.dp)) {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         PButton("Назад", Icons.AutoMirrored.Rounded.ArrowBack, modifier = Modifier.testTag("panorama-title-back")) { nav.pop() }
-                        Eyebrow(if (title.slug.startsWith("yummy:")) "YUMMYANIME / ANIXQ" else "ANIMELIB / ANIXQ", Modifier.weight(1f).padding(start = 20.dp))
+                        Eyebrow(playbackSourceLabel(ru.qmods.anixq.tv.data.sources.SourceIds.catalogSource(title.slug)), Modifier.weight(1f).padding(start = 20.dp))
                         PClock()
                     }
                     Column(Modifier.padding(top = 25.dp).width(700.dp)) {
@@ -122,7 +106,7 @@ fun PanoramaTitle(nav: Nav, start: Title) {
                         Row(Modifier.padding(top = 22.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             if (plan != null) PButton(plan.label, Icons.Rounded.PlayArrow, primary = true,
                                 modifier = Modifier.memo(focusScope, "play", initial = true).testTag("panorama-title-play")) {
-                                nav.play(title, plan.episode.id, teamId, resume = Store.lastEntry(title.id) != null)
+                                nav.play(title, plan.episode.id, teamId, resume = Store.lastEntry(title) != null)
                             } else if (error != null) PButton("Повторить", modifier = Modifier.memo(focusScope, "retry", initial = true)) { attempt++ }
                             else if (loading) Text("Загружаем серии…", color = P.muted, fontSize = 14.sp)
                             else Text("Серий пока нет", color = P.muted, fontSize = 14.sp)
@@ -143,6 +127,7 @@ fun PanoramaTitle(nav: Nav, start: Title) {
                 PChoiceField(if (selected?.team?.isSubtitles == true) "Субтитры" else "Озвучка", selected?.dubLabel.orEmpty(), Modifier.weight(1.6f), voices.size > 1) { picker = "voice" }
             }
         }
+        if (data.needsAlternative) item("catalog-fallback") { TvCatalogFallback(data, focusScope, nav, Modifier.padding(horizontal = 52.dp)) }
         error?.let { message -> item("error") { PMessage("Источник сообщил об ошибке", message, "Повторить") { attempt++ } } }
         if (!YummyAccount.signedIn) item("yummy-hint") {
             Text("Aksor доступен без входа, если серия открыта. Для остальных озвучек — вход в YummyAnime в настройках", color = P.muted, fontSize = 11.sp, modifier = Modifier.padding(start = 52.dp, bottom = 16.dp))
@@ -171,7 +156,7 @@ fun PanoramaTitle(nav: Nav, start: Title) {
     }
     menuEpisode?.let { ep ->
         val resume = Store.resume(ep.id)
-        val watched = Store.isWatched(title.id, ep.number) || Store.progress(ep.id) > .92
+        val watched = Store.isWatched(title, ep.number) || Store.episodeProgress(title, ep) > .92
         val choices = listOf("play" to Choice(if (resume != null) "Продолжить с ${fmt(resume)}" else "Смотреть")) +
             (if (resume != null || watched) listOf("restart" to Choice("Смотреть с начала")) else emptyList()) +
             (if (!watched) listOf("watched" to Choice("Отметить просмотренной")) else emptyList())
@@ -218,8 +203,8 @@ private fun PanoramaEpisodes(title: Title, episodes: List<Episode>, current: Int
         }
         Pivot { LazyRow(state = list, contentPadding = PaddingValues(horizontal = 52.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             items(episodes, key = { it.id }) { ep ->
-                val progress = remember(version) { Store.progress(ep.id) }
-                val watched = remember(version) { Store.isWatched(title.id, ep.number) || progress > .92 }
+                val progress = remember(version) { Store.episodeProgress(title, ep) }
+                val watched = remember(version) { Store.isWatched(title, ep.number) || progress > .92 }
                 PSurface({ onPlay(ep) }, Modifier.width(198.dp).height(111.dp).memo(scope, "episode/${ep.id}").testTag("panorama-episode-${ep.id}"),
                     selected = ep.id == current, onLongClick = { onMenu(ep) }) {
                     Column(Modifier.fillMaxSize().padding(16.dp)) {

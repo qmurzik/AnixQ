@@ -84,7 +84,11 @@ enum class Tab(val label: String, val icon: ImageVector) {
 }
 
 sealed interface Route { val scope: String }
-data class TitleRoute(val title: Title) : Route { override val scope get() = "title:${title.id}" }
+data class TitleRoute(val title: Title) : Route {
+    override val scope get() = "title:${title.id}"
+    var catalogTitle by mutableStateOf(title)
+        internal set
+}
 /** episodeId null = first episode; [next] = the one after [episodeId]. */
 data class PlayerRoute(val title: Title, val episodeId: Int?, val teamId: Int? = null, val next: Boolean = false,
                        /** "Continue": re-read the newest synced position before starting. */ val resume: Boolean = false,
@@ -95,7 +99,23 @@ data class PlayerRoute(val title: Title, val episodeId: Int?, val teamId: Int? =
 
 data object LoginRoute : Route { override val scope get() = "login" }
 
-class Nav {
+class Nav(initialCatalog: String = "animelib") {
+    var defaultCatalog by mutableStateOf(initialCatalog)
+        private set
+
+    init { CatalogState.useDefault(initialCatalog) }
+
+    fun updateDefaultCatalog(source: String) {
+        if (defaultCatalog == source) return
+        defaultCatalog = source
+        CatalogState.useDefault(source)
+    }
+
+    fun switchCatalogTitle(alternative: Title) {
+        val route = stack.lastOrNull() as? TitleRoute ?: return
+        route.catalogTitle = alternative
+    }
+
     var tab by mutableStateOf(Tab.HOME)
     /** "Кто смотрит?" on start when there are several profiles. */
     var picking by mutableStateOf(ru.qmods.anixq.tv.data.Profiles.list.value.size > 1)
@@ -116,7 +136,13 @@ class Nav {
             resume = m.optBoolean("resume"), startAt = m.optDouble("pos", -1.0).takeIf { it >= 0 }))
     }
 
-    fun pop() { if (stack.isNotEmpty()) { val r = stack.removeAt(stack.lastIndex); if (r is TitleRoute) { Focus.forget(r.scope); Focus.forget("panorama:${r.scope}") } } }
+    fun pop() { if (stack.isNotEmpty()) { val r = stack.removeAt(stack.lastIndex); if (r is TitleRoute) {
+        for (title in listOf(r.title, r.catalogTitle)) {
+            Focus.forget("title:${title.id}")
+            Focus.forget("panorama:title:${title.id}")
+            Focus.forget("neon:title:${title.id}")
+        }
+    } } }
 }
 
 /**
@@ -182,7 +208,10 @@ fun App(nav: Nav) {
             nav.stack.clear(); nav.tab = Tab.SETTINGS; true
         } else false
     }) {
-        if (nav.picking && top == null) { ProfilePicker { nav.picking = false; Focus.reset("home"); nav.tab = Tab.HOME }; return@Box }
+        if (nav.picking && top == null) {
+            ProfilePicker { nav.updateDefaultCatalog(Store.defaultCatalog); nav.picking = false; Focus.reset("home"); nav.tab = Tab.HOME }
+            return@Box
+        }
         when (top) {
             null -> {
                 BackHandler(enabled = nav.tab != Tab.HOME) { nav.tab = Tab.HOME }
@@ -211,9 +240,9 @@ fun App(nav: Nav) {
                 }
             }
             is TitleRoute -> holder.SaveableStateProvider(appearance.name + top.scope + nav.stack.size) {
-                if (appearance == TvAppearance.Mode.NEON) ru.qmods.anixq.tv.ui.neon.NeonTheme { ru.qmods.anixq.tv.ui.neon.NeonTitle(nav, top.title) }
-                else if (appearance == TvAppearance.Mode.PANORAMA) ru.qmods.anixq.tv.ui.panorama.CinemaTheme { ru.qmods.anixq.tv.ui.panorama.PanoramaTitle(nav, top.title) }
-                else TitleScreen(nav, top.title)
+                if (appearance == TvAppearance.Mode.NEON) ru.qmods.anixq.tv.ui.neon.NeonTheme { ru.qmods.anixq.tv.ui.neon.NeonTitle(nav, top.catalogTitle) }
+                else if (appearance == TvAppearance.Mode.PANORAMA) ru.qmods.anixq.tv.ui.panorama.CinemaTheme { ru.qmods.anixq.tv.ui.panorama.PanoramaTitle(nav, top.catalogTitle) }
+                else TitleScreen(nav, top.catalogTitle)
             }
             is PlayerRoute -> PlayerScreen(nav, top)
             LoginRoute -> LoginScreen(nav)

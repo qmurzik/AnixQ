@@ -1,5 +1,9 @@
 package ru.qmods.anixq.mobile.ui
 
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.semantics.Role
+import kotlin.math.roundToInt
 import androidx.compose.ui.graphics.asImageBitmap
 import ru.qmods.anixq.tv.data.PlaybackLabels
 
@@ -7,6 +11,7 @@ import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ActivityInfo
+import android.graphics.Rect
 import android.media.AudioManager
 import android.os.Build
 import android.widget.Toast
@@ -21,6 +26,7 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
@@ -58,6 +64,7 @@ import androidx.compose.material.icons.filled.Bedtime
 import androidx.compose.material.icons.filled.Brightness6
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ClosedCaption
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Equalizer
 import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.Fullscreen
@@ -85,6 +92,7 @@ import androidx.compose.material.icons.filled.ZoomOutMap
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
@@ -135,6 +143,8 @@ import ru.qmods.anixq.tv.data.Sync
 /** Picture-in-picture bridge between the activity and the player screen. */
 object Pip {
     var inPip by mutableStateOf(false)
+    var enteringPip by mutableStateOf(false)
+    val videoOnly get() = inPip || enteringPip
     /** The open player (null when none): the activity enters PiP on Home only while it plays. */
     @Volatile var model: PlayerModel? = null
 }
@@ -153,7 +163,7 @@ private val Dim = Color.White.copy(alpha = 0.65f)
  * list of episodes below; landscape is the whole screen with a scrubber, chips and a side drawer; lock, PiP, gestures.
  */
 @Composable
-fun PlayerScreen(nav: Nav, route: PlayerRoute) {
+fun PlayerScreen(nav: Nav, route: PlayerRoute, minimized: Boolean, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val activity = context as Activity
     val scope = rememberCoroutineScope()
@@ -177,28 +187,37 @@ fun PlayerScreen(nav: Nav, route: PlayerRoute) {
         m.start()
         Pip.model = m
         ru.qmods.anixq.tv.data.Room.player = m
-        // Follows the phone's rotation (if auto-rotate is on); the fullscreen button forces landscape.
-        orientation(if (Store.playerFullscreen) ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE else ActivityInfo.SCREEN_ORIENTATION_FULL_USER)
         onDispose {
             ru.qmods.anixq.mobile.NearTv.sync(context)
             if (Pip.model === m) {
                 Pip.model = null
-                (activity as? ru.qmods.anixq.mobile.MainActivity)?.updatePlayerPip(false)
+                (activity as? ru.qmods.anixq.mobile.MainActivity)?.clearPlayerPip()
             }
             if (ru.qmods.anixq.tv.data.Room.player === m) ru.qmods.anixq.tv.data.Room.player = null
             ru.qmods.anixq.mobile.PlaybackService.detach(context)
             m.release()
+        }
+    }
+    DisposableEffect(m, minimized) {
+        if (!Pip.videoOnly) {
+            orientation(when {
+                minimized -> ActivityInfo.SCREEN_ORIENTATION_USER_PORTRAIT
+                Store.playerFullscreen -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                else -> ActivityInfo.SCREEN_ORIENTATION_FULL_USER
+            })
+        }
+        onDispose {
             WindowCompat.getInsetsController(activity.window, activity.window.decorView).apply {
                 show(WindowInsetsCompat.Type.systemBars())
-                // Back to the app's theme (the player is always dark).
-                isAppearanceLightStatusBars = Looks.light; isAppearanceLightNavigationBars = Looks.light
+                isAppearanceLightStatusBars = Looks.light
+                isAppearanceLightNavigationBars = Looks.light
             }
-            activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_USER_PORTRAIT
+            if (!Pip.videoOnly) orientation(ActivityInfo.SCREEN_ORIENTATION_USER_PORTRAIT)
             activity.window.attributes = activity.window.attributes.apply { screenBrightness = -1f }
         }
     }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
-    DisposableEffect(lifecycle) {
+    DisposableEffect(lifecycle, m, minimized) {
         val obs = LifecycleEventObserver { _, e ->
             // Leaving the app (not into picture-in-picture): pause and save, so the TV/iPhone get the exact moment.
             if (e == Lifecycle.Event.ON_STOP) {
@@ -208,7 +227,7 @@ fun PlayerScreen(nav: Nav, route: PlayerRoute) {
             if (e == Lifecycle.Event.ON_RESUME) {
                 controls = true; touched()
                 // Some phones bring the bars back over the video after returning to the app.
-                if (activity.resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE && !Pip.inPip)
+                if (!minimized && activity.resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE && !Pip.videoOnly)
                     WindowCompat.getInsetsController(activity.window, activity.window.decorView).hide(WindowInsetsCompat.Type.systemBars())
             }
         }
@@ -230,9 +249,8 @@ fun PlayerScreen(nav: Nav, route: PlayerRoute) {
             if (m.showNext && m.countdown && m.episode?.id == episodeId) m.autoAdvance()
         }
     }
-    LaunchedEffect(m.exo, m.playing, m.native, m.loading, m.failed) {
-        (activity as? ru.qmods.anixq.mobile.MainActivity)?.updatePlayerPip(
-            m.exo != null && m.native && m.playing && !m.loading && !m.failed)
+    LaunchedEffect(m.exo, m.playing, m.native, m.loading, m.failed, m.ended, m.episode?.id) {
+        (activity as? ru.qmods.anixq.mobile.MainActivity)?.updatePlayerPip()
     }
     LaunchedEffect(m.exo) { m.exo?.let { if (Store.backgroundAudio) ru.qmods.anixq.mobile.PlaybackService.attach(context, it.exo) } }
     LaunchedEffect(m.exo, fill) {
@@ -245,18 +263,23 @@ fun PlayerScreen(nav: Nav, route: PlayerRoute) {
         m.addSubtitles(uri.toString(), displayName(context, uri) ?: "Субтитры.srt")
     }
 
-    BoxWithConstraints(Modifier.fillMaxSize().background(if (Pip.inPip) Color.Black else Ink)) {
-        val land = maxWidth > maxHeight
-        BackHandler(enabled = !Pip.inPip) {
+    val playerBox = if (minimized) {
+        val shape = RoundedCornerShape(14.dp)
+        modifier.padding(horizontal = 8.dp, vertical = 3.dp).clip(shape).background(Ink)
+            .border(1.dp, Color.White.copy(alpha = 0.16f), shape)
+    } else modifier.background(if (Pip.videoOnly) Color.Black else Ink)
+    BoxWithConstraints(playerBox) {
+        val land = !minimized && maxWidth > maxHeight
+        BackHandler(enabled = !Pip.videoOnly && !minimized) {
             when {
                 panel != null -> panel = null
                 locked -> { locked = false; controls = true }
-                land && !Pip.inPip -> orientation(ActivityInfo.SCREEN_ORIENTATION_USER_PORTRAIT)
-                else -> nav.pop()
+                land && !Pip.videoOnly -> orientation(ActivityInfo.SCREEN_ORIENTATION_USER_PORTRAIT)
+                else -> nav.minimizePlayer()
             }
         }
-        LaunchedEffect(land, Pip.inPip) {
-            if (Pip.inPip) return@LaunchedEffect
+        LaunchedEffect(land, Pip.videoOnly, minimized) {
+            if (Pip.videoOnly || minimized) return@LaunchedEffect
             controls = true
             touched()
             val ctl = WindowCompat.getInsetsController(activity.window, activity.window.decorView)
@@ -265,7 +288,7 @@ fun PlayerScreen(nav: Nav, route: PlayerRoute) {
             if (!land && panel != null) panel = null
         }
         val video: @Composable (Modifier) -> Unit = { mod ->
-            VideoArea(m, nav, land, mod, controls, locked, listen,
+            VideoArea(m, nav, land, minimized, mod, controls, locked, listen,
                 onControls = { controls = it; touched() }, touched = { touched() },
                 onLock = { locked = it; controls = !it; touched() },
                 onPanel = { panel = it; touched() }, onMore = { moreOpen = true },
@@ -274,9 +297,10 @@ fun PlayerScreen(nav: Nav, route: PlayerRoute) {
                 onListen = { listen = it })
         }
         // Keep the AndroidView and its parent alive across all three layouts.
-        PlayerVideoLayout(fullscreen = land || Pip.inPip, video = video,
-            details = { Details(m, nav, { panel = it }, { roomOpen = true }, roomId != null) })
-        if (Pip.inPip) return@BoxWithConstraints
+        PlayerVideoLayout(fullscreen = land || Pip.videoOnly, video = video, minimized = minimized,
+            details = { Details(m, nav, { panel = it }, { roomOpen = true }, roomId != null) },
+            compact = { CompactPlayerControls(m, nav) })
+        if (Pip.videoOnly || minimized) return@BoxWithConstraints
         if (land) {
             // Settings slide in from the right over the picture.
             AnimatedVisibility(panel != null, enter = fadeIn(), exit = fadeOut()) {
@@ -308,11 +332,64 @@ fun PlayerScreen(nav: Nav, route: PlayerRoute) {
     }
 }
 
+@Composable
+private fun CompactPlayerControls(m: PlayerModel, nav: Nav) {
+    Box(Modifier.fillMaxSize()) {
+        Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                Modifier.weight(1f).fillMaxHeight()
+                    .clickable(role = Role.Button, onClickLabel = "Развернуть плеер", onClick = nav::expandPlayer),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(Modifier.width(MiniVideoWidth).fillMaxHeight()) {
+                    Icon(Icons.Default.Fullscreen, null, tint = Color.White,
+                        modifier = Modifier.align(Alignment.BottomEnd).padding(5.dp)
+                            .size(21.dp).background(Color.Black.copy(alpha = 0.72f), CircleShape))
+                }
+                Column(Modifier.weight(1f).padding(horizontal = 9.dp)) {
+                    Text(m.title.title, color = Color.White, fontWeight = FontWeight.SemiBold,
+                        fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    val subtitle = when {
+                        m.failed -> "Ошибка загрузки"
+                        m.loading || m.buffering -> "Загрузка…"
+                        else -> m.episode?.let { "Серия ${it.number}" }.orEmpty()
+                    }
+                    Text(subtitle, color = Dim, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+            }
+            IconButton(
+                onClick = { if (m.failed) m.load(m.index, keepPos = m.pos) else m.toggle() },
+                enabled = m.failed || !m.loading && (m.exo != null || m.kodik != null),
+                modifier = Modifier.width(44.dp),
+            ) {
+                val icon = when {
+                    m.failed -> Icons.Default.Refresh
+                    m.playRequested -> Icons.Default.Pause
+                    else -> Icons.Default.PlayArrow
+                }
+                Icon(icon, when {
+                    m.failed -> "Повторить"
+                    m.playRequested -> "Пауза"
+                    else -> "Воспроизвести"
+                }, tint = Color.White)
+            }
+            IconButton(onClick = nav::closePlayer, modifier = Modifier.width(44.dp)) {
+                Icon(Icons.Default.Close, "Закрыть мини-плеер", tint = Color.White)
+            }
+        }
+        if (m.dur > 0) {
+            Box(Modifier.align(Alignment.BottomStart).height(2.dp).fillMaxWidth().background(Glass)) {
+                Box(Modifier.fillMaxHeight().fillMaxWidth((m.pos / m.dur).toFloat().coerceIn(0f, 1f)).background(Pal.pink))
+            }
+        }
+    }
+}
+
 // MARK: - Picture with gestures and controls
 
 @Composable
 private fun VideoArea(
-    m: PlayerModel, nav: Nav, land: Boolean, modifier: Modifier, controls: Boolean, locked: Boolean, listen: Boolean,
+    m: PlayerModel, nav: Nav, land: Boolean, minimized: Boolean, modifier: Modifier, controls: Boolean, locked: Boolean, listen: Boolean,
     onControls: (Boolean) -> Unit, touched: () -> Unit, onLock: (Boolean) -> Unit, onPanel: (Panel) -> Unit, onMore: () -> Unit,
     onRoom: () -> Unit, roomActive: Boolean, fill: Boolean, onFill: () -> Unit, onFullscreen: (Boolean) -> Unit, onListen: (Boolean) -> Unit,
 ) {
@@ -333,10 +410,16 @@ private fun VideoArea(
     LaunchedEffect(hudAt) { if (hud != null) { delay(900); if (System.currentTimeMillis() - hudAt >= 850) hud = null } }
     LaunchedEffect(rippleAt) { if (ripple != null) { delay(750); if (System.currentTimeMillis() - rippleAt >= 700) ripple = null } }
 
-    Box(modifier.background(Color.Black)) {
+    Box(modifier.background(Color.Black).onGloballyPositioned { coordinates ->
+        if (!Pip.videoOnly) {
+            val bounds = coordinates.boundsInWindow()
+            val rect = Rect(bounds.left.roundToInt(), bounds.top.roundToInt(), bounds.right.roundToInt(), bounds.bottom.roundToInt())
+            (activity as? ru.qmods.anixq.mobile.MainActivity)?.setPlayerPipBounds(rect)
+        }
+    }) {
         m.exo?.let { e -> if (m.native) AndroidView(factory = { e.view }, modifier = Modifier.fillMaxSize()) }
         m.kodik?.let { k -> if (!m.native) AndroidView(factory = { k.view }, modifier = Modifier.fillMaxSize()) }
-        if (Pip.inPip) return@Box
+        if (Pip.videoOnly || minimized) return@Box
         if (!listen) DanmakuLayer(m, Modifier.fillMaxSize())
         if (listen) ListenOverlay(m) { onListen(false) }
 
@@ -437,14 +520,14 @@ private fun VideoArea(
         // Kodik: its own controls; we only offer close / fullscreen.
         if (!m.native) {
             Row(Modifier.align(Alignment.TopStart).then(if (land) Modifier.safeDrawingPadding() else Modifier).padding(6.dp)) {
-                CircleIcon(Icons.Default.KeyboardArrowDown, "Закрыть") { if (land) onFullscreen(false) else nav.pop() }
+                CircleIcon(Icons.Default.KeyboardArrowDown, "Свернуть плеер") { nav.minimizePlayer() }
             }
         }
 
         // Controls.
         AnimatedVisibility(controls && m.native && !locked && !listen, enter = fadeIn(), exit = fadeOut()) {
             Controls(m, land, onPanel, onMore, onRoom, roomActive, fill, onFill, onFullscreen, touched,
-                onClose = { if (land) onFullscreen(false) else nav.pop() }, onLock = { onLock(true) },
+                onClose = nav::minimizePlayer, onLock = { onLock(true) },
                 onTv = {
                     m.sendToTv()
                     Toast.makeText(context, "Продолжаем на телевизоре с ${fmt(m.pos)}", Toast.LENGTH_SHORT).show()
@@ -614,7 +697,7 @@ internal fun Details(m: PlayerModel, nav: Nav, onPanel: (Panel) -> Unit, onRoom:
         item {
             Column(Modifier.padding(16.dp)) {
                 Text(m.title.title, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.clickable { nav.pop(); nav.open(m.title) })
+                    modifier = Modifier.clickable { nav.minimizePlayer(); nav.open(m.title) })
                 val ep = m.episode
                 Text(listOfNotNull(ep?.let { "Серия ${it.number}" }, ep?.displayTitle?.takeIf { it.isNotBlank() && !it.startsWith("Серия") }).joinToString(" · "),
                     color = Dim, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))

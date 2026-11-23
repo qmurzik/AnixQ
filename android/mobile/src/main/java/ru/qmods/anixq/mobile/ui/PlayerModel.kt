@@ -566,14 +566,17 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
         }
     }
 
+    val playRequested: Boolean
+        get() = if (native) !ended && exo?.exo?.playWhenReady == true else playing
+
     fun toggle() {
         if (loading) return
         val e = engine ?: return
-        if (playing) { e.pause(); playing = false; saveProgress(force = true) } else { e.play(); playing = true }
+        if (playRequested) { e.pause(); playing = false; saveProgress(force = true) } else { e.play(); playing = true }
         ru.qmods.anixq.tv.data.Room.sendState()
     }
 
-    fun pause() { if (playing) toggle() }
+    fun pause() { if (playRequested) toggle() }
 
     fun seekBy(d: Double) {
         seekTo(pos + d)
@@ -584,7 +587,7 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
         if (loading) return
         seekUndo = null
         val e = engine ?: return
-        val target = t.coerceIn(0.0, if (dur > 0) dur - 1 else Double.MAX_VALUE)
+        val target = t.coerceIn(0.0, if (dur > 0) (dur - 1).coerceAtLeast(0.0) else Double.MAX_VALUE)
         e.seek(target); pos = target
         ru.qmods.anixq.tv.data.Room.sendState()
     }

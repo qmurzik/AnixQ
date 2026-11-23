@@ -81,8 +81,39 @@ class Nav {
     val stack = mutableStateListOf<Route>()
     val top: Route? get() = stack.lastOrNull()
 
-    fun push(r: Route) { if (stack.lastOrNull() != r) stack.add(r) }
-    fun pop() { if (stack.isNotEmpty()) stack.removeAt(stack.lastIndex) }
+    var playerRoute by mutableStateOf<PlayerRoute?>(null)
+        private set
+
+    fun push(r: Route) {
+        if (r is PlayerRoute) play(r)
+        else if (stack.lastOrNull() != r) stack.add(r)
+    }
+
+    fun pop() {
+        if (top is PlayerRoute) closePlayer()
+        else if (stack.isNotEmpty()) stack.removeAt(stack.lastIndex)
+    }
+
     fun open(t: Title) = push(TitleRoute(t))
-    fun play(r: PlayerRoute) { stack.removeAll { it is PlayerRoute }; stack.add(r) }
+
+    fun play(r: PlayerRoute) {
+        playerRoute = r
+        expandPlayer()
+    }
+
+    fun minimizePlayer() {
+        if (top is PlayerRoute) stack.removeAt(stack.lastIndex)
+    }
+
+    fun expandPlayer() {
+        val route = playerRoute ?: return
+        if (top == route) return
+        stack.removeAll { it is PlayerRoute }
+        stack.add(route)
+    }
+
+    fun closePlayer() {
+        stack.removeAll { it is PlayerRoute }
+        playerRoute = null
+    }
 }

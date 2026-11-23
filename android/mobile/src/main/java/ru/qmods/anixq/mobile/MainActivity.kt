@@ -2,7 +2,15 @@ package ru.qmods.anixq.mobile
 
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.getValue
+import android.app.PendingIntent
 import android.app.PictureInPictureParams
+import android.app.PictureInPictureUiState
+import android.app.RemoteAction
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.IntentFilter
+import android.graphics.Rect
+import android.graphics.drawable.Icon as ActionIcon
 import android.content.Intent
 import android.content.res.Configuration
 import android.os.Build
@@ -20,6 +28,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -36,6 +45,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.key
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -44,6 +54,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.lifecycleScope
+import androidx.core.content.ContextCompat
 import coil.Coil
 import kotlinx.coroutines.launch
 import ru.qmods.anixq.mobile.data.PlaybackHistory
@@ -60,6 +71,7 @@ import ru.qmods.anixq.mobile.ui.LibLoginRoute
 import ru.qmods.anixq.mobile.ui.LibLoginScreen
 import ru.qmods.anixq.mobile.ui.LibraryScreen
 import ru.qmods.anixq.mobile.ui.Nav
+import ru.qmods.anixq.mobile.ui.MiniPlayerHeight
 import ru.qmods.anixq.mobile.ui.PairFlow
 import ru.qmods.anixq.mobile.ui.Pal
 import ru.qmods.anixq.mobile.ui.Pip
@@ -85,6 +97,20 @@ import ru.qmods.anixq.tv.data.Updater
 
 class MainActivity : ComponentActivity() {
     private var nav: Nav? = null
+    private var playerBounds: Rect? = null
+    private val pipAction get() = "$packageName.PLAYBACK_IN_PIP"
+    private val pipControls = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            val model = Pip.model ?: return
+            if (!isInPictureInPictureMode || intent.action != pipAction || !model.native || model.loading || model.failed) return
+            when (intent.getIntExtra("control", -1)) {
+                0 -> model.seekBy(-10.0)
+                1 -> model.toggle()
+                2 -> model.seekBy(10.0)
+            }
+            updatePlayerPip()
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         // Phone identity on the shared channel (before the library loads).
@@ -94,6 +120,11 @@ class MainActivity : ComponentActivity() {
         Updater.versionCode = BuildConfig.VERSION_CODE
         Updater.channel = "android"
         super.onCreate(savedInstanceState)
+        Pip.inPip = Build.VERSION.SDK_INT >= 26 && isInPictureInPictureMode
+        Pip.enteringPip = false
+        if (supportsPlayerPip()) {
+            ContextCompat.registerReceiver(this, pipControls, IntentFilter(pipAction), ContextCompat.RECEIVER_NOT_EXPORTED)
+        }
         // A killed fullscreen task must never reopen the home screen in landscape.
         requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_USER_PORTRAIT
         enableEdgeToEdge(SystemBarStyle.dark(android.graphics.Color.TRANSPARENT), SystemBarStyle.dark(android.graphics.Color.TRANSPARENT))
@@ -155,7 +186,7 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        if (intent.action == Intent.ACTION_MAIN && intent.hasCategory(Intent.CATEGORY_LAUNCHER))
+        if (intent.action == Intent.ACTION_MAIN && intent.hasCategory(Intent.CATEGORY_LAUNCHER) && nav?.top !is PlayerRoute)
             requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_USER_PORTRAIT
         nav?.let { handle(intent, it) }
     }
@@ -164,7 +195,7 @@ class MainActivity : ComponentActivity() {
     private fun handle(i: Intent?, nav: Nav) {
         val u = i?.data ?: return
         when (u.host) {
-            "pair" -> { nav.stack.removeAll { it is PlayerRoute }; nav.push(SettingsRoute); PairFlow.run(u.toString(), lifecycleScope) }
+            "pair" -> { nav.closePlayer(); nav.push(SettingsRoute); PairFlow.run(u.toString(), lifecycleScope) }
             "title" -> u.pathSegments.firstOrNull()?.let { slug -> nav.open(Title(id = if (slug.startsWith("yummy:")) -(slug.substringAfter(":").toIntOrNull() ?: 0) else slug.substringBefore("--").toIntOrNull() ?: 0, slug = slug)) }
             "continue" -> PlaybackHistory.continueEntries().firstOrNull()?.let { e -> nav.play(PlayerRoute(e.title, resume = true)) }
             "home" -> { nav.stack.clear(); nav.tab = Tab.HOME }
@@ -220,34 +251,80 @@ class MainActivity : ComponentActivity() {
     private fun supportsPlayerPip(): Boolean = Build.VERSION.SDK_INT >= 26 &&
         packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_PICTURE_IN_PICTURE)
 
-    /** Android 12+ owns the Home gesture animation. Update eligibility with actual playback state. */
-    fun updatePlayerPip(playing: Boolean) {
-        if (!supportsPlayerPip()) return
+    private fun pipReady() = Pip.model?.let { it.native && it.exo != null && !it.loading && !it.failed } == true
+
+    private fun pipPlaying() = pipReady() && Pip.model?.playRequested == true
+
+    fun setPlayerPipBounds(bounds: Rect) {
+        if (bounds.isEmpty || playerBounds == bounds) return
+        playerBounds = bounds
+        updatePlayerPip()
+    }
+
+    fun clearPlayerPip() {
+        playerBounds = null
+        updatePlayerPip()
+    }
+
+    private fun playerPipParams(): PictureInPictureParams {
+        val playing = pipPlaying()
         val params = PictureInPictureParams.Builder().setAspectRatio(Rational(16, 9))
-        if (Build.VERSION.SDK_INT >= 31) params.setAutoEnterEnabled(playing)
-        runCatching { setPictureInPictureParams(params.build()) }
+        playerBounds?.let(params::setSourceRectHint)
+        if (pipReady()) {
+            val seekable = Pip.model?.exo?.exo?.isCurrentMediaItemSeekable == true
+            val transport = pipButton(1, if (playing) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play,
+                if (playing) "Пауза" else "Воспроизвести")
+            params.setActions(if (seekable && maxNumPictureInPictureActions >= 3) listOf(
+                pipButton(0, android.R.drawable.ic_media_rew, "Назад на 10 секунд"),
+                transport,
+                pipButton(2, android.R.drawable.ic_media_ff, "Вперёд на 10 секунд"),
+            ) else listOf(transport))
+        } else {
+            params.setActions(emptyList())
+        }
+        if (Build.VERSION.SDK_INT >= 31) params.setAutoEnterEnabled(playing).setSeamlessResizeEnabled(true)
+        return params.build()
+    }
+
+    private fun pipButton(command: Int, icon: Int, label: String): RemoteAction {
+        val intent = Intent(pipAction).setPackage(packageName).putExtra("control", command)
+        val pending = PendingIntent.getBroadcast(this, command, intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        return RemoteAction(ActionIcon.createWithResource(this, icon), label, label, pending)
+    }
+
+    fun updatePlayerPip() {
+        if (supportsPlayerPip()) runCatching { setPictureInPictureParams(playerPipParams()) }
     }
 
     fun enterPlayerPip(): Boolean {
-        val m = Pip.model ?: return false
-        if (!supportsPlayerPip() || isFinishing || !m.native || m.exo == null || m.loading || m.failed) return false
+        if (!supportsPlayerPip() || isFinishing || !pipReady()) return false
         if (isInPictureInPictureMode) return true
-        return runCatching {
-            enterPictureInPictureMode(PictureInPictureParams.Builder().setAspectRatio(Rational(16, 9)).build())
-        }.getOrDefault(false)
+        return runCatching { enterPictureInPictureMode(playerPipParams()) }.getOrDefault(false)
     }
 
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
-        // S+ uses setAutoEnterEnabled; older Android versions need explicit entry on Home.
-        if (Build.VERSION.SDK_INT in 26..30 && Pip.model?.playing == true) enterPlayerPip()
+        if (Build.VERSION.SDK_INT in 26..30 && pipPlaying()) enterPlayerPip()
+    }
+
+    override fun onDestroy() {
+        if (supportsPlayerPip()) unregisterReceiver(pipControls)
+        super.onDestroy()
     }
 
     override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: Configuration) {
         super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
         Pip.inPip = isInPictureInPictureMode
+        Pip.enteringPip = false
+    }
+
+    override fun onPictureInPictureUiStateChanged(pipState: PictureInPictureUiState) {
+        super.onPictureInPictureUiStateChanged(pipState)
+        if (Build.VERSION.SDK_INT >= 35 && !Pip.inPip) Pip.enteringPip = pipState.isTransitioningToPip
     }
 }
+
+private val TabBarHeight = 54.dp
 
 @OptIn(androidx.compose.animation.ExperimentalSharedTransitionApi::class)
 @Composable
@@ -261,63 +338,78 @@ fun Root(nav: Nav) {
         savedCatalogKeys.addAll(catalogKeys)
     }
     BackHandler(enabled = nav.top != null || nav.tab != Tab.HOME) { if (nav.top != null) nav.pop() else nav.tab = Tab.HOME }
-    // Screens cross-fade; a tapped poster grows into the title page (shared bounds).
-    androidx.compose.animation.SharedTransitionLayout(Modifier.fillMaxSize().background(Pal.bg)) {
-      androidx.compose.animation.AnimatedContent(nav.top, label = "route",
-        transitionSpec = { androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(260)) togetherWith
-            androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(200)) }) { top ->
-      androidx.compose.runtime.CompositionLocalProvider(
-          ru.qmods.anixq.mobile.ui.LocalSharedScope provides this@SharedTransitionLayout,
-          ru.qmods.anixq.mobile.ui.LocalRouteScope provides this@AnimatedContent) {
-      Box(Modifier.fillMaxSize().background(Pal.bg)) {
-        when (top) {
-            is PlayerRoute -> PlayerScreen(nav, top)
-            is TitleRoute -> holder.SaveableStateProvider("title-${top.title.id}-${nav.stack.size}") { TitleScreen(nav, top.title) }
-            is CatalogRoute -> holder.SaveableStateProvider(top.stateKey) { CatalogListScreen(nav, top) }
-            is FolderRoute -> FolderScreen(nav, top.status)
-            ru.qmods.anixq.mobile.ui.DownloadsRoute -> ru.qmods.anixq.mobile.ui.DownloadsScreen(nav)
-            ru.qmods.anixq.mobile.ui.CollectionsRoute -> ru.qmods.anixq.mobile.ui.CollectionsScreen(nav)
-            is ru.qmods.anixq.mobile.ui.CollectionRoute -> ru.qmods.anixq.mobile.ui.CollectionScreen(nav, top.id)
-            ru.qmods.anixq.mobile.ui.ShikiLoginRoute -> ru.qmods.anixq.mobile.ui.ShikiLoginScreen(nav)
-            ru.qmods.anixq.mobile.ui.ScheduleRoute -> ru.qmods.anixq.mobile.ui.ScheduleScreen(nav)
-            HistoryRoute -> HistoryScreen(nav)
-            RemoteRoute -> RemoteScreen(nav)
-            SettingsRoute -> SettingsScreen(nav)
-            SyncRoute -> SyncLoginScreen(nav)
-            LibLoginRoute -> LibLoginScreen(nav)
-            is ru.qmods.anixq.mobile.ui.PersonRoute -> ru.qmods.anixq.mobile.ui.PersonScreen(nav, top)
-            ru.qmods.anixq.mobile.ui.TraceRoute -> ru.qmods.anixq.mobile.ui.TraceScreen(nav)
-            is ru.qmods.anixq.mobile.ui.FranchiseMapRoute -> ru.qmods.anixq.mobile.ui.FranchiseMapScreen(nav, top)
-            ru.qmods.anixq.mobile.ui.StatsRoute -> ru.qmods.anixq.mobile.ui.StatsScreen(nav)
-            ru.qmods.anixq.mobile.ui.DiagnosticsRoute -> ru.qmods.anixq.mobile.ui.DiagnosticsScreen(nav)
-            ru.qmods.anixq.mobile.ui.ReportRoute -> ru.qmods.anixq.mobile.ui.ReportScreen(nav)
-            ru.qmods.anixq.mobile.ui.AchievementsRoute -> ru.qmods.anixq.mobile.ui.AchievementsScreen(nav)
-            ru.qmods.anixq.mobile.ui.YearCardRoute -> ru.qmods.anixq.mobile.ui.YearCardScreen(nav)
-            ru.qmods.anixq.mobile.ui.FriendsRoute -> ru.qmods.anixq.mobile.ui.FriendsScreen(nav)
-            ru.qmods.anixq.mobile.ui.ForYouRoute -> ru.qmods.anixq.mobile.ui.ForYouScreen(nav)
-            ru.qmods.anixq.mobile.ui.ListTransferRoute -> ru.qmods.anixq.mobile.ui.ListTransferScreen(nav)
-            ru.qmods.anixq.mobile.ui.BackupRoute -> ru.qmods.anixq.mobile.ui.BackupScreen(nav)
-            ru.qmods.anixq.mobile.ui.LockRoute -> ru.qmods.anixq.mobile.ui.LockSettingsScreen(nav)
-            ru.qmods.anixq.mobile.ui.RandomRoute -> ru.qmods.anixq.mobile.ui.RandomScreen(nav)
-            ru.qmods.anixq.mobile.ui.SeasonRoute -> ru.qmods.anixq.mobile.ui.SeasonScreen(nav)
-            is ru.qmods.anixq.mobile.ui.CommentsRoute -> ru.qmods.anixq.mobile.ui.CommentsScreen(nav, top)
-            null -> Column(Modifier.fillMaxSize()) {
-                Box(Modifier.weight(1f)) {
-                    holder.SaveableStateProvider(nav.tab.name) {
-                        when (nav.tab) {
-                            Tab.HOME -> HomeScreen(nav)
-                            Tab.CATALOG -> CatalogScreen(nav)
-                            Tab.LIBRARY -> LibraryScreen(nav)
-                            Tab.SEARCH -> SearchScreen(nav)
+    val minimized = nav.playerRoute != null && nav.top !is PlayerRoute && !Pip.videoOnly
+    Box(Modifier.fillMaxSize()) {
+        // Screens cross-fade; a tapped poster grows into the title page (shared bounds).
+        androidx.compose.animation.SharedTransitionLayout(Modifier.fillMaxSize().background(Pal.bg)) {
+          androidx.compose.animation.AnimatedContent(nav.top, label = "route",
+            transitionSpec = { androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(260)) togetherWith
+                androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(200)) }) { top ->
+          androidx.compose.runtime.CompositionLocalProvider(
+              ru.qmods.anixq.mobile.ui.LocalSharedScope provides this@SharedTransitionLayout,
+              ru.qmods.anixq.mobile.ui.LocalRouteScope provides this@AnimatedContent) {
+          Box(Modifier.fillMaxSize().background(Pal.bg).then(
+              if (minimized && top != null && top !is PlayerRoute) Modifier.navigationBarsPadding().padding(bottom = MiniPlayerHeight)
+              else Modifier
+          )) {
+            when (top) {
+                is PlayerRoute -> Unit
+                is TitleRoute -> holder.SaveableStateProvider("title-${top.title.id}-${nav.stack.size}") { TitleScreen(nav, top.title) }
+                is CatalogRoute -> holder.SaveableStateProvider(top.stateKey) { CatalogListScreen(nav, top) }
+                is FolderRoute -> FolderScreen(nav, top.status)
+                ru.qmods.anixq.mobile.ui.DownloadsRoute -> ru.qmods.anixq.mobile.ui.DownloadsScreen(nav)
+                ru.qmods.anixq.mobile.ui.CollectionsRoute -> ru.qmods.anixq.mobile.ui.CollectionsScreen(nav)
+                is ru.qmods.anixq.mobile.ui.CollectionRoute -> ru.qmods.anixq.mobile.ui.CollectionScreen(nav, top.id)
+                ru.qmods.anixq.mobile.ui.ShikiLoginRoute -> ru.qmods.anixq.mobile.ui.ShikiLoginScreen(nav)
+                ru.qmods.anixq.mobile.ui.ScheduleRoute -> ru.qmods.anixq.mobile.ui.ScheduleScreen(nav)
+                HistoryRoute -> HistoryScreen(nav)
+                RemoteRoute -> RemoteScreen(nav)
+                SettingsRoute -> SettingsScreen(nav)
+                SyncRoute -> SyncLoginScreen(nav)
+                LibLoginRoute -> LibLoginScreen(nav)
+                is ru.qmods.anixq.mobile.ui.PersonRoute -> ru.qmods.anixq.mobile.ui.PersonScreen(nav, top)
+                ru.qmods.anixq.mobile.ui.TraceRoute -> ru.qmods.anixq.mobile.ui.TraceScreen(nav)
+                is ru.qmods.anixq.mobile.ui.FranchiseMapRoute -> ru.qmods.anixq.mobile.ui.FranchiseMapScreen(nav, top)
+                ru.qmods.anixq.mobile.ui.StatsRoute -> ru.qmods.anixq.mobile.ui.StatsScreen(nav)
+                ru.qmods.anixq.mobile.ui.DiagnosticsRoute -> ru.qmods.anixq.mobile.ui.DiagnosticsScreen(nav)
+                ru.qmods.anixq.mobile.ui.ReportRoute -> ru.qmods.anixq.mobile.ui.ReportScreen(nav)
+                ru.qmods.anixq.mobile.ui.AchievementsRoute -> ru.qmods.anixq.mobile.ui.AchievementsScreen(nav)
+                ru.qmods.anixq.mobile.ui.YearCardRoute -> ru.qmods.anixq.mobile.ui.YearCardScreen(nav)
+                ru.qmods.anixq.mobile.ui.FriendsRoute -> ru.qmods.anixq.mobile.ui.FriendsScreen(nav)
+                ru.qmods.anixq.mobile.ui.ForYouRoute -> ru.qmods.anixq.mobile.ui.ForYouScreen(nav)
+                ru.qmods.anixq.mobile.ui.ListTransferRoute -> ru.qmods.anixq.mobile.ui.ListTransferScreen(nav)
+                ru.qmods.anixq.mobile.ui.BackupRoute -> ru.qmods.anixq.mobile.ui.BackupScreen(nav)
+                ru.qmods.anixq.mobile.ui.LockRoute -> ru.qmods.anixq.mobile.ui.LockSettingsScreen(nav)
+                ru.qmods.anixq.mobile.ui.RandomRoute -> ru.qmods.anixq.mobile.ui.RandomScreen(nav)
+                ru.qmods.anixq.mobile.ui.SeasonRoute -> ru.qmods.anixq.mobile.ui.SeasonScreen(nav)
+                is ru.qmods.anixq.mobile.ui.CommentsRoute -> ru.qmods.anixq.mobile.ui.CommentsScreen(nav, top)
+                null -> Column(Modifier.fillMaxSize()) {
+                    Box(Modifier.weight(1f)) {
+                        holder.SaveableStateProvider(nav.tab.name) {
+                            when (nav.tab) {
+                                Tab.HOME -> HomeScreen(nav)
+                                Tab.CATALOG -> CatalogScreen(nav)
+                                Tab.LIBRARY -> LibraryScreen(nav)
+                                Tab.SEARCH -> SearchScreen(nav)
+                            }
                         }
                     }
+                    if (minimized) Spacer(Modifier.height(MiniPlayerHeight))
+                    TabBar(nav)
                 }
-                TabBar(nav)
             }
+          }
+          }
+          }
         }
-      }
-      }
-      }
+        nav.playerRoute?.let { route ->
+            val playerModifier = if (minimized) {
+                Modifier.align(Alignment.BottomCenter).navigationBarsPadding()
+                    .padding(bottom = if (nav.top == null) TabBarHeight else 0.dp)
+                    .fillMaxWidth().height(MiniPlayerHeight)
+            } else Modifier.fillMaxSize()
+            key(route) { PlayerScreen(nav, route, minimized, playerModifier) }
+        }
     }
 }
 
@@ -326,7 +418,7 @@ fun Root(nav: Nav) {
 private fun TabBar(nav: Nav) {
     Column(Modifier.fillMaxWidth().background(Color(0xF2121214)).navigationBarsPadding()) {
         HorizontalDivider(thickness = 0.5.dp, color = Color.White.copy(alpha = 0.12f))
-        Row(Modifier.fillMaxWidth().height(54.dp)) {
+        Row(Modifier.fillMaxWidth().height(TabBarHeight)) {
             Tab.entries.forEach { t ->
                 val sel = nav.tab == t
                 val c = if (sel) Pal.pink else Pal.muted

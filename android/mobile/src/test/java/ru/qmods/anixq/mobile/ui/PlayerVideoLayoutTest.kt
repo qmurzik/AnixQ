@@ -9,6 +9,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.viewinterop.AndroidView
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertSame
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -22,27 +23,33 @@ import org.robolectric.annotation.GraphicsMode
 class PlayerVideoLayoutTest {
     @get:Rule val rule = createComposeRule()
 
-    @Test fun portraitFullscreenAndPipKeepOneVideoViewAndParent() {
+    @Test fun portraitFullscreenMiniAndPipKeepOneVideoViewAndParent() {
         val mode = mutableStateOf("portrait")
         var creates = 0
         lateinit var video: View
         lateinit var parent: ViewParent
         rule.setContent {
-            PlayerVideoLayout(fullscreen = mode.value != "portrait", video = { modifier ->
+            PlayerVideoLayout(fullscreen = mode.value in setOf("pip", "fullscreen"), minimized = mode.value == "mini", video = { modifier ->
                 AndroidView(modifier = modifier.fillMaxSize(), factory = { context ->
                     creates++
                     View(context).also { video = it }
                 })
             }, details = {})
         }
-        rule.runOnIdle { parent = video.parent }
-        // Home → PiP, expand, rotate, Home again: no second owner and no surface detach.
-        for (state in listOf("pip", "portrait", "fullscreen", "pip", "fullscreen", "portrait")) {
+        var fullWidth = 0
+        rule.runOnIdle {
+            parent = video.parent
+            fullWidth = video.width
+        }
+        // Routes and PiP only resize the view in place.
+        for (state in listOf("mini", "pip", "mini", "portrait", "fullscreen", "pip", "fullscreen", "portrait")) {
             rule.runOnIdle { mode.value = state }
             rule.waitForIdle()
             rule.runOnIdle {
                 assertEquals("Video must not be recreated on $state", 1, creates)
                 assertSame("Video parent must stay attached on $state", parent, video.parent)
+                if (state == "mini") assertTrue(video.width in 1 until fullWidth)
+                else assertEquals(fullWidth, video.width)
             }
         }
     }

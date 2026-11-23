@@ -19,6 +19,7 @@ import kotlinx.coroutines.launch
 import ru.qmods.anixq.mobile.data.PlaybackHistory
 import ru.qmods.anixq.tv.data.AniSkip
 import ru.qmods.anixq.tv.data.sources.AnimeSources
+import ru.qmods.anixq.tv.data.sources.SourceIds
 import ru.qmods.anixq.tv.data.sources.qualityHeight
 import ru.qmods.anixq.tv.data.PlaybackLabels
 import ru.qmods.anixq.tv.data.Api
@@ -42,7 +43,7 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
     /** Watch together: what the others need to follow us (same format as the TV, iPhone and the web page). */
     override fun roomState(): org.json.JSONObject = org.json.JSONObject()
         .put("slug", title.slug).put("titleName", title.title).put("episodeId", episode?.id ?: 0)
-        .put("catalogSource", if (title.slug.startsWith("yummy:")) "yummy" else "animelib")
+        .put("catalogSource", SourceIds.catalogSource(title.slug))
         .put("playbackSource", player?.source ?: "animelib").put("balancer", player?.balancer ?: "").put("dubbing", player?.team?.name ?: "")
         .put("episodeNumber", episode?.number ?: "").put("teamId", player?.team?.id ?: 0).put("team", player?.team?.name ?: "")
         .put("playing", playing).put("position", pos).put("rate", speed.toDouble())
@@ -232,7 +233,7 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
                 val fromDownload = !route.resume && route.episodeId?.let { downloads.offlinePlayer(it) } != null
                 val sync = if (!fromDownload) async { Sync.pullFresh() } else null
                 val eps = savedEpisodes.takeIf { fromDownload }
-                    ?: runCatching { Api.episodes(title.slug) }.getOrNull()
+                    ?: runCatching { AnimeSources.episodes(title) }.getOrNull()?.takeIf { it.isNotEmpty() }
                     ?: savedEpisodes ?: throw Exception("Нет связи с AnimeLib")
                 if (eps.isEmpty()) { message = "Серий нет"; failed = true; return@launch }
                 episodes = eps
@@ -281,10 +282,12 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
                     ?: (previousChoice?.isExternalEmbed == true || Store.prefersExternal(title)))
                 val list = if (sameEpisode && players.isNotEmpty()) players else
                     offlinePlayers ?: playersCache.remove(ep.id)?.takeUnless { includeExternal }
-                        ?: AnimeSources.players(title, ep, includeExternal = includeExternal)
+                        ?: AnimeSources.players(title, ep, includeExternal = includeExternal, preferredTeamId = teamId)
                 players = list
-                if (offline == null && !includeExternal && title.id > 0 && list.any(AnimeSources::supported) && list.none { it.isExternalEmbed }) launch {
-                    val extra = AnimeSources.additional(title, ep)
+                if (offline == null && list.isNotEmpty() &&
+                    ((!includeExternal && title.id > 0 && list.any(AnimeSources::supported) && list.none { it.isExternalEmbed }) ||
+                        list.all { it.source == "shiki" })) launch {
+                    val extra = AnimeSources.additional(title, ep, includeShiki = list.none { it.source == "shiki" })
                     if (generation == loadGeneration && episode?.id == ep.id) players = (players + extra).distinctBy { "${it.source}:${it.team.id}" }
                 }
                 if (list.isEmpty()) { message = "Для этой серии нет видео"; failed = true; return@launch }
@@ -350,7 +353,7 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
         e.offlineDataSource = if (q == "Скачано" && episodeId != null) { url ->
             ru.qmods.anixq.mobile.data.Downloads.offlineDataSource(episodeId, url)
         } else null
-        e.load(currentUrl!!, startAt, p.subtitles, 0, p.headers)
+        e.load(currentUrl!!, startAt, p.subtitles, 0, p.headers, p.mimeTypes[q])
         e.setAutomaticQuality(q.equals("auto", true) || Store.automaticQuality)
         e.setSubtitles(subtitlesOn)
         if (speed != 1f) e.exo.setPlaybackSpeed(speed)
@@ -498,10 +501,10 @@ class PlayerModel(private val context: Context, private val scope: CoroutineScop
                         ?: keys.firstOrNull { (qualityHeight(it)) <= Store.preferredQuality } ?: keys.last()
                     val href = p.hrefs.getValue(q)
                     if (generation != loadGeneration || loading || sourceEngine !== exo) return@runCatching
-                    if (href.startsWith("http")) { sourceEngine?.queueNext(href, p.subtitles, p.headers); return@runCatching }
+                    if (href.startsWith("http")) { sourceEngine?.queueNext(href, p.subtitles, p.headers, p.mimeTypes[q]); return@runCatching }
                     val server = Api.rankServers(href).firstOrNull() ?: return@runCatching
                     if (generation == loadGeneration && !loading && sourceEngine === exo)
-                        sourceEngine?.queueNext(Api.videoUrl(server, href), p.subtitles, p.headers)
+                        sourceEngine?.queueNext(Api.videoUrl(server, href), p.subtitles, p.headers, p.mimeTypes[q])
                 }
             }
         }

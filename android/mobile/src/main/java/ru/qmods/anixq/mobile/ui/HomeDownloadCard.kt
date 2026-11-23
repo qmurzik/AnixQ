@@ -20,7 +20,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import ru.qmods.anixq.mobile.data.Downloads
 import ru.qmods.anixq.mobile.data.HomeDownloads
-import ru.qmods.anixq.tv.data.Api
+import ru.qmods.anixq.tv.data.sources.AnimeSources
 import ru.qmods.anixq.tv.data.Episode
 import ru.qmods.anixq.tv.data.Store
 import ru.qmods.anixq.tv.data.WatchEntry
@@ -78,7 +78,7 @@ internal fun HomeDownloadCard(entry: WatchEntry) {
     }
     LaunchedEffect(atHome, entry.title.slug, dismissed) {
         if (atHome && !dismissed) {
-            episodes = try { Api.episodes(entry.title.slug) }
+            episodes = try { AnimeSources.episodes(entry.title) }
             catch (e: CancellationException) { throw e }
             catch (_: Exception) { Downloads.episodes(entry.title.id).orEmpty() }
         }

@@ -2,7 +2,7 @@ package ru.qmods.anixq.tv.data
 
 /** Shared names and grouping rules; raw provider names remain intact for resolving and sync. */
 object PlaybackLabels {
-    fun source(key: String) = when (key) { "yummy" -> "YummyAnime"; "anilibria" -> "AniLibria"; else -> "AnimeLib" }
+    fun source(key: String) = playbackSourceLabel(key)
     fun balancer(raw: String?): String = raw?.replace(Regex("(?iu)^плеер\\s+"), "")?.trim().orEmpty().let {
         when { it.isBlank() -> "Основной"; it.equals("cdnvideohub", true) -> "CVH"; else -> it }
     }

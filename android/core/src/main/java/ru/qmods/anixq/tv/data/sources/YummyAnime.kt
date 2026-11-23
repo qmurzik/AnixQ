@@ -169,7 +169,7 @@ class YummyAnime(private val http: SourceHttp = SourceHttp(), private val base: 
             q.yearFrom?.let { add("from_year" to it.toString()) }; q.yearTo?.let { add("to_year" to it.toString()) }
         }
         fun parseTitle(x: JSONObject): Title? {
-            val id = x.int("anime_id")?.takeIf { it > 0 } ?: return null
+            val id = x.int("anime_id")?.takeIf(SourceIds::validYummyId) ?: return null
             val eps = x.obj("episodes")
             return Title(SourceIds.yummy(id), "yummy:$id", rusName = x.str("title"),
                 cover = x.obj("poster")?.let { it.str("big") ?: it.str("fullsize") }?.let(::fullUrl),
@@ -181,7 +181,7 @@ class YummyAnime(private val http: SourceHttp = SourceHttp(), private val base: 
                 episodeCount = eps?.int("count"), episodesAired = eps?.int("aired"), nextEpisodeAt = eps?.dbl("next_date"))
         }
         fun parseVideos(json: JSONObject): List<YummyVideo> = json.arr("response").mapNotNull { x ->
-            val id = x.int("video_id")?.takeIf { it > 0 } ?: return@mapNotNull null
+            val id = x.int("video_id")?.takeIf(SourceIds::validYummyId) ?: return@mapNotNull null
             val number = x.str("number")?.takeIf { it.toBigDecimalOrNull() != null } ?: return@mapNotNull null
             val url = x.str("iframe_url")?.let(::fullUrl)?.takeIf { it.startsWith("https://") || it.startsWith("http://") } ?: return@mapNotNull null
             val data = x.obj("data") ?: return@mapNotNull null

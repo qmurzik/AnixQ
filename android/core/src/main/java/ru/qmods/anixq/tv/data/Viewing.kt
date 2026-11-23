@@ -174,7 +174,7 @@ object SmartSearch {
         else { var out = low; latToCyr.forEach { (a, b) -> out = out.replace(a, b) }; out }
     }
 
-    suspend fun search(text: String): Pair<List<Title>, String?> {
+    suspend fun search(text: String, useShikiCorrection: Boolean = true): Pair<List<Title>, String?> {
         val q = text.trim()
         val first = runCatching { Api.search(q) }.getOrDefault(emptyList())
         if (first.isNotEmpty() || q.length < 3) return first to null
@@ -187,6 +187,7 @@ object SmartSearch {
             val r = runCatching { Api.search(v) }.getOrDefault(emptyList())
             if (r.isNotEmpty()) return r to v
         }
+        if (!useShikiCorrection) return emptyList<Title>() to null
         // Shikimori's search, then the matching AnimeLib titles.
         val shiki = withContext(Dispatchers.IO) {
             runCatching {

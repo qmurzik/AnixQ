@@ -83,7 +83,7 @@ data class Title(
     }
 }
 
-data class Detail(val title: Title, val summary: String?, val background: String?, val genres: List<String>)
+data class Detail(val title: Title, val summary: String?, val background: String?, val genres: List<String>, val sourceUrl: String? = null)
 
 data class Episode(val id: Int, val number: String, val name: String?, val index: Int) {
     val displayTitle: String get() = name?.takeIf { it.isNotBlank() && it != number } ?: "Серия $number"
@@ -115,10 +115,11 @@ data class Player(
     val balancer: String? = null,
     /** When this team's video of the episode appeared on AnimeLib (ms), for "how fast does this dub come out". */
     val addedAt: Long? = null,
+    val mimeTypes: Map<String, String> = emptyMap(),
 ) {
     val isYummy get() = source == "yummy"
     val canResolve get() = resolverUrl != null
-    val isExternalEmbed get() = isYummy || source == "animego"
+    val isExternalEmbed get() = isYummy || source == "animego" || source == "shiki"
     val sourceLabel get() = playbackSourceLabel(source)
     val choiceLabel get() = listOfNotNull(sourceLabel, balancer, team.name).joinToString(" · ")
     val isLibria get() = source == Libria.SOURCE
@@ -129,6 +130,7 @@ data class Player(
 fun playbackSourceLabel(source: String) = when (source) {
     "yummy" -> "YummyAnime"
     "animego" -> "AnimeGO"
+    "shiki" -> "Шикимори"
     "anilibria" -> "AniLibria"
     else -> "AnimeLib"
 }

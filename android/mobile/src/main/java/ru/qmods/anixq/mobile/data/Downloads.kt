@@ -46,6 +46,7 @@ object Downloads {
         val systemId: Long, val segments: List<Segment>, val state: State = State.QUEUED, val progress: Float = 0f, val bytes: Long = 0, val source: String = "animelib",
         val mediaUrl: String? = null,
         val headers: Map<String, String> = emptyMap(),
+        val mimeType: String? = null,
     ) {
         val key get() = episode.id
     }
@@ -99,7 +100,7 @@ object Downloads {
         val url = it.mediaUrl?.takeIf { _ -> File(it.file).isDirectory }
             ?: localFile(episodeId)?.let { file -> Uri.fromFile(file).toString() }
             ?: return null
-        return Player(it.team, "animelib", null, mapOf("Скачано" to url), it.segments, null, null, source = it.source, headers = emptyMap())
+        return Player(it.team, "animelib", null, mapOf("Скачано" to url), it.segments, null, null, source = it.source, headers = emptyMap(), mimeTypes = it.mimeType?.let { type -> mapOf("Скачано" to type) }.orEmpty())
     }
 
     fun offlineDataSource(episodeId: Int, url: String): androidx.media3.datasource.DataSource.Factory? =
@@ -118,7 +119,7 @@ object Downloads {
                         val sources = ru.qmods.anixq.tv.data.sources.AnimeSources
                         val includeExternal = title.id < 0 || (teamId?.let { it < 0 }
                             ?: ru.qmods.anixq.tv.data.Store.prefersExternal(title))
-                        val players = sources.players(title, ep, includeExternal = includeExternal)
+                        val players = sources.players(title, ep, includeExternal = includeExternal, preferredTeamId = teamId)
                         val choice = players.firstOrNull { it.team.id == teamId } ?: storedChoice(title, players)
                             ?: players.firstOrNull { it.isNative } ?: players.firstOrNull(sources::supported)
                         val p = choice?.let {
@@ -132,12 +133,13 @@ object Downloads {
                         if (p == null) { missing++; continue }
                         val keys = p.hrefs.keys.filter { key ->
                             val href = p.hrefs.getValue(key)
-                            !href.startsWith("http") || OfflineStreams.isAdaptive(href) ||
+                            !href.startsWith("http") || OfflineStreams.isAdaptive(href, p.mimeTypes[key]) || p.mimeTypes[key] == "video/mp4" ||
                                 Uri.parse(href).path.orEmpty().endsWith(".mp4", ignoreCase = true)
                         }.sortedByDescending { ru.qmods.anixq.tv.data.sources.qualityHeight(it) }
                         if (keys.isEmpty()) { missing++; continue }
                         val q = keys.firstOrNull { (ru.qmods.anixq.tv.data.sources.qualityHeight(it)) <= quality } ?: keys.last()
                         val href = p.hrefs.getValue(q)
+                        val mimeType = p.mimeTypes[q]
                         val direct = href.startsWith("http")
                         val downloadUrl = if (direct) href else {
                             val server = Api.rankServers(href).firstOrNull()
@@ -145,13 +147,13 @@ object Downloads {
                             Api.videoUrl(server, href)
                         }
                         val previous = items.value[ep.id]?.takeIf { it.state == State.FAILED }
-                        val reusable = previous?.takeIf { it.mediaUrl == downloadUrl && it.team.id == p.team.id }
+                        val reusable = previous?.takeIf { it.mediaUrl == downloadUrl && it.team.id == p.team.id && it.mimeType == mimeType }
                         if (previous != null && reusable == null) remove(ep.id)
-                        if (OfflineStreams.isAdaptive(downloadUrl)) {
+                        if (OfflineStreams.isAdaptive(downloadUrl, mimeType)) {
                             val folder = reusable?.let { File(it.file) }
                                 ?: File(app.filesDir, "offline/${ep.id}-${java.util.UUID.randomUUID()}")
                             val entry = Item(title, ep, p.team, q, folder.path, -1, p.segments, source = p.source,
-                                mediaUrl = downloadUrl, headers = p.headers)
+                                mediaUrl = downloadUrl, headers = p.headers, mimeType = mimeType)
                             put(entry)
                             save(durable = true)
                             scheduleStream(entry, replace = reusable != null)
@@ -213,7 +215,7 @@ object Downloads {
             val folder = File(path)
             try {
                 foreground(entry)
-                val downloader = streams.downloader(folder, checkNotNull(entry.mediaUrl), entry.headers)
+                val downloader = streams.downloader(folder, checkNotNull(entry.mediaUrl), entry.headers, entry.mimeType)
                 var lastUpdate = 0L
                 try {
                     runInterruptible(Dispatchers.IO) {
@@ -320,7 +322,7 @@ object Downloads {
                 .put("ep", JSONObject().put("id", i.episode.id).put("n", i.episode.number).put("name", i.episode.name ?: "").put("i", i.episode.index))
                 .put("team", JSONObject().put("id", i.team.id).put("name", i.team.name).put("subs", i.team.isSubtitles))
                 .put("headers", JSONObject(i.headers)).put("progress", i.progress.toDouble())
-                .put("mediaUrl", i.mediaUrl).put("q", i.quality).put("file", i.file).put("sys", i.systemId).put("state", i.state.name).put("bytes", i.bytes)
+                .put("mimeType", i.mimeType).put("mediaUrl", i.mediaUrl).put("q", i.quality).put("file", i.file).put("sys", i.systemId).put("state", i.state.name).put("bytes", i.bytes)
                 .put("seg", JSONArray().apply { i.segments.forEach { s -> put(JSONObject().put("k", s.kind).put("f", s.from).put("t", s.to)) } }))
         }
         val lists = JSONObject()
@@ -349,7 +351,7 @@ object Downloads {
                     (0 until seg.length()).map { j -> seg.getJSONObject(j).let { s -> Segment(s.getString("k"), s.getDouble("f"), s.getDouble("t")) } },
                     State.valueOf(x.getString("state")), if (x.getString("state") == "DONE") 1f else x.optDouble("progress", 0.0).toFloat(),
                     x.optLong("bytes"), x.optString("source", "animelib"), x.optString("mediaUrl").takeIf(String::isNotBlank),
-                    x.optJSONObject("headers")?.let { h -> h.keys().asSequence().associateWith(h::getString) }.orEmpty())
+                    x.optJSONObject("headers")?.let { h -> h.keys().asSequence().associateWith(h::getString) }.orEmpty(), x.optString("mimeType").takeIf(String::isNotBlank))
             }.map { item ->
                 if (item.mediaUrl != null && item.state == State.RUNNING) item.copy(state = State.QUEUED) else item
             }.associateBy { it.key }

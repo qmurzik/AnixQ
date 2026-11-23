@@ -82,9 +82,15 @@ fun SearchScreen(nav: Nav) {
         if (q.length < 2 || cached != null) return@LaunchedEffect
         delay(350)
         try {
-            val (found, used) = if (catalogSource == "yummy") {
+            val (found, used) = if (catalogSource != "animelib") {
                 Api.catalog(query, 1).first to null
-            } else ru.qmods.anixq.tv.data.SmartSearch.search(q)
+            } else {
+                val primary = kotlinx.coroutines.withTimeoutOrNull(5_000) {
+                    ru.qmods.anixq.tv.data.SmartSearch.search(q, useShikiCorrection = false)
+                }
+                if (primary != null && primary.first.isNotEmpty()) primary
+                else Api.catalog(query.copy(source = "shiki"), 1).first to null
+            }
             kotlinx.coroutines.currentCoroutineContext().ensureActive()
             nav.searchResult = SearchResult(query, found, used)
         } catch (e: kotlinx.coroutines.CancellationException) {
@@ -97,9 +103,16 @@ fun SearchScreen(nav: Nav) {
 
     Column(Modifier.fillMaxSize().statusBarsPadding()) {
         LargeTitle("Поиск")
-        Row(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Capsule("AnimeLib", selected = catalogSource == "animelib") { nav.searchSource = "animelib" }
-            Capsule("YummyAnime", selected = catalogSource == "yummy") { nav.searchSource = "yummy" }
+        androidx.compose.foundation.lazy.LazyRow(
+            contentPadding = PaddingValues(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            items(MobileCatalogSources, key = { it.first }) { (source, label) ->
+                Capsule(label, selected = catalogSource == source) { nav.searchSource = source }
+            }
+        }
+        if (catalogSource == "animelib" && results.any { it.slug.startsWith("shiki:") }) {
+            Text("Результаты из Шикимори", color = Pal.muted, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
         }
         searchError?.let { Text(it, color = Pal.muted, modifier = Modifier.padding(16.dp)) }
         Row(Modifier.padding(horizontal = 16.dp, vertical = 6.dp).fillMaxWidth().height(40.dp).clip(RoundedCornerShape(11.dp)).background(Pal.cardHi)

@@ -33,7 +33,7 @@ class OfflineStreamsTest {
         #EXT-X-ENDLIST
     """.trimIndent())
 
-    @Test fun dashManifestAndSegmentRemainReadableOffline() = downloadAndRead("episode.mpd", """
+    @Test fun extensionlessDashManifestAndSegmentRemainReadableOffline() = downloadAndRead("signed-manifest", """
         <MPD xmlns="urn:mpeg:dash:schema:mpd:2011" type="static" mediaPresentationDuration="PT4S" minBufferTime="PT1S">
           <Period duration="PT4S">
             <AdaptationSet mimeType="video/mp4" codecs="avc1.42c01e">
@@ -45,7 +45,7 @@ class OfflineStreamsTest {
             </AdaptationSet>
           </Period>
         </MPD>
-    """.trimIndent())
+    """.trimIndent(), "application/dash+xml")
 
     @Test fun interruptedHlsDownloadReusesCompletedSegmentsAfterCacheReopen() {
         val firstRequests = AtomicInteger()
@@ -90,7 +90,7 @@ class OfflineStreamsTest {
         }
     }
 
-    private fun downloadAndRead(playlist: String, manifest: String) {
+    private fun downloadAndRead(playlist: String, manifest: String, mimeType: String? = null) {
         val segment = "fixture segment"
         val referer = "https://player.example/"
         val streams = OfflineStreams(RuntimeEnvironment.getApplication())
@@ -108,8 +108,8 @@ class OfflineStreamsTest {
             }
             val manifestUrl = server.url("/$playlist").toString()
             val segmentUrl = server.url("/segment.bin").toString()
-            assertTrue(OfflineStreams.isAdaptive(manifestUrl))
-            streams.downloader(cache, manifestUrl, mapOf("Referer" to referer)).download(null)
+            assertTrue(OfflineStreams.isAdaptive(manifestUrl, mimeType))
+            streams.downloader(cache, manifestUrl, mapOf("Referer" to referer), mimeType).download(null)
             assertEquals(2, server.requestCount)
             manifestUrl to segmentUrl
         }

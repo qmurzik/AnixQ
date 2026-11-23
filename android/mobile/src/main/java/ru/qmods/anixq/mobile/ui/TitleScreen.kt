@@ -56,6 +56,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -85,6 +86,8 @@ import androidx.compose.material.icons.filled.DownloadDone
 import androidx.compose.material.icons.filled.Delete
 import ru.qmods.anixq.mobile.data.PlaybackHistory
 import ru.qmods.anixq.tv.data.Api
+import ru.qmods.anixq.tv.data.sources.AnimeSources
+import ru.qmods.anixq.tv.data.sources.SourceIds
 import ru.qmods.anixq.tv.data.CatalogQuery
 import ru.qmods.anixq.tv.data.CatalogSort
 import ru.qmods.anixq.tv.data.Detail
@@ -151,7 +154,7 @@ fun TitleScreen(nav: Nav, start: Title) {
 
     var sourceGenres by remember { mutableStateOf<Map<String, Int>>(emptyMap()) }
     LaunchedEffect(start.slug) {
-        val source = if (start.slug.startsWith("yummy:")) "yummy" else "animelib"
+        val source = SourceIds.catalogSource(start.slug)
         sourceGenres = runCatching { Api.genres(source).associate { it.second.lowercase() to it.first } }.getOrDefault(emptyMap())
     }
     LaunchedEffect(Unit) { runCatching { GenreIds.load() } }
@@ -159,15 +162,14 @@ fun TitleScreen(nav: Nav, start: Title) {
         error = null
         launch { runCatching { Api.related(start.slug) }.getOrNull()?.filter { it.first.id != start.id }?.let { related = it; TitleCache.related[start.slug] = it } }
         launch { runCatching { Api.similar(start.slug) }.getOrNull()?.let { similar = it; TitleCache.similar[start.slug] = it } }
-        launch { runCatching { Api.detail(start.slug) }.getOrNull()?.let { PlaybackHistory.remember(it.title, it.genres); detail = it; TitleCache.detail[start.slug] = it } }
+        launch { runCatching { AnimeSources.detail(start) }.getOrNull()?.let { PlaybackHistory.remember(it.title, it.genres); detail = it; TitleCache.detail[start.slug] = it } }
         try {
-            val eps = runCatching { Api.episodes(start.slug) }.getOrElse { e ->
-                ru.qmods.anixq.mobile.data.Downloads.episodes(start.id) ?: throw e
-            }
+            val downloads = ru.qmods.anixq.mobile.data.Downloads
+            val eps = AnimeSources.episodes(start).ifEmpty { downloads.episodes(start.id).orEmpty() }
             episodes = eps; TitleCache.episodes[start.slug] = eps
             if (eps.isEmpty()) return@LaunchedEffect
             val target = eps[nextIndex(start, eps)]
-            val sources = ru.qmods.anixq.tv.data.sources.AnimeSources
+            val sources = AnimeSources
             val base = sources.players(start, target, includeExternal = false)
             fun showTeams(players: List<ru.qmods.anixq.tv.data.Player>) {
                 val options = PlaybackChoices.options(players.filter(sources::supported))
@@ -179,13 +181,16 @@ fun TitleScreen(nav: Nav, start: Title) {
                     ?: options.firstOrNull()?.team?.id
             }
             showTeams(base)
-            if (start.id > 0 && base.any(sources::supported) && base.none { it.isExternalEmbed }) {
-                val extra = sources.additional(start, target)
+            if (base.any(sources::supported) && (base.none { it.isExternalEmbed } || base.all { it.source == "shiki" })) {
+                val extra = sources.additional(start, target, includeShiki = base.none { it.source == "shiki" })
                 if (extra.isNotEmpty()) showTeams(base + extra)
             }
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
-        } catch (e: Exception) { error = e.message ?: "Ошибка загрузки" }
+        } catch (e: Exception) {
+            if (episodes.isNullOrEmpty()) episodes = ru.qmods.anixq.mobile.data.Downloads.episodes(start.id)
+            if (episodes.isNullOrEmpty()) error = e.message ?: "Ошибка загрузки"
+        }
     }
 
     val eps = episodes.orEmpty()
@@ -279,13 +284,21 @@ fun TitleScreen(nav: Nav, start: Title) {
                         items(genres) { g ->
                             Text(g, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.clip(CircleShape).background(Pal.cardHi)
                                 .clickable {
-                                    sourceGenres[g.lowercase()]?.let { id -> nav.push(CatalogRoute(g, CatalogQuery(CatalogSort.POPULAR, genre = id, source = if (title.slug.startsWith("yummy:")) "yummy" else "animelib"))) }
+                                    sourceGenres[g.lowercase()]?.let { id -> nav.push(CatalogRoute(g, CatalogQuery(CatalogSort.POPULAR, genre = id, source = SourceIds.catalogSource(title.slug)))) }
                                 }.padding(horizontal = 10.dp, vertical = 6.dp))
                         }
                     }
                 }
             }
             title.shikiId?.let { sid -> item(key = "shiki") { ShikiRateCard(sid, eps.size) } }
+            val shikiUrl = detail?.sourceUrl
+            if (shikiUrl != null) item(key = "shiki-page") {
+                val online = teams.any { it.source == "shiki" }
+                TextButton(onClick = { openInBrowser(context, if (online) "$shikiUrl/watch" else shikiUrl) },
+                    modifier = Modifier.padding(horizontal = 12.dp)) {
+                    Text(if (online) "Смотреть на Шикимори" else "Открыть на Шикимори")
+                }
+            }
             if (teams.isNotEmpty()) item(key = "playback") {
                 PlaybackSelector(teams, teamId) { option ->
                     teamId = option.team.id; Store.setPlaybackOption(title, option); Store.useDub(option.team.name)
@@ -400,7 +413,7 @@ fun TitleScreen(nav: Nav, start: Title) {
             }
             CircleButton(Icons.Default.Share, "Поделиться", Modifier.align(Alignment.CenterEnd)) {
                 context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain")
-                    .putExtra(Intent.EXTRA_TEXT, "${title.title} — https://anilib.me/ru/anime/${title.slug}"), null))
+                    .putExtra(Intent.EXTRA_TEXT, "${title.title} — ${if (SourceIds.isShiki(title.slug)) "https://shikimori.io/animes/${title.shikiId}" else "https://anilib.me/ru/anime/${title.slug}"}"), null))
             }
         }
     }

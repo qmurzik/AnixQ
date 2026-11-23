@@ -110,6 +110,8 @@ fun PosterGrid(loader: CatalogLoader, onOpen: (Title) -> Unit, onRetry: () -> Un
     }
 }
 
+internal val MobileCatalogSources = listOf("animelib" to "AnimeLib", "yummy" to "YummyAnime", "shiki" to "Шикимори")
+
 private val statuses = listOf(1 to "Онгоинг", 2 to "Вышел", 3 to "Анонс")
 private val types = listOf(16 to "TV", 17 to "Фильм", 20 to "OVA", 21 to "ONA", 19 to "Спешл")
 
@@ -117,6 +119,7 @@ private val types = listOf(16 to "TV", 17 to "Фильм", 20 to "OVA", 21 to "O
 fun CatalogScreen(nav: Nav) {
     val query = nav.catalogQuery
     val loader = nav.catalogLoader
+    var sourceMenu by remember { mutableStateOf(false) }
     var sortMenu by remember { mutableStateOf(false) }
     var filters by remember { mutableStateOf(false) }
     LaunchedEffect(query) { loader.ensureLoaded(query) }
@@ -125,9 +128,20 @@ fun CatalogScreen(nav: Nav) {
     Column(Modifier.fillMaxSize().statusBarsPadding()) {
         LargeTitle("Каталог")
         LazyRow(contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            item { Capsule(if (query.source == "yummy") "YummyAnime" else "AnimeLib", selected = true) {
-                nav.catalogQuery = CatalogQuery(source = if (query.source == "yummy") "animelib" else "yummy")
-            } }
+            item {
+                Box {
+                    val name = MobileCatalogSources.firstOrNull { it.first == query.source }?.second ?: "AnimeLib"
+                    Capsule(name, selected = true, trailing = Icons.Default.KeyboardArrowDown) { sourceMenu = true }
+                    DropdownMenu(sourceMenu, { sourceMenu = false }, containerColor = Pal.cardHi) {
+                        MobileCatalogSources.forEach { (source, label) ->
+                            DropdownMenuItem({ Text(label) }, onClick = {
+                                sourceMenu = false
+                                if (query.source != source) nav.catalogQuery = CatalogQuery(source = source)
+                            })
+                        }
+                    }
+                }
+            }
             item {
                 Box {
                     Capsule(query.sort.title, Icons.AutoMirrored.Filled.Sort, selected = true, trailing = Icons.Default.KeyboardArrowDown) { sortMenu = true }

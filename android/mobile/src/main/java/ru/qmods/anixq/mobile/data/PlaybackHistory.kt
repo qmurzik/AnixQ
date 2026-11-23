@@ -12,7 +12,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withTimeoutOrNull
-import ru.qmods.anixq.tv.data.Api
+import ru.qmods.anixq.tv.data.sources.AnimeSources
 import ru.qmods.anixq.tv.data.Store
 import ru.qmods.anixq.tv.data.Title
 import ru.qmods.anixq.tv.data.sources.SourceIds
@@ -64,7 +64,7 @@ internal object PlaybackHistory {
         val now = System.currentTimeMillis()
         if ((retryAt[title.slug] ?: 0) > now || !pending.add(title.slug)) return
         try {
-            val detail = slots.withPermit { withTimeoutOrNull(5_000) { Api.detail(title.slug) } }
+            val detail = slots.withPermit { withTimeoutOrNull(10_000) { AnimeSources.detail(title) } }
             if (detail != null && detail.genres.isNotEmpty()) remember(title, detail.genres)
             else retryAt[title.slug] = now + RETRY_MS
         } catch (e: CancellationException) {

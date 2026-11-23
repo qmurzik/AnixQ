@@ -26,6 +26,7 @@ class ApiException(message: String) : Exception(message)
 
 /** AnimeLib (lib.social) API, the same calls the iOS app makes. */
 object Api {
+    private val sources get() = ru.qmods.anixq.tv.data.sources.AnimeSources
     private const val EDGE = "https://anixq-edge.qmurzik7.workers.dev"
     /** All official API addresses; one that fails moves to the back (see [demote]). */
     private val hostOrder = java.util.concurrent.CopyOnWriteArrayList(listOf(
@@ -161,7 +162,10 @@ object Api {
     // Catalog
 
     suspend fun catalog(q: CatalogQuery, page: Int): Pair<List<Title>, Boolean> {
-        if (q.source == "yummy") return ru.qmods.anixq.tv.data.sources.AnimeSources.yummy.catalog(q, page)
+        when (q.source) {
+            "yummy" -> return sources.yummy.catalog(q, page)
+            "shiki" -> return sources.shiki.catalog(q, page)
+        }
         val params = mutableListOf("site_id[]" to "5", "page" to page.toString())
         if (q.text.isBlank()) { params += "sort_by" to q.sort.key; params += "sort_type" to "desc" } else params += "q" to q.text
         q.status?.let { params += "status[]" to it.toString() }
@@ -179,13 +183,18 @@ object Api {
 
     suspend fun search(text: String) = catalog(CatalogQuery(text = text), 1).first
 
-    suspend fun genres(source: String = "animelib"): List<Pair<Int, String>> = if (source == "yummy") ru.qmods.anixq.tv.data.sources.AnimeSources.yummy.genres() else try {
-        val d = data(request("/constants", listOf("fields[]" to "genres"))) as? JSONObject
-        d?.arr("genres")?.mapNotNull { g -> g.int("id")?.let { it to (g.str("name") ?: "") } } ?: emptyList()
-    } catch (e: Exception) { emptyList() }
+    suspend fun genres(source: String = "animelib"): List<Pair<Int, String>> = when (source) {
+        "yummy" -> sources.yummy.genres()
+        "shiki" -> sources.shiki.genres()
+        else -> try {
+            val d = data(request("/constants", listOf("fields[]" to "genres"))) as? JSONObject
+            d?.arr("genres")?.mapNotNull { g -> g.int("id")?.let { it to (g.str("name") ?: "") } }.orEmpty()
+        } catch (e: CancellationException) { throw e } catch (_: Exception) { emptyList() }
+    }
 
     suspend fun detail(slug: String): Detail {
-        if (slug.startsWith("yummy:")) return ru.qmods.anixq.tv.data.sources.AnimeSources.yummy.detail(slug.substringAfter(":").toInt())
+        if (slug.startsWith("yummy:")) return sources.yummy.detail(slug.substringAfter(":").toInt())
+        if (slug.startsWith("shiki:")) return sources.shiki.detail(slug.substringAfter(":").toInt())
         val fields = listOf("background", "summary", "releaseDate", "genres").map { "fields[]" to it }
         val d = data(request("/anime/$slug", fields)) as? JSONObject ?: throw ApiException("Не найдено")
         val title = Title.fromApi(d) ?: throw ApiException("Не найдено")
@@ -204,7 +213,7 @@ object Api {
     }
 
     /** Other parts of the franchise (sequels, films, OVA) with how they relate. */
-    suspend fun related(slug: String): List<Pair<Title, String>> = if (slug.startsWith("yummy:")) emptyList() else try {
+    suspend fun related(slug: String): List<Pair<Title, String>> = if (slug.startsWith("yummy:") || slug.startsWith("shiki:")) emptyList() else try {
         val a = data(request("/anime/$slug/relations")) as? JSONArray ?: JSONArray()
         val seen = HashSet<Int>()
         (0 until a.length()).mapNotNull { i ->
@@ -261,14 +270,15 @@ object Api {
         return out.sortedBy { it.time }
     }
 
-    suspend fun similar(slug: String): List<Title> = if (slug.startsWith("yummy:")) emptyList() else try {
+    suspend fun similar(slug: String): List<Title> = if (slug.startsWith("yummy:") || slug.startsWith("shiki:")) emptyList() else try {
         val a = data(request("/anime/$slug/similar")) as? JSONArray ?: JSONArray()
         val seen = HashSet<Int>()
         (0 until a.length()).mapNotNull { i -> a.optJSONObject(i)?.obj("media")?.let(Title::fromApi)?.takeIf { seen.add(it.id) } }
     } catch (e: Exception) { emptyList() }
 
     suspend fun episodes(slug: String): List<Episode> {
-        if (slug.startsWith("yummy:")) return ru.qmods.anixq.tv.data.sources.AnimeSources.yummy.episodes(slug.substringAfter(":").toInt())
+        if (slug.startsWith("yummy:")) return sources.yummy.episodes(slug.substringAfter(":").toInt())
+        if (slug.startsWith("shiki:")) return sources.shiki.episodes(slug.substringAfter(":").toInt())
         val a = data(request("/episodes", listOf("anime_id" to slug))) as? JSONArray ?: return emptyList()
         return (0 until a.length()).mapNotNull { i ->
             val x = a.optJSONObject(i) ?: return@mapNotNull null

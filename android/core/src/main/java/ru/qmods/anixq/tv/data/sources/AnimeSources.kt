@@ -14,7 +14,9 @@ object AnimeSources {
     val yummy = YummyAnime()
     private val http = SourceHttp()
     private val animeGo = AnimeGo()
-    val extractors: List<StreamExtractor> = listOf(AksorExtractor(http), CvhExtractor(http), KodikExtractor(http),
+    private val cvh = CvhExtractor(http)
+    val shiki = ShikimoriCatalog(http, cvh)
+    val extractors: List<StreamExtractor> = listOf(AksorExtractor(http), cvh, KodikExtractor(http),
         VkExtractor(http), RutubeExtractor(http), SibnetExtractor(http), ZedfilmExtractor(http), DirectExtractor())
     private val matchMutex = Mutex()
     private val matches = LinkedHashMap<String, Pair<Long, Int?>>()
@@ -48,17 +50,57 @@ object AnimeSources {
         "фильм", "movie", "полнометражный фильм" -> "movie"
         else -> s.lowercase()
     }
-    suspend fun players(title: Title, ep: Episode, includeExternal: Boolean = true): List<Player> = coroutineScope {
+    suspend fun detail(title: Title): Detail {
+        val id = SourceIds.shikiId(title)
+        if (title.id <= 0 || id == null) return Api.detail(title.slug)
+        withTimeoutOrNull(4_000) { isolated { Api.detail(title.slug) } }?.let { return it }
+        val fallback = shiki.detail(id)
+        return fallback.copy(title = fallback.title.copy(id = title.id, slug = title.slug))
+    }
+
+    suspend fun episodes(title: Title): List<Episode> {
+        val shikiId = SourceIds.shikiId(title)
+        if (SourceIds.isYummy(title.slug) || shikiId == null) return Api.episodes(title.slug)
+        if (!SourceIds.isShiki(title.slug)) {
+            val primary = withTimeoutOrNull(5_000) { isolated { Api.episodes(title.slug) } }
+            if (!primary.isNullOrEmpty()) return primary
+        }
+        val own = withTimeoutOrNull(8_000) { isolated { shiki.episodes(shikiId) } }.orEmpty()
+        if (own.isNotEmpty()) return own
+        val reserve = withTimeoutOrNull(7_000) {
+            isolated { match(title)?.let { yummy.episodes(it) } }
+        }.orEmpty()
+        return reserve.mapNotNull { episode ->
+            val number = episode.number.toIntOrNull()?.takeIf { it in 1..1023 } ?: return@mapNotNull null
+            episode.copy(id = SourceIds.shikiEpisode(shikiId, number))
+        }.distinctBy { it.id }
+    }
+
+    private suspend fun shikiPlayers(title: Title, ep: Episode): List<Player> =
+        withTimeoutOrNull(8_000) {
+            isolated { SourceIds.shikiId(title)?.let { shiki.players(it, ep.number) } }
+        }.orEmpty()
+
+    suspend fun players(title: Title, ep: Episode, includeExternal: Boolean = true, preferredTeamId: Int? = null): List<Player> = coroutineScope {
+        if (SourceIds.isShiki(title.slug) || preferredTeamId?.let(SourceIds::isShikiTeam) == true ||
+            (ep.id <= 0 && !SourceIds.isYummy(title.slug))) {
+            val own = shikiPlayers(title, ep)
+            if (own.isNotEmpty()) return@coroutineScope own
+            if (ep.id <= 0) return@coroutineScope additional(title, ep, includeShiki = false)
+        }
         val lib = async { if (SourceIds.isYummy(title.slug)) emptyList() else isolated { Api.players(ep.id) }.orEmpty() }
         val extra = if (includeExternal || title.id < 0) async { additional(title, ep) } else null
         val base = lib.await()
         val libria = base.filter { Libria.isLibria(it.team.name) }.distinctBy { it.team.id }.map {
             it.copy(team = it.team.copy(id = Int.MIN_VALUE + it.team.id), player = "external", hrefs = emptyMap(), source = Libria.SOURCE, headers = emptyMap(), resolverUrl = "anilibria:", balancer = null)
         }
-        val reserve = extra?.await() ?: if (base.none(::supported)) additional(title, ep) else emptyList()
+        val reserve = extra?.await() ?: if (base.none(::supported)) {
+            shikiPlayers(title, ep).ifEmpty { additional(title, ep, includeShiki = false) }
+        } else emptyList()
         base + libria + reserve
     }
-    suspend fun additional(title: Title, ep: Episode): List<Player> = coroutineScope {
+    suspend fun additional(title: Title, ep: Episode, includeShiki: Boolean = true): List<Player> = coroutineScope {
+        val shikiPlayers = if (includeShiki) async { shikiPlayers(title, ep) } else null
         val yummyPlayers = async {
             withTimeoutOrNull(15_000) {
                 isolated { match(title)?.let { yummy.players(it, ep.number) } }.orEmpty()
@@ -67,7 +109,7 @@ object AnimeSources {
         val reserve = async {
             withTimeoutOrNull(9_000) { isolated { animeGo.players(title, ep) }.orEmpty() }.orEmpty()
         }
-        yummyPlayers.await().sortedBy { player ->
+        shikiPlayers?.await().orEmpty() + yummyPlayers.await().sortedBy { player ->
             extractors.indexOfFirst { it.supports(player.resolverUrl.orEmpty()) }.takeIf { it >= 0 } ?: Int.MAX_VALUE
         } + reserve.await()
     }
@@ -97,7 +139,7 @@ object AnimeSources {
             else if (extractor is KodikExtractor && player.source == AnimeGo.SOURCE) extractor.resolve(url, "${AnimeGo.SITE}/")
             else extractor.resolve(url)
         } ?: error("${extractor.name}: превышено время ожидания; выберите другой источник")
-        return player.copy(player = "animelib", hrefs = stream.qualities, headers = stream.headers)
+        return player.copy(player = "animelib", hrefs = stream.qualities, headers = stream.headers, mimeTypes = stream.mimeTypes)
     }
     fun supported(player: Player): Boolean = if (player.source == Libria.SOURCE) true else player.resolverUrl?.let { url -> extractors.any { it.supports(url) } } ?: (player.isNative || player.isKodik)
     private suspend fun <T> isolated(block: suspend () -> T): T? = try { block() } catch(e: CancellationException) { throw e } catch (_: Exception) { null }

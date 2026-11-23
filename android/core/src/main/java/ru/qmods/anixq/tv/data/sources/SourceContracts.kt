@@ -4,9 +4,32 @@ import ru.qmods.anixq.tv.data.*
 
 /** The positive legacy range remains AnimeLib-only; external IDs cannot reach its write API. */
 object SourceIds {
-    fun yummy(id: Int): Int { require(id > 0); return -id }
-    fun yummyRemote(id: Int): Int { require(id < 0 && id != Int.MIN_VALUE); return -id }
+    fun validYummyId(id: Int) = id in 1..999_999_999
+    fun yummy(id: Int): Int { require(validYummyId(id)); return -id }
+    fun yummyRemote(id: Int): Int { require(id in -999_999_999..-1); return -id }
     fun isYummy(slug: String) = slug.startsWith("yummy:")
+    fun isShiki(slug: String) = slug.startsWith("shiki:")
+    fun validShikiId(id: Int) = id in 1..1_000_000
+    fun shikiTitle(id: Int): Int { require(validShikiId(id)); return -1_000_000_000 - id }
+    fun shikiEpisode(id: Int, number: Int): Int {
+        require(validShikiId(id) && number in 1..1023)
+        return -1_002_000_000 - id * 1024 - number
+    }
+    fun shikiTeam(key: String): Int = -2_100_000_000 - (key.hashCode() and 0x01ffffff)
+    fun isShikiTeam(id: Int) = id in -2_133_554_431..-2_100_000_000
+    fun shikiId(title: Title): Int? = if (isShiki(title.slug)) {
+        title.slug.substringAfter(':').toIntOrNull()?.takeIf(::validShikiId)
+    } else (title.shikiId ?: title.malId)?.takeIf(::validShikiId)
+    fun catalogSource(slug: String): String = when {
+        isYummy(slug) -> "yummy"
+        isShiki(slug) -> ShikimoriCatalog.SOURCE
+        else -> "animelib"
+    }
+    fun localTitleId(slug: String): Int = when {
+        isYummy(slug) -> slug.substringAfter(':').toIntOrNull()?.takeIf(::validYummyId)?.let(::yummy) ?: 0
+        isShiki(slug) -> slug.substringAfter(':').toIntOrNull()?.takeIf(::validShikiId)?.let(::shikiTitle) ?: 0
+        else -> slug.substringBefore("--").toIntOrNull() ?: 0
+    }
 }
 interface AnimeCatalog {
     suspend fun catalog(query: CatalogQuery, page: Int): Pair<List<Title>, Boolean>
@@ -18,7 +41,7 @@ interface EpisodeSource {
     suspend fun players(id: Int, number: String): List<Player>
 }
 
-data class ResolvedStream(val qualities: Map<String, String>, val headers: Map<String, String>) {
+data class ResolvedStream(val qualities: Map<String, String>, val headers: Map<String, String>, val mimeTypes: Map<String, String> = emptyMap()) {
     init { require(qualities.isNotEmpty()) }
 }
 interface StreamExtractor {

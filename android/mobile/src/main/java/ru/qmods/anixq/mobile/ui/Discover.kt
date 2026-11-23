@@ -260,7 +260,7 @@ fun SeasonScreen(nav: Nav) {
 @Composable
 fun FilterSheet(query: CatalogQuery, onApply: (CatalogQuery) -> Unit, onClose: () -> Unit) {
     var q by remember { mutableStateOf(query) }
-    var genres by remember { mutableStateOf(if (query.source == "yummy") emptyList<Pair<Int, String>>() else Genres.list) }
+    var genres by remember { mutableStateOf(if (query.source == "animelib") Genres.list else emptyList<Pair<Int, String>>()) }
     LaunchedEffect(query.source) { genres = runCatching { Api.genres(query.source) }.getOrDefault(emptyList()) }
     val year = java.util.Calendar.getInstance().get(java.util.Calendar.YEAR)
     ModalBottomSheet(onClose, containerColor = Pal.card) {
@@ -275,11 +275,13 @@ fun FilterSheet(query: CatalogQuery, onApply: (CatalogQuery) -> Unit, onClose: (
                     Triple("${year - 5}–$year", year - 5, year), Triple("2010-е", 2010, 2019), Triple("2000-е", 2000, 2009), Triple("Классика (до 2000)", null, 1999))
                     .forEach { (n, a, b) -> Capsule(n, selected = q.yearFrom == a && q.yearTo == b) { q = q.copy(yearFrom = a, yearTo = b) } }
             }
-            Text("Длина", fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 16.dp, bottom = 8.dp))
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf<Triple<String, Int?, Int?>>(Triple("Любая", null, null), Triple("На вечер (до 13)", null, 13), Triple("Сезон (13–26)", 13, 26),
-                    Triple("Длинные (26+)", 26, null), Triple("Очень длинные (100+)", 100, null))
-                    .forEach { (n, a, b) -> Capsule(n, selected = q.episodesMin == a && q.episodesMax == b) { q = q.copy(episodesMin = a, episodesMax = b) } }
+            if (q.source != "shiki") {
+                Text("Длина", fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 16.dp, bottom = 8.dp))
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf<Triple<String, Int?, Int?>>(Triple("Любая", null, null), Triple("На вечер (до 13)", null, 13), Triple("Сезон (13–26)", 13, 26),
+                        Triple("Длинные (26+)", 26, null), Triple("Очень длинные (100+)", 100, null))
+                        .forEach { (n, a, b) -> Capsule(n, selected = q.episodesMin == a && q.episodesMax == b) { q = q.copy(episodesMin = a, episodesMax = b) } }
+                }
             }
             Text("Жанр", fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 16.dp, bottom = 8.dp))
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {

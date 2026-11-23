@@ -30,12 +30,12 @@ internal class OfflineStreams(context: Context) {
         .setCache(cache(directory))
         .setCacheWriteDataSinkFactory(null)
 
-    fun downloader(directory: File, url: String, headers: Map<String, String>) =
+    fun downloader(directory: File, url: String, headers: Map<String, String>, mimeType: String? = null) =
         DefaultDownloaderFactory(
             CacheDataSource.Factory()
                 .setCache(cache(directory))
                 .setUpstreamDataSourceFactory(OkHttpDataSource.Factory(Api.http).setDefaultRequestProperties(headers))
-        ).createDownloader(DownloadRequest.Builder(directory.name, Uri.parse(url)).build())
+        ).createDownloader(DownloadRequest.Builder(directory.name, Uri.parse(url)).setMimeType(mimeType).build())
 
     @Synchronized
     fun close(directory: File) {
@@ -49,7 +49,7 @@ internal class OfflineStreams(context: Context) {
     }
 
     companion object {
-        fun isAdaptive(url: String): Boolean =
-            Util.inferContentType(Uri.parse(url)) in setOf(C.CONTENT_TYPE_HLS, C.CONTENT_TYPE_DASH)
+        fun isAdaptive(url: String, mimeType: String? = null): Boolean =
+            Util.inferContentTypeForUriAndMimeType(Uri.parse(url), mimeType) in setOf(C.CONTENT_TYPE_HLS, C.CONTENT_TYPE_DASH)
     }
 }

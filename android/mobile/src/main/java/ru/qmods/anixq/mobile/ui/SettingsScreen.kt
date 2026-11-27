@@ -186,6 +186,13 @@ fun SettingsScreen(nav: Nav) {
     val update by Updater.state.collectAsState()
     Column(Modifier.fillMaxSize().statusBarsPadding().verticalScroll(rememberScrollState()).padding(bottom = 32.dp)) {
         TopBar("Настройки", { nav.pop() })
+        Group("Интерфейс") {
+            Looks.Interface.entries.forEach { mode ->
+                GroupRow(mode.title, value = if (Looks.interfaceMode == mode) "Выбран" else null) {
+                    Looks.setInterface(mode)
+                }
+            }
+        }
         Group("YummyAnime", "Войдите в аккаунт — доступ к каталогу и видео настроится автоматически.") {
             GroupRow(if (ru.qmods.anixq.tv.data.sources.YummyAccount.signedIn) "Выйти из YummyAnime" else "Войти в YummyAnime", icon = Icons.Default.AccountCircle, iconColor = Pal.pink) {
                 if (ru.qmods.anixq.tv.data.sources.YummyAccount.signedIn) auth { ru.qmods.anixq.tv.data.sources.YummyAccount.logout() } else { tokenLogin = false; authMessage = null; authOpen = true }

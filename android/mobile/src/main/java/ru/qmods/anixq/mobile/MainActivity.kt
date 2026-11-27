@@ -21,6 +21,10 @@ import androidx.activity.SystemBarStyle
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -58,6 +62,9 @@ import androidx.core.content.ContextCompat
 import coil.Coil
 import kotlinx.coroutines.launch
 import ru.qmods.anixq.mobile.data.PlaybackHistory
+import ru.qmods.anixq.mobile.ui.Looks
+import ru.qmods.anixq.mobile.ui.AdvancedSettingsRoute
+import ru.qmods.anixq.mobile.ui.cinema.*
 import ru.qmods.anixq.mobile.ui.AnixTheme
 import ru.qmods.anixq.mobile.ui.CatalogListScreen
 import ru.qmods.anixq.mobile.ui.CatalogRoute
@@ -171,9 +178,13 @@ class MainActivity : ComponentActivity() {
             }
             AnixTheme { androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.fillMaxSize()) {
                 // Status bar icons follow the theme (dark icons on the light look).
-                androidx.compose.runtime.LaunchedEffect(ru.qmods.anixq.mobile.ui.Looks.light) {
-                    androidx.core.view.WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightStatusBars = ru.qmods.anixq.mobile.ui.Looks.light
-                    androidx.core.view.WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightNavigationBars = ru.qmods.anixq.mobile.ui.Looks.light
+                val darkInterface = n.top is PlayerRoute ||
+                    (Looks.interfaceMode == Looks.Interface.CINEMA && cinemaRoute(n.top))
+                androidx.compose.runtime.LaunchedEffect(Looks.light, darkInterface, n.top) {
+                    androidx.core.view.WindowCompat.getInsetsController(window, window.decorView).apply {
+                        isAppearanceLightStatusBars = Looks.light && !darkInterface
+                        isAppearanceLightNavigationBars = Looks.light && !darkInterface
+                    }
                 }
                 var onboarded by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(getSharedPreferences("looks", MODE_PRIVATE).getBoolean("onboarded", false) || Sync.isOn || Store.libToken != null) }
                 Root(n)
@@ -327,6 +338,12 @@ class MainActivity : ComponentActivity() {
 
 private val TabBarHeight = 54.dp
 
+private fun cinemaRoute(route: ru.qmods.anixq.mobile.ui.Route?): Boolean = when (route) {
+    null, is TitleRoute, is CatalogRoute, is FolderRoute, SettingsRoute, HistoryRoute,
+    ru.qmods.anixq.mobile.ui.DownloadsRoute, ru.qmods.anixq.mobile.ui.ScheduleRoute -> true
+    else -> false
+}
+
 @OptIn(androidx.compose.animation.ExperimentalSharedTransitionApi::class)
 @Composable
 fun Root(nav: Nav) {
@@ -340,12 +357,18 @@ fun Root(nav: Nav) {
     }
     BackHandler(enabled = nav.top != null || nav.tab != Tab.HOME) { if (nav.top != null) nav.pop() else nav.tab = Tab.HOME }
     val minimized = nav.playerRoute != null && nav.top !is PlayerRoute && !Pip.videoOnly
+    val cinema = Looks.interfaceMode == Looks.Interface.CINEMA
+    val tabBarHeight = if (cinema) CinemaNavigationHeight else TabBarHeight
     Box(Modifier.fillMaxSize()) {
         // Screens cross-fade; a tapped poster grows into the title page (shared bounds).
         androidx.compose.animation.SharedTransitionLayout(Modifier.fillMaxSize().background(Pal.bg)) {
           androidx.compose.animation.AnimatedContent(nav.top, label = "route",
-            transitionSpec = { androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(260)) togetherWith
-                androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(200)) }) { top ->
+            transitionSpec = {
+                val incoming = fadeIn(tween(260))
+                val outgoing = fadeOut(tween(200))
+                if (cinema) (incoming + slideInVertically(tween(300)) { it / 32 }) togetherWith outgoing
+                else incoming togetherWith outgoing
+            }) { top ->
           androidx.compose.runtime.CompositionLocalProvider(
               ru.qmods.anixq.mobile.ui.LocalSharedScope provides this@SharedTransitionLayout,
               ru.qmods.anixq.mobile.ui.LocalRouteScope provides this@AnimatedContent) {
@@ -355,17 +378,22 @@ fun Root(nav: Nav) {
           )) {
             when (top) {
                 is PlayerRoute -> Unit
-                is TitleRoute -> holder.SaveableStateProvider("title-${top.title.id}-${nav.stack.size}") { TitleScreen(nav, top) }
-                is CatalogRoute -> holder.SaveableStateProvider(top.stateKey) { CatalogListScreen(nav, top) }
-                is FolderRoute -> FolderScreen(nav, top.status)
-                ru.qmods.anixq.mobile.ui.DownloadsRoute -> ru.qmods.anixq.mobile.ui.DownloadsScreen(nav)
+                is TitleRoute -> holder.SaveableStateProvider("title-${top.title.id}-${nav.stack.size}-$cinema") {
+                    if (cinema) CinemaTitle(nav, top) else TitleScreen(nav, top)
+                }
+                is CatalogRoute -> holder.SaveableStateProvider(top.stateKey) {
+                    if (cinema) CinemaCatalog(nav, top) else CatalogListScreen(nav, top)
+                }
+                is FolderRoute -> if (cinema) CinemaFolder(nav, top.status) else FolderScreen(nav, top.status)
+                ru.qmods.anixq.mobile.ui.DownloadsRoute -> if (cinema) CinemaDownloads(nav) else ru.qmods.anixq.mobile.ui.DownloadsScreen(nav)
                 ru.qmods.anixq.mobile.ui.CollectionsRoute -> ru.qmods.anixq.mobile.ui.CollectionsScreen(nav)
                 is ru.qmods.anixq.mobile.ui.CollectionRoute -> ru.qmods.anixq.mobile.ui.CollectionScreen(nav, top.id)
                 ru.qmods.anixq.mobile.ui.ShikiLoginRoute -> ru.qmods.anixq.mobile.ui.ShikiLoginScreen(nav)
-                ru.qmods.anixq.mobile.ui.ScheduleRoute -> ru.qmods.anixq.mobile.ui.ScheduleScreen(nav)
-                HistoryRoute -> HistoryScreen(nav)
+                ru.qmods.anixq.mobile.ui.ScheduleRoute -> if (cinema) CinemaSchedule(nav) else ru.qmods.anixq.mobile.ui.ScheduleScreen(nav)
+                HistoryRoute -> if (cinema) CinemaHistory(nav) else HistoryScreen(nav)
                 RemoteRoute -> RemoteScreen(nav)
-                SettingsRoute -> SettingsScreen(nav)
+                SettingsRoute -> if (cinema) CinemaSettings(nav) else SettingsScreen(nav)
+                AdvancedSettingsRoute -> SettingsScreen(nav)
                 SyncRoute -> SyncLoginScreen(nav)
                 LibLoginRoute -> LibLoginScreen(nav)
                 is ru.qmods.anixq.mobile.ui.PersonRoute -> ru.qmods.anixq.mobile.ui.PersonScreen(nav, top)
@@ -386,17 +414,17 @@ fun Root(nav: Nav) {
                 is ru.qmods.anixq.mobile.ui.CommentsRoute -> ru.qmods.anixq.mobile.ui.CommentsScreen(nav, top)
                 null -> Column(Modifier.fillMaxSize()) {
                     Box(Modifier.weight(1f)) {
-                        holder.SaveableStateProvider(nav.tab.name) {
+                        holder.SaveableStateProvider(if (cinema) "cinema-${nav.tab.name}" else nav.tab.name) {
                             when (nav.tab) {
-                                Tab.HOME -> HomeScreen(nav)
-                                Tab.CATALOG -> CatalogScreen(nav)
-                                Tab.LIBRARY -> LibraryScreen(nav)
-                                Tab.SEARCH -> SearchScreen(nav)
+                                Tab.HOME -> if (cinema) CinemaHome(nav) else HomeScreen(nav)
+                                Tab.CATALOG -> if (cinema) CinemaCatalog(nav) else CatalogScreen(nav)
+                                Tab.LIBRARY -> if (cinema) CinemaLibrary(nav) else LibraryScreen(nav)
+                                Tab.SEARCH -> if (cinema) CinemaSearch(nav) else SearchScreen(nav)
                             }
                         }
                     }
                     if (minimized) Spacer(Modifier.height(MiniPlayerHeight))
-                    TabBar(nav)
+                    if (cinema) CinemaNavigation(nav) else TabBar(nav)
                 }
             }
           }
@@ -406,7 +434,7 @@ fun Root(nav: Nav) {
         nav.playerRoute?.let { route ->
             val playerModifier = if (minimized) {
                 Modifier.align(Alignment.BottomCenter).navigationBarsPadding()
-                    .padding(bottom = if (nav.top == null) TabBarHeight else 0.dp)
+                    .padding(bottom = if (nav.top == null) tabBarHeight else 0.dp)
                     .fillMaxWidth().height(MiniPlayerHeight)
             } else Modifier.fillMaxSize()
             key(route) { PlayerScreen(nav, route, minimized, playerModifier) }

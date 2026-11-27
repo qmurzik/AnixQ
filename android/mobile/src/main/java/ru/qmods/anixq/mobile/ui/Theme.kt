@@ -22,6 +22,16 @@ import androidx.compose.ui.unit.sp
 
 /** Look of the app, like the iPhone's styles: dark (classic), OLED, light or as the system; accent colour. */
 object Looks {
+    enum class Interface(val title: String) { CLASSIC("Классический"), CINEMA("Кинозал") }
+
+    var interfaceMode by mutableStateOf(Interface.CLASSIC)
+        private set
+
+    fun setInterface(value: Interface) {
+        interfaceMode = value
+        app.getSharedPreferences("looks", Context.MODE_PRIVATE).edit().putString("interface", value.name).apply()
+    }
+
     enum class Mode(val title: String) { DARK("Тёмная"), OLED("OLED"), LIGHT("Светлая"), SYSTEM("Как в системе") }
     enum class Accent(val title: String, val color: Color, val second: Color) {
         ROSE("Роза", Color(0xFFFF4D7A), Color(0xFF8C52FF)), OCEAN("Океан", Color(0xFF0A84FF), Color(0xFF40C8E0)),
@@ -40,6 +50,7 @@ object Looks {
     fun init(c: Context) {
         app = c.applicationContext
         val p = app.getSharedPreferences("looks", Context.MODE_PRIVATE)
+        interfaceMode = Interface.entries.firstOrNull { it.name == p.getString("interface", null) } ?: Interface.CLASSIC
         mode = Mode.entries.getOrElse(p.getInt("mode", 0)) { Mode.DARK }
         accent = Accent.entries.getOrElse(p.getInt("accent", 0)) { Accent.ROSE }
         if (Build.VERSION.SDK_INT >= 31) dynamic = Color(app.getColor(android.R.color.system_accent1_400))

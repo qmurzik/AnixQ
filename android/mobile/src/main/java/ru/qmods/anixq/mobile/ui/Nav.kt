@@ -42,6 +42,7 @@ data object ShikiLoginRoute : Route
 data object ScheduleRoute : Route
 data object RemoteRoute : Route
 data object SettingsRoute : Route
+data object AdvancedSettingsRoute : Route
 data object SyncRoute : Route
 data object LibLoginRoute : Route
 data object TraceRoute : Route

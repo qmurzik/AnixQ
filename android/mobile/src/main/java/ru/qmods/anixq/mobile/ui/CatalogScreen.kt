@@ -72,6 +72,7 @@ class CatalogLoader(private val fetchPage: suspend (CatalogQuery, Int) -> Pair<L
         val q = query ?: return
         if (loading || !more) return
         loading = true
+        error = null
         try {
             val (list, m) = fetchPage(q, page)
             kotlinx.coroutines.currentCoroutineContext().ensureActive()

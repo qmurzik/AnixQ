@@ -1,5 +1,9 @@
 package ru.qmods.anixq.mobile.ui
 
+import ru.qmods.anixq.mobile.ui.cinema.CinemaControls
+import ru.qmods.anixq.mobile.ui.cinema.CinemaPlayerDetails
+import ru.qmods.anixq.mobile.ui.cinema.Film
+
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.semantics.Role
@@ -264,9 +268,11 @@ fun PlayerScreen(nav: Nav, route: PlayerRoute, minimized: Boolean, modifier: Mod
     }
 
     val playerBox = if (minimized) {
-        val shape = RoundedCornerShape(14.dp)
-        modifier.padding(horizontal = 8.dp, vertical = 3.dp).clip(shape).background(Ink)
-            .border(1.dp, Color.White.copy(alpha = 0.16f), shape)
+        val cinema = Looks.interfaceMode == Looks.Interface.CINEMA
+        val shape = RoundedCornerShape(if (cinema) 18.dp else 14.dp)
+        modifier.padding(horizontal = if (cinema) 12.dp else 8.dp, vertical = 3.dp).clip(shape)
+            .background(if (cinema) Film.raised else Ink)
+            .border(1.dp, if (cinema) Film.rule else Color.White.copy(alpha = 0.16f), shape)
     } else modifier.background(if (Pip.videoOnly) Color.Black else Ink)
     BoxWithConstraints(playerBox) {
         val land = !minimized && maxWidth > maxHeight
@@ -298,7 +304,11 @@ fun PlayerScreen(nav: Nav, route: PlayerRoute, minimized: Boolean, modifier: Mod
         }
         // Keep the AndroidView and its parent alive across all three layouts.
         PlayerVideoLayout(fullscreen = land || Pip.videoOnly, video = video, minimized = minimized,
-            details = { Details(m, nav, { panel = it }, { roomOpen = true }, roomId != null) },
+            details = {
+                if (Looks.interfaceMode == Looks.Interface.CINEMA) {
+                    CinemaPlayerDetails(m, nav, { panel = it }, { roomOpen = true }, roomId != null)
+                } else Details(m, nav, { panel = it }, { roomOpen = true }, roomId != null)
+            },
             compact = { CompactPlayerControls(m, nav) })
         if (Pip.videoOnly || minimized) return@BoxWithConstraints
         if (land) {
@@ -334,6 +344,9 @@ fun PlayerScreen(nav: Nav, route: PlayerRoute, minimized: Boolean, modifier: Mod
 
 @Composable
 private fun CompactPlayerControls(m: PlayerModel, nav: Nav) {
+    val cinema = Looks.interfaceMode == Looks.Interface.CINEMA
+    val foreground = if (cinema) Film.paper else Color.White
+    val accent = if (cinema) Film.ticket else Pal.pink
     Box(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
             Row(
@@ -347,14 +360,14 @@ private fun CompactPlayerControls(m: PlayerModel, nav: Nav) {
                             .size(21.dp).background(Color.Black.copy(alpha = 0.72f), CircleShape))
                 }
                 Column(Modifier.weight(1f).padding(horizontal = 9.dp)) {
-                    Text(m.title.title, color = Color.White, fontWeight = FontWeight.SemiBold,
+                    Text(m.title.title, color = foreground, fontWeight = FontWeight.SemiBold,
                         fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     val subtitle = when {
                         m.failed -> "Ошибка загрузки"
                         m.loading || m.buffering -> "Загрузка…"
                         else -> m.episode?.let { "Серия ${it.number}" }.orEmpty()
                     }
-                    Text(subtitle, color = Dim, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(subtitle, color = if (cinema) Film.secondary else Dim, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
             IconButton(
@@ -371,15 +384,15 @@ private fun CompactPlayerControls(m: PlayerModel, nav: Nav) {
                     m.failed -> "Повторить"
                     m.playRequested -> "Пауза"
                     else -> "Воспроизвести"
-                }, tint = Color.White)
+                }, tint = if (cinema) accent else foreground)
             }
             IconButton(onClick = nav::closePlayer, modifier = Modifier.width(44.dp)) {
-                Icon(Icons.Default.Close, "Закрыть мини-плеер", tint = Color.White)
+                Icon(Icons.Default.Close, "Закрыть мини-плеер", tint = foreground)
             }
         }
         if (m.dur > 0) {
             Box(Modifier.align(Alignment.BottomStart).height(2.dp).fillMaxWidth().background(Glass)) {
-                Box(Modifier.fillMaxHeight().fillMaxWidth((m.pos / m.dur).toFloat().coerceIn(0f, 1f)).background(Pal.pink))
+                Box(Modifier.fillMaxHeight().fillMaxWidth((m.pos / m.dur).toFloat().coerceIn(0f, 1f)).background(accent))
             }
         }
     }
@@ -584,6 +597,10 @@ internal fun Controls(
     m: PlayerModel, land: Boolean, onPanel: (Panel) -> Unit, onMore: () -> Unit, onRoom: () -> Unit, roomActive: Boolean, fill: Boolean,
     onFill: () -> Unit, onFullscreen: (Boolean) -> Unit, touched: () -> Unit, onClose: () -> Unit, onLock: () -> Unit, onTv: () -> Unit, onPip: () -> Unit,
 ) {
+    if (Looks.interfaceMode == Looks.Interface.CINEMA) {
+        CinemaControls(m, land, onPanel, onMore, onRoom, roomActive, fill, onFill, onFullscreen, touched, onClose, onLock, onTv, onPip)
+        return
+    }
     var scrub by remember { mutableStateOf<Double?>(null) }
     Box(Modifier.fillMaxSize()) {
         Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to Color.Black.copy(alpha = 0.7f), 0.28f to Color.Black.copy(alpha = 0.12f),
@@ -642,7 +659,10 @@ internal fun Controls(
 
 /** Progress, what's buffered, the opening (marked) and comment ticks; drag or tap to seek with a time bubble. */
 @Composable
-private fun Scrubber(m: PlayerModel, scrub: Double?, onScrub: (Double) -> Unit, onDone: (Double) -> Unit, onCancel: () -> Unit, modifier: Modifier) {
+internal fun Scrubber(
+    m: PlayerModel, scrub: Double?, onScrub: (Double) -> Unit, onDone: (Double) -> Unit,
+    onCancel: () -> Unit, modifier: Modifier, accent: Color = Pal.pink,
+) {
     val latestScrub by rememberUpdatedState(onScrub)
     val latestDone by rememberUpdatedState(onDone)
     val latestCancel by rememberUpdatedState(onCancel)
@@ -650,7 +670,6 @@ private fun Scrubber(m: PlayerModel, scrub: Double?, onScrub: (Double) -> Unit, 
     val shown = scrub ?: m.pos
     val buffered = (m.exo?.exo?.bufferedPosition ?: 0L) / 1000.0
     val op = m.opening
-    val accent = Pal.pink
     BoxWithConstraints(modifier.height(28.dp)) {
         val wPx = with(LocalDensity.current) { maxWidth.toPx() }
         fun at(x: Float) = (x / wPx).coerceIn(0f, 1f) * dur
